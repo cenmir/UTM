@@ -1,8 +1,6 @@
 # Universal Testing Machine
 
-Based on the work done by [Stefan from CNC kitchen](https://www.youtube.com/watch?v=uvn-J8CbtzM) and the students [Stephen Jose Mathew and Vijay Francis](https://hj.diva-portal.org/smash/get/diva2:1472019/FULLTEXT01.pdf).
-
-
+Based on the work done by [Stefan from CNC kitchen](https://www.youtube.com/watch?v=uvn-J8CbtzM) and the students [Stephen Jose Mathew and Vijay Francis](https://hj.diva-portal.org/smash/get/diva2:1472019/FULLTEXT01.pdf) this is the continuation of that work. The machine is used at the Jönköping University - School of Engineering for teaching various mechanical engineering courses and the design, verification and validation of tensile testing equipment is in focus.
 
 ## Firmware
 
@@ -14,4 +12,16 @@ For drving the motors, one controll signal is sent to both drivers using the Mob
 
 Additionally on each motor shaft end a magnet is attached and its rotational position contactlessly measured by a AS5600 magnetic encoder using Rob Tillats library. This is used to measure the rotational speed of the motors.
 
+## Software
 
+## Hardware
+
+### Mechanics BOM
+
+### Electronics BOM
+
+## Digital Image Correlation
+
+### Hardware
+
+### Software
