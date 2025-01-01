@@ -10,9 +10,13 @@ Rob Tillarts HX711 library is used to read raw values at 10Hz non-blocking (when
 
 For drving the motors, one controll signal is sent to both drivers using the MobaTools library.
 
-Additionally on each motor shaft end a magnet is attached and its rotational position contactlessly measured by a AS5600 magnetic encoder using Rob Tillats library. This is used to measure the rotational speed of the motors.
+Additionally on each motor shaft end a magnet is attached and its rotational position contactlessly measured by a AS5600 magnetic encoder using Rob Tillats library. This is used to measure the rotational speed of the motors as well as getting the total amount of rotation.
 
 ## Software
+
+The software is written for Matlab currently.
+
+![](graphics/GUI.png)
 
 ## Hardware
 
