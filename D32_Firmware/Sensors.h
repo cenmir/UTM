@@ -11,10 +11,13 @@ class Sensors {
   public:
     Sensors();
     void init(int);
-    double getAngle(int);
+    float readAngle(int);
+    void posAndSpeed(int);
+    int32_t readTotalPosition(int);
+    float readAngularSpeed(int);
     
   private:
-    AS5600 ams5600;
+    AS5600 as5600;
     void tcaselect(uint8_t);
     double amsOffsets[2] = {0.0, 0.0};
 };

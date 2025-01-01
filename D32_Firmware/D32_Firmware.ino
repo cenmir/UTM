@@ -16,30 +16,21 @@ const int SPEED_SWITCH_PIN = 2; // HIGH is slow
 const int UP_BUTTON_PIN    = 0;
 const int DOWN_BUTTON_PIN  = 15;
 
-
 #define TCAADDR 0x70 // I2C multiplexer adress
-#define NUMBER_READINGS 20
+#define SENS_IDX 0   // Which sensor to read
+#define NUMBER_READINGS 20 // For averaging the speed
 
 bool readLoadCell = false;
+bool readSensors = false;
 bool readAngle = false;
 bool readAngularSpeed = false;
 
-unsigned long delayTime = millis();
-float currentAngle[2] =   {0.0, 0.0};
-float previousAngle[2] =   {0.0, 0.0};
-float angularSpeed[2]  =   {0.0, 0.0};
-float angleDiff[2]     =   {0.0, 0.0};
-float previousAngleDiff[2] = {10.0, 10.0};
-unsigned long previousTime[2] = {0, 0}; 
-float dt[2] = {0, 0};
-float previousDt[2] = {0, 0};
-int rotDir = 1;
-float averageAngularSpeed[2];      // Averaged angular speed values
-float angularSpeedBuffer[2][NUMBER_READINGS];    // Circular buffer for storing readings
+int32_t totalPosition = 0;
+float   angularSpeed  = 0;
+float angularSpeedBuffer[NUMBER_READINGS];    // Circular buffer for storing readings
 int bufferIndex = 0;               // Index to track the position in the buffer
-float totalAngle[2] = {0, 0};
+float averageAngularSpeed;      // Averaged angular speed values
 long force = 0;
-
 
 bool speedSwitchState = HIGH; // HIGH is slow and default
 bool upButtonState = HIGH;
@@ -71,6 +62,7 @@ void setup() {
   pinMode(DOWN_BUTTON_PIN, INPUT_PULLUP);
 
   LoadCell.begin(DATA_PIN, CLOCK_PIN, true);
+  // Loadcell calibration is done in external software
   //LoadCell.set_offset(4294935301);
   //LoadCell.set_scale(57.144153594970703);
 
@@ -99,13 +91,6 @@ void setup() {
   digitalWrite(ENABLE_PIN, LOW); 
   
 
-  // Initialize arrays
-  for (int i = 0; i < NUMBER_READINGS; i++) {
-    angularSpeedBuffer[0][i] = 0.0;
-    angularSpeedBuffer[1][i] = 0.0;
-  }
-
-
   DisplayHelp();
 }
 
@@ -113,96 +98,53 @@ void loop() {
   ReadSerial();
   CheckButtonStates();
 
-  //OldMethod();
   // Only read data when it is already available.
   if (LoadCell.is_ready()) {
     force = LoadCell.read();
+    ReportLoadCell();
   }
-  NewMethod();
+
+  ProcessSensors();
 }
 
-void NewMethod(){
+void ProcessSensors(){
+  static uint32_t delayTimeSensors;
+  if ( millis() - delayTimeSensors >= 50 ) {
+    delayTimeSensors = millis();
+    //sensors.posAndSpeed(0);
+    totalPosition = sensors.readTotalPosition(SENS_IDX);
 
-  if ( millis() - delayTime > 50 ) { 
-    delayTime = millis();
-    
-    if (readLoadCell){
-      Serial.print(force); Serial.print("\n");
-    }  
-
-    for (int i = 0; i < 2; i++){
-      if (readAngle){
-        Serial.print(currentAngle[i]); Serial.print("\t");           // current angle
-      }
-        
-      if (readAngularSpeed){
-        Serial.print(angleDiff[i]); Serial.print("\t");              // angle difference
-        Serial.print(dt[i]); Serial.print("\t");                     // time difference
-        Serial.print(angularSpeed[i]); Serial.print("\t");           // Angular speed
-      }
-    }
-    if (readAngle || readAngularSpeed){
-      Serial.print("\n");
-    }
-
-  }
-
-  for (int i = 0; i < 2; i++){
-    unsigned long currentTime = micros(); // Use micros() for higher precision
-    currentAngle[i] = sensors.getAngle(i); // Read the raw sensor angle (0-360 range)
-    angleDiff[i] = currentAngle[i] - previousAngle[i]; // Compare raw angles
-
-    // Handle 360-degree wrap-around for the raw angle difference
-    if (rotDir > 0){
-      angleDiff[i] = (float)((int) (angleDiff[i] * 100 + 36000) % 36000) / 100;
-    } else if(rotDir < 0) {
-      angleDiff[i] = previousAngle[i] - currentAngle[i];
-      angleDiff[i] = - (float)((int) (angleDiff[i] * 100 + 36000) % 36000) / 100;
-    } else{
-      angleDiff[i] = 0;
-    }
-
-    
-
-    // Calculate time difference
-    dt[i] = (currentTime - previousTime[i]) / 1000000.0; // Convert micros to seconds
-    if (dt[i] > 5*previousDt[i]) {
-      previousAngle[i] = currentAngle[i];
-      previousTime[i] = currentTime; 
-      previousDt[i] = dt[i];
-      return;
-    }
-
-    if (abs(angleDiff[i]) > 30){
-      previousAngle[i] = currentAngle[i];
-      previousTime[i] = currentTime; 
-      previousDt[i] = dt[i];
-      previousAngleDiff[i] = angleDiff[i];
-      return;
-    }
-
-    totalAngle[i] += angleDiff[i];
-
-    // Compute angular speed
-    angularSpeed[i] = angleDiff[i] / dt[i] / 6; // RPM
+    angularSpeed = sensors.readAngularSpeed(SENS_IDX) / 6; // rpm
 
     // Add new readings to the circular buffer
-    angularSpeedBuffer[i][bufferIndex] = angularSpeed[i];
+    angularSpeedBuffer[bufferIndex] = angularSpeed;
 
     // Increment the buffer index (wrap around using modulo)
     bufferIndex = (bufferIndex + 1) % NUMBER_READINGS;
-    
-    // Calculate the average of the last N readings
-    averageAngularSpeed[i] = Average(angularSpeedBuffer[i]);
 
-    // Update previous values for the next iteration
-    previousAngle[i] = currentAngle[i];
-    previousTime[i] = currentTime; 
-    previousDt[i] = dt[i];
-    previousAngleDiff[i] = angleDiff[i];
+    // Calculate the average of the last N readings
+    averageAngularSpeed = Average(angularSpeedBuffer);
+
+    if (readSensors) {
+      Serial.print(totalPosition); Serial.print("\t");
+      Serial.print(angularSpeed); Serial.print("\t");
+      Serial.print(averageAngularSpeed); Serial.print("\n");
+    }
   }
 
+  
 }
+
+void ReportLoadCell(){
+  static uint32_t delayTimeLoadCell = 0;
+  if (readLoadCell){
+    if ( millis() - delayTimeLoadCell >= 50 ) { // Max 20Hz, loadcell should report at 10Hz
+      delayTimeLoadCell = millis();
+      Serial.print(force); Serial.print("\n");
+    }  
+  }
+}
+
 
 // Function to calculate the average of the values in a circular buffer
 float Average(float buffer[]) {
@@ -213,26 +155,6 @@ float Average(float buffer[]) {
   return sum / NUMBER_READINGS;
 }
 
-void OldMethod(){
-  if ( millis() - delayTime > 10 ) {  // Run every 10ms
-    delayTime = millis();
-
-    AngularSpeed();
-
-    if (readLoadCell){
-      // Only read data when it is already available.
-      if (LoadCell.is_ready()) {
-        Serial.print(LoadCell.read()); Serial.print("\t");
-      }
-    }
-    
-    if (readLoadCell || readAngle || readAngularSpeed){
-      Serial.print("\n");
-    }
-
-    
-  }
-}
 
 void CheckButtonStates(){
   speedSwitchState         = digitalRead(SPEED_SWITCH_PIN);
@@ -295,14 +217,13 @@ void MoveUp(){
   digitalWrite(ENABLE_PIN, HIGH);
   if (speedSwitchState == LOW){
     Serial.println("Going up fast!");
-    stepper.setSpeed(3000);
+    stepper.setSpeed(5000);
   } else{
     Serial.println("Going up!");
-    stepper.setSpeed(300);
+    stepper.setSpeed(500);
   }
   
   stepper.rotate(1);
-  rotDir = 1;
   
 }
 
@@ -310,14 +231,13 @@ void MoveDown(){
   digitalWrite(ENABLE_PIN, HIGH);
   if (speedSwitchState == LOW){
     Serial.println("Going down fast!");
-    stepper.setSpeed(3000);
+    stepper.setSpeed(5000);
   } else{
     Serial.println("Going down!");
-    stepper.setSpeed(300);
+    stepper.setSpeed(500);
   }
 
   stepper.rotate(-1);
-  rotDir = -1;
 }
 
 void Stop(){
@@ -326,7 +246,6 @@ void Stop(){
   Serial.println("Stop and halt!");
 
   stepper.rotate(0);
-  rotDir = 0;
 }
 
 void StartUp(){
@@ -350,57 +269,6 @@ void StartUp(){
 
 
   ScanI2C();
-
-}
-
-void AngularSpeed(){
-  // subtract the last reading:
-  for (int i = 0; i < 2; i++){
-    unsigned long currentTime = micros(); // Use micros() for higher precision
-
-    currentAngle[i] = sensors.getAngle(i); // Read the raw sensor angle (0-360 range)
-    angleDiff[i] = currentAngle[i] - previousAngle[i]; // Compare raw angles
-
-    // Handle 360-degree wrap-around for the raw angle difference
-    if (rotDir > 0){
-      angleDiff[i] = (float)((int) (angleDiff[i] * 100 + 36000) % 36000) / 100;
-    } else if(rotDir < 0) {
-      angleDiff[i] = previousAngle[i] - currentAngle[i];
-      angleDiff[i] = - (float)((int) (angleDiff[i] * 100 + 36000) % 36000) / 100;
-    } else{
-      angleDiff[i] = 0;
-    }
-
-    // Calculate time difference
-    dt[i] = (currentTime - previousTime[i]) / 1000000.0; // Convert micros to seconds
-    if (dt[i] > 5*previousDt[i]) {
-      previousAngle[i] = currentAngle[i];
-      previousTime[i] = currentTime; 
-      previousDt[i] = dt[i];
-      return;
-    }
-
-    // Compute angular speed
-    angularSpeed[i] = angleDiff[i] / dt[i] / 6; // RPM
-
-    // Update previous values for the next iteration
-    previousAngle[i] = currentAngle[i];
-    previousTime[i] = currentTime; 
-    previousDt[i] = dt[i];
-    
-  }
-
-  for (int i = 0; i < 2; i++){
-    if (readAngle){
-      Serial.print(currentAngle[i]); Serial.print("\t");           // current angle
-    }
-      
-    if (readAngularSpeed){
-      //Serial.print(angleDiff[i]); Serial.print("\t");              // angle difference
-      //Serial.print(dt[i]); Serial.print("\t");                     // time difference
-      Serial.print(angularSpeed[i]); Serial.print("\t");           // Angular speed
-    }
-  }
 
 }
 
@@ -454,34 +322,26 @@ void ReadSerial() {
     readLoadCell = false;
   }
 
-  else if(command == "AngleOn"){
-    readAngle = true;
+  else if(command == "SensorsOn"){
+    readSensors = true;
   }
-
-  else if(command == "AngleOff"){
-    readAngle = false;
+  else if(command == "SensorsOff"){
+    readSensors = false;
   }
-
-  else if(command == "VelocityOn"){
-    readAngularSpeed = true;
-  }
-
-  else if(command == "VelocityOff"){
-    readAngularSpeed = false;
-  }
+  
 
   else if(command == "GetLoad"){
     Serial.print("Load: "); Serial.println(force);
   }
   else if(command == "GetTotalAngle"){
     Serial.print("Total Angle: "); 
-    Serial.print(totalAngle[0]); Serial.print("\t"); 
-    Serial.print(totalAngle[1]); Serial.print("\n"); 
+    //Serial.print(totalPosition[0]); Serial.print("\t"); 
+    Serial.print(totalPosition); Serial.print("\n"); 
   }
   else if(command == "GetVelocity"){
     Serial.print("Velocity: "); 
-    Serial.print(averageAngularSpeed[0]); Serial.print("\t"); 
-    Serial.print(averageAngularSpeed[1]); Serial.print("\n"); 
+    Serial.print(angularSpeed); Serial.print("\t"); 
+    Serial.print(averageAngularSpeed); Serial.print("\n"); 
   }
 
   else if(command == "Enable"){
@@ -492,38 +352,32 @@ void ReadSerial() {
   else if(command == "Disable"){
     //Serial.println("Disabling motors.");
     digitalWrite(ENABLE_PIN, LOW);
-    rotDir = 0;
   }
 
   else if(command == "Stop"){
     //Serial.println("Stopping...");
     stepper.rotate(0);
-    rotDir = 0;
   }
 
   else if(command == "EStop"){
     //Serial.println("Emergency stop!");
     stepper.stop(); //Emergency stop
-    rotDir = 0;
   }
 
   else if(command =="Forward"){
     //Serial.println("Going Forward...");
     stepper.rotate(1);
-    rotDir = 1;
   }
 
   else if(command == "Backward"){
     //Serial.println("Going Backwards...");
     stepper.rotate(-1);
-    rotDir = -1;
   }
 
   else if(command == "Start"){
     digitalWrite(ENABLE_PIN, HIGH);
     stepper.setSpeed(1000);
     stepper.rotate(1);
-    rotDir = 1;
   }
 
   else if(command.indexOf("SetSpeed") > -1){ //RPM
@@ -533,6 +387,15 @@ void ReadSerial() {
     int rpm10 = sval.toInt(); 
     Serial.print((float)rpm10/10); Serial.print(" RPM\n");
     stepper.setSpeed(rpm10); // revolution per minute times 10
+  }
+
+  else if(command.indexOf("MoveSteps") > -1){ 
+    Serial.print("Moving: ");
+    int ind = command.indexOf(' ');  //finds location of first ' '
+    String sval = command.substring(ind+1);
+    long steps = sval.toInt(); 
+    Serial.print(steps); Serial.print(" steps.\n");
+    stepper.move(steps); // 
   }
 
   else if(command.indexOf("SetRampLength") > -1){ 
@@ -620,18 +483,18 @@ void DisplayHelp() {
   Serial.println("----------------------");
   Serial.println("Valid Commands are:");
   Serial.println("");
-  Serial.println("'GetLoad'                     - Returns the latest load cell reading");
-  Serial.println("'GetVelocity'                 - Returns the angular velocty of each sensor");
-  Serial.println("'GetTotalAngle'               - Returns the total change of the angle since start");
-  Serial.println("'GetSteps'                    - Returns the total number of steps since start");
-  Serial.println("'Enable' / 'Disable'          - Enables/Disables the motors");
-  Serial.println("'Stop'                        - Slows the motors to a stop");
-  Serial.println("'EStop'                       - Breaks to motors to a stop immediately");
-  Serial.println("'SetSpeed' <RPM*10>           - Sets the rotational speed to rpm times 10. ");
-  Serial.println("'Forward' / 'Backward'        - Moves the motors");
-  Serial.println("'Start'                       - Start rotating the motors at 100 rpm forward");
-  Serial.println("'LoadCellOn' / 'LoadCellOff'  - Continuous reading every 50ms");
-  Serial.println("'AngleOn' / 'AngleOff'        - Continuous reading every 50ms");
-  Serial.println("'VelocityOn' / 'VelocityOff'  - Continuous reading every 50ms");
+  Serial.println("'GetLoad'                           - Returns the latest load cell reading");
+  Serial.println("'GetVelocity'                       - Returns the angular velocty of each sensor");
+  Serial.println("'GetTotalAngle'                     - Returns the total change of the angle since start");
+  Serial.println("'GetSteps'                          - Returns the total number of steps since start");
+  Serial.println("'Enable' / 'Disable'                - Enables/Disables the motors");
+  Serial.println("'Stop'                              - Slows the motors to a stop");
+  Serial.println("'EStop'                             - Breaks to motors to a stop immediately");
+  Serial.println("'SetSpeed' <RPM*10>                 - Sets the rotational speed to rpm times 10. ");
+  Serial.println("'Forward' / 'Backward'              - Moves the motors");
+  Serial.println("'Start'                             - Start rotating the motors at 100 rpm forward");
+  Serial.println("'LoadCellOn' / 'LoadCellOff'        - Continuous reading every 50ms");
+  Serial.println("'SensorsOn' / 'SensorsOff'          - Continuous reading every 50ms");
+  Serial.println("'VelocityOn' / 'VelocityOff'        - Continuous reading every 50ms");
   Serial.println("----------------------");
 }

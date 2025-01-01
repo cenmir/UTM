@@ -26,11 +26,11 @@ void Sensors::init(int id) {
   Serial.println(id);
 
   // If magnet is not detected
-  if (ams5600.detectMagnet() == 0) {
+  if (as5600.detectMagnet() == 0) {
     while(1) {
-      if (ams5600.detectMagnet() == 1){
+      if (as5600.detectMagnet() == 1){
         Serial.print("Current Magnitude: ");
-        Serial.println(ams5600.readMagnitude());
+        Serial.println(as5600.readMagnitude());
         break;
       }
       else {
@@ -41,12 +41,33 @@ void Sensors::init(int id) {
   }
 }
 
-double Sensors::getAngle(int id) {
+float Sensors::readAngle(int id) {
+  // degrees per second
   tcaselect(id);
-  double retVal = (ams5600.rawAngle() * AS5600_RAW_TO_DEGREES ) - amsOffsets[id];
-
-  //if (retVal <= -180) retVal = 360+retVal;
-  //if (retVal > 180) retVal = 360-retVal;
-
-  return retVal;
+  return as5600.readAngle() * AS5600_RAW_TO_DEGREES;
 }
+
+void Sensors::posAndSpeed(int id){
+  tcaselect(id);
+  as5600.readAngle();
+  Serial.print(as5600.getCumulativePosition(false));
+  Serial.print("\t");
+  Serial.println(as5600.getAngularSpeed(AS5600_MODE_DEGREES, false));
+}
+
+int32_t Sensors::readTotalPosition(int id){
+  tcaselect(id);
+  as5600.readAngle();
+
+  return as5600.getCumulativePosition(false);
+
+}
+
+float Sensors::readAngularSpeed(int id){
+  tcaselect(id);
+  as5600.readAngle();
+
+  return as5600.getAngularSpeed(AS5600_MODE_DEGREES, false);
+
+}
+
