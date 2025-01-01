@@ -3,6 +3,12 @@ classdef UTM_exported < matlab.apps.AppBase
     % Properties that correspond to app components
     properties (Access = public)
         UIFigure                        matlab.ui.Figure
+        IncrementalMovePanel            matlab.ui.container.Panel
+        MoveDownButton                  matlab.ui.control.Button
+        MoveEditField                   matlab.ui.control.NumericEditField
+        Label_4                         matlab.ui.control.Label
+        mmLabel_2                       matlab.ui.control.Label
+        MoveUpButton                    matlab.ui.control.Button
         Label_3                         matlab.ui.control.Label
         SpeedLabel                      matlab.ui.control.Label
         SaveDataButton                  matlab.ui.control.Button
@@ -38,13 +44,15 @@ classdef UTM_exported < matlab.apps.AppBase
         ScanforCOMportsButton           matlab.ui.control.Button
         TabGroup                        matlab.ui.container.TabGroup
         StressStrainTab                 matlab.ui.container.Tab
+        MarkersStressPlotCheckBox       matlab.ui.control.CheckBox
+        TareStressPlotButton            matlab.ui.control.Button
         mmLabel                         matlab.ui.control.Label
         AreaEditField                   matlab.ui.control.NumericEditField
         AreaEditFieldLabel              matlab.ui.control.Label
-        CropButton                      matlab.ui.control.Button
-        ShowrangeSlider                 matlab.ui.control.RangeSlider
+        StressCropButton                matlab.ui.control.Button
+        StressRangeSlider               matlab.ui.control.RangeSlider
         ShowrangeSliderLabel            matlab.ui.control.Label
-        ClearplotButton                 matlab.ui.control.Button
+        ClearStressPlotButton           matlab.ui.control.Button
         ImagePlot                       matlab.ui.control.UIAxes
         CurvePlot                       matlab.ui.control.UIAxes
         ConsoleTab                      matlab.ui.container.Tab
@@ -299,6 +307,7 @@ classdef UTM_exported < matlab.apps.AppBase
             app.RPMGauge.Enable = "On";
             app.deltaGauge.Enable = "On";
             app.TareLocationButton.Enable = "On";
+            app.IncrementalMovePanel.Enable = "On";
 
             app.MotorsSwitch.Value = "Off";
             app.setRPMKnob.Value = 0;
@@ -331,6 +340,7 @@ classdef UTM_exported < matlab.apps.AppBase
             app.RPMGauge.Enable = "Off";
             app.deltaGauge.Enable = "Off";
             app.TareLocationButton.Enable = "Off";
+            app.IncrementalMovePanel.Enable = "Off";
 
             app.MotorsSwitch.Value = "Off";
             app.setRPMKnob.Value = 0;
@@ -349,14 +359,16 @@ classdef UTM_exported < matlab.apps.AppBase
             app.ScanForCOMPorts();
             app.data = {};
             
+            % Timer checking connectivity
             app.Timer1 = timer;
             app.Timer1.Period = 0.5;
             app.Timer1.ExecutionMode = 'fixedRate';
             app.Timer1.TimerFcn = @(~,~)app.Timer1CallbackFcn();
             start(app.Timer1);
-
+            
+            % Timer polling position and velocity
             app.Timer2 = timer;
-            app.Timer2.Period = 1;
+            app.Timer2.Period = 0.1;
             app.Timer2.ExecutionMode = 'fixedRate';
             app.Timer2.TimerFcn = @(~,~)app.Timer2CallbackFcn();
             start(app.Timer2);
@@ -697,6 +709,33 @@ classdef UTM_exported < matlab.apps.AppBase
                 app.hLoadPlot.Marker = 'none';
             end
         end
+
+        % Button pushed function: MoveUpButton
+        function MoveUpButtonPushed(app, event)
+            distance = abs(app.MoveEditField.Value);
+            
+            nStepsPerRound = 200;
+            microStepping = 8;
+            pitch = 5;
+            gearRatio = 20;
+
+            steps = round(nStepsPerRound*microStepping*gearRatio*distance/pitch);
+            
+            app.device.writeline(sprintf("MoveSteps %d",steps));
+        end
+
+        % Button pushed function: MoveDownButton
+        function MoveDownButtonPushed(app, event)
+            distance = -abs(app.MoveEditField.Value);
+
+            nStepsPerRound = 200;
+            microStepping = 8;
+            pitch = 5;
+            gearRatio = 20;
+
+            steps = round(nStepsPerRound*microStepping*gearRatio*distance/pitch);
+            app.device.writeline(sprintf("MoveSteps %d",steps));
+        end
     end
 
     % Component initialization
@@ -725,48 +764,59 @@ classdef UTM_exported < matlab.apps.AppBase
             xlabel(app.CurvePlot, 'Strain [mm/mm]')
             ylabel(app.CurvePlot, 'Stress [N/mm^2]')
             zlabel(app.CurvePlot, 'Z')
-            app.CurvePlot.Position = [22 266 419 330];
+            app.CurvePlot.Position = [22 213 659 383];
 
             % Create ImagePlot
             app.ImagePlot = uiaxes(app.StressStrainTab);
             title(app.ImagePlot, 'No blobs found in frame')
-            app.ImagePlot.Position = [12 162 669 84];
+            app.ImagePlot.Position = [12 12 679 84];
 
-            % Create ClearplotButton
-            app.ClearplotButton = uibutton(app.StressStrainTab, 'push');
-            app.ClearplotButton.Position = [452 563 100 23];
-            app.ClearplotButton.Text = 'Clear plot';
+            % Create ClearStressPlotButton
+            app.ClearStressPlotButton = uibutton(app.StressStrainTab, 'push');
+            app.ClearStressPlotButton.Position = [18 172 100 23];
+            app.ClearStressPlotButton.Text = 'Clear plot';
 
             % Create ShowrangeSliderLabel
             app.ShowrangeSliderLabel = uilabel(app.StressStrainTab);
             app.ShowrangeSliderLabel.HorizontalAlignment = 'right';
-            app.ShowrangeSliderLabel.Position = [458 534 69 22];
+            app.ShowrangeSliderLabel.Position = [18 146 69 22];
             app.ShowrangeSliderLabel.Text = 'Show range';
 
-            % Create ShowrangeSlider
-            app.ShowrangeSlider = uislider(app.StressStrainTab, 'range');
-            app.ShowrangeSlider.Position = [459 523 219 3];
+            % Create StressRangeSlider
+            app.StressRangeSlider = uislider(app.StressStrainTab, 'range');
+            app.StressRangeSlider.Position = [19 135 552 3];
 
-            % Create CropButton
-            app.CropButton = uibutton(app.StressStrainTab, 'push');
-            app.CropButton.Position = [452 463 100 23];
-            app.CropButton.Text = 'Crop';
+            % Create StressCropButton
+            app.StressCropButton = uibutton(app.StressStrainTab, 'push');
+            app.StressCropButton.Position = [589 125 100 23];
+            app.StressCropButton.Text = 'Crop';
 
             % Create AreaEditFieldLabel
             app.AreaEditFieldLabel = uilabel(app.StressStrainTab);
-            app.AreaEditFieldLabel.Position = [451 424 34 22];
+            app.AreaEditFieldLabel.Position = [498 172 34 22];
             app.AreaEditFieldLabel.Text = 'Area:';
 
             % Create AreaEditField
             app.AreaEditField = uieditfield(app.StressStrainTab, 'numeric');
             app.AreaEditField.Limits = [0 1000];
             app.AreaEditField.HorizontalAlignment = 'left';
-            app.AreaEditField.Position = [500 424 69 22];
+            app.AreaEditField.Position = [547 172 69 22];
 
             % Create mmLabel
             app.mmLabel = uilabel(app.StressStrainTab);
-            app.mmLabel.Position = [571 424 25 22];
+            app.mmLabel.Position = [620 172 25 22];
             app.mmLabel.Text = 'mm';
+
+            % Create TareStressPlotButton
+            app.TareStressPlotButton = uibutton(app.StressStrainTab, 'push');
+            app.TareStressPlotButton.Position = [129 172 100 23];
+            app.TareStressPlotButton.Text = 'Tare';
+
+            % Create MarkersStressPlotCheckBox
+            app.MarkersStressPlotCheckBox = uicheckbox(app.StressStrainTab);
+            app.MarkersStressPlotCheckBox.Text = 'Markers';
+            app.MarkersStressPlotCheckBox.Position = [255 174 65 22];
+            app.MarkersStressPlotCheckBox.Value = true;
 
             % Create ConsoleTab
             app.ConsoleTab = uitab(app.TabGroup);
@@ -776,64 +826,64 @@ classdef UTM_exported < matlab.apps.AppBase
             app.ConsoleTextAreaLabel = uilabel(app.ConsoleTab);
             app.ConsoleTextAreaLabel.HorizontalAlignment = 'right';
             app.ConsoleTextAreaLabel.FontName = 'Consolas';
-            app.ConsoleTextAreaLabel.Position = [323 574 51 22];
+            app.ConsoleTextAreaLabel.Position = [325 574 51 22];
             app.ConsoleTextAreaLabel.Text = 'Console';
 
             % Create ConsoleTextArea
             app.ConsoleTextArea = uitextarea(app.ConsoleTab);
             app.ConsoleTextArea.FontName = 'Consolas';
-            app.ConsoleTextArea.Position = [42 236 615 326];
+            app.ConsoleTextArea.Position = [12 85 677 477];
 
             % Create SendButton
             app.SendButton = uibutton(app.ConsoleTab, 'push');
             app.SendButton.ButtonPushedFcn = createCallbackFcn(app, @SendButtonPushed, true);
-            app.SendButton.Position = [488 201 65 23];
+            app.SendButton.Position = [455 44 65 23];
             app.SendButton.Text = 'Send';
 
             % Create LineEndingDropDown
             app.LineEndingDropDown = uidropdown(app.ConsoleTab);
             app.LineEndingDropDown.Items = {'New Line', 'Carriage Return', 'Both NL & CR'};
-            app.LineEndingDropDown.Position = [252 164 100 22];
+            app.LineEndingDropDown.Position = [219 7 100 22];
             app.LineEndingDropDown.Value = 'New Line';
 
             % Create AutoscrollButton
             app.AutoscrollButton = uibutton(app.ConsoleTab, 'state');
             app.AutoscrollButton.Text = 'Auto scroll';
-            app.AutoscrollButton.Position = [382 164 66 23];
+            app.AutoscrollButton.Position = [349 7 66 23];
             app.AutoscrollButton.Value = true;
 
             % Create TimeStampButton
             app.TimeStampButton = uibutton(app.ConsoleTab, 'state');
             app.TimeStampButton.Text = 'Time Stamp';
-            app.TimeStampButton.Position = [478 164 76 23];
+            app.TimeStampButton.Position = [445 7 76 23];
 
             % Create ClearConsoleButton
             app.ClearConsoleButton = uibutton(app.ConsoleTab, 'push');
             app.ClearConsoleButton.ButtonPushedFcn = createCallbackFcn(app, @ClearConsoleButtonPushed, true);
-            app.ClearConsoleButton.Position = [574 201 86 23];
+            app.ClearConsoleButton.Position = [541 44 86 23];
             app.ClearConsoleButton.Text = 'Clear Console';
 
             % Create CommandEditFieldLabel
             app.CommandEditFieldLabel = uilabel(app.ConsoleTab);
             app.CommandEditFieldLabel.HorizontalAlignment = 'right';
-            app.CommandEditFieldLabel.Position = [45 201 64 22];
+            app.CommandEditFieldLabel.Position = [12 44 64 22];
             app.CommandEditFieldLabel.Text = 'Command:';
 
             % Create CommandEditField
             app.CommandEditField = uieditfield(app.ConsoleTab, 'text');
             app.CommandEditField.ValueChangedFcn = createCallbackFcn(app, @CommandEditFieldValueChanged, true);
-            app.CommandEditField.Position = [124 201 353 22];
+            app.CommandEditField.Position = [91 44 353 22];
 
             % Create BaudRateDropDownLabel
             app.BaudRateDropDownLabel = uilabel(app.ConsoleTab);
             app.BaudRateDropDownLabel.HorizontalAlignment = 'right';
-            app.BaudRateDropDownLabel.Position = [51 164 62 22];
+            app.BaudRateDropDownLabel.Position = [12 7 62 22];
             app.BaudRateDropDownLabel.Text = 'Baud Rate';
 
             % Create BaudRateDropDown
             app.BaudRateDropDown = uidropdown(app.ConsoleTab);
             app.BaudRateDropDown.Items = {'9600', '57600', '115200', '250000'};
-            app.BaudRateDropDown.Position = [128 164 100 22];
+            app.BaudRateDropDown.Position = [89 7 100 22];
             app.BaudRateDropDown.Value = '9600';
 
             % Create LoadPlotTab
@@ -1061,7 +1111,7 @@ classdef UTM_exported < matlab.apps.AppBase
             app.EmergencySTOPButton.BackgroundColor = [1 0 0];
             app.EmergencySTOPButton.FontWeight = 'bold';
             app.EmergencySTOPButton.Tooltip = {'Immediately breaks the motors to stop'};
-            app.EmergencySTOPButton.Position = [841 456 100 38];
+            app.EmergencySTOPButton.Position = [841 443 121 51];
             app.EmergencySTOPButton.Text = {'Emergency'; 'STOP'};
 
             % Create Label_2
@@ -1097,19 +1147,19 @@ classdef UTM_exported < matlab.apps.AppBase
             % Create Label
             app.Label = uilabel(app.UIFigure);
             app.Label.HorizontalAlignment = 'right';
-            app.Label.Position = [11 130 25 22];
+            app.Label.Position = [3 1 25 22];
             app.Label.Text = '';
 
             % Create StatusBox
             app.StatusBox = uitextarea(app.UIFigure);
             app.StatusBox.Editable = 'off';
-            app.StatusBox.Position = [11 134 690 20];
+            app.StatusBox.Position = [3 5 1210 20];
             app.StatusBox.Value = {'Status: Not connected to UTM'};
 
             % Create SaveDataButton
             app.SaveDataButton = uibutton(app.UIFigure, 'push');
             app.SaveDataButton.ButtonPushedFcn = createCallbackFcn(app, @SaveDataButtonPushed, true);
-            app.SaveDataButton.Position = [961 321 100 23];
+            app.SaveDataButton.Position = [1113 28 100 23];
             app.SaveDataButton.Text = 'Save Data';
 
             % Create SpeedLabel
@@ -1122,6 +1172,40 @@ classdef UTM_exported < matlab.apps.AppBase
             app.Label_3.HorizontalAlignment = 'center';
             app.Label_3.Position = [763 479 25 22];
             app.Label_3.Text = '';
+
+            % Create IncrementalMovePanel
+            app.IncrementalMovePanel = uipanel(app.UIFigure);
+            app.IncrementalMovePanel.Title = 'Incremental Move';
+            app.IncrementalMovePanel.Position = [994 336 110 117];
+
+            % Create MoveUpButton
+            app.MoveUpButton = uibutton(app.IncrementalMovePanel, 'push');
+            app.MoveUpButton.ButtonPushedFcn = createCallbackFcn(app, @MoveUpButtonPushed, true);
+            app.MoveUpButton.Position = [5 69 100 23];
+            app.MoveUpButton.Text = 'Move Up';
+
+            % Create mmLabel_2
+            app.mmLabel_2 = uilabel(app.IncrementalMovePanel);
+            app.mmLabel_2.Position = [71 42 25 22];
+            app.mmLabel_2.Text = 'mm';
+
+            % Create Label_4
+            app.Label_4 = uilabel(app.IncrementalMovePanel);
+            app.Label_4.HorizontalAlignment = 'right';
+            app.Label_4.Position = [5 42 25 22];
+            app.Label_4.Text = '';
+
+            % Create MoveEditField
+            app.MoveEditField = uieditfield(app.IncrementalMovePanel, 'numeric');
+            app.MoveEditField.HorizontalAlignment = 'left';
+            app.MoveEditField.Position = [5 42 58 22];
+            app.MoveEditField.Value = 1.5;
+
+            % Create MoveDownButton
+            app.MoveDownButton = uibutton(app.IncrementalMovePanel, 'push');
+            app.MoveDownButton.ButtonPushedFcn = createCallbackFcn(app, @MoveDownButtonPushed, true);
+            app.MoveDownButton.Position = [5 12 100 23];
+            app.MoveDownButton.Text = 'Move Down';
 
             % Show the figure after all components are created
             app.UIFigure.Visible = 'on';
