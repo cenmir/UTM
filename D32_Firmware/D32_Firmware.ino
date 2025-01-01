@@ -408,7 +408,8 @@ void ReadSerial() {
     String sval = command.substring(ind+1);
     int ramp = sval.toInt(); 
     Serial.print(ramp); Serial.print(" ramp length\n");
-    stepper.setRampLen(ramp);
+    uint32_t rampLen = stepper.setRampLen(ramp);
+    Serial.print("Current rampLen: "); Serial.print(rampLen); Serial.print("\n");
   }
   
   else if(command == "GetSteps"){
