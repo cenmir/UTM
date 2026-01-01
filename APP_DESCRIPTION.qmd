@@ -1,0 +1,869 @@
+--- 
+title: "UTM Application Description: MATLAB to PyQt6 Conversion Guide"
+format:
+  html:
+    theme: darkly
+---
+
+# UTM Application Description: MATLAB to PyQt6 Conversion Guide
+
+This document describes the MATLAB-based Universal Testing Machine (UTM) application to guide its recreation in Python/PyQt6. Analysis based on `App.m`, `UTM.mlapp`, and `graphics/GUI.png`.
+
+---
+
+## Architecture Overview
+
+### Communication Layer
+
+**Serial Protocol** (Text-based, Arduino ↔ PC):
+
+- **Baud Rate**: 9600 (default), configurable to 57600, 115200, 250000
+- **Terminator**: Configurable (LF, CR, or CR/LF)
+- **Commands to Arduino**:
+
+  | Command | Description | Example |
+  |---------|-------------|---------|
+  | `Enable` | Enable motors | `Enable` |
+  | `Disable` | Disable motors | `Disable` |
+  | `Up` | Move up continuously | `Up` |
+  | `Down` | Move down continuously | `Down` |
+  | `Stop` | Stop movement | `Stop` |
+  | `SetSpeed [rpm*10]` | Set speed (0.1 RPM units) | `SetSpeed 1200` = 120 RPM |
+  | `MoveSteps [steps]` | Move specific steps | `MoveSteps 16000` |
+  | `GetTotalAngle` | Request angle reading | `GetTotalAngle` |
+  | `GetVelocity` | Request velocity | `GetVelocity` |
+  | `LoadCellOn` | Start load streaming | `LoadCellOn` |
+  | `LoadCellOff` | Stop load streaming | `LoadCellOff` |
+  | `EStop` | Emergency stop | `EStop` |
+
+- **Responses from Arduino**:
+
+  - Welcome message: `Welcome to UTM...`
+  - Load data: `[raw_value]` (tab-delimited)
+  - Velocity: `Velocity: [val1]	[val2]`
+  - Total Angle: `Total Angle: [val1]	[val2]`
+  - Command echo: `Command: [cmd]`
+
+### Data Acquisition
+**Real-time Polling** (Two timers):
+
+- **Timer1** (500ms): Connection health monitoring
+- **Timer2** (100ms): Position & velocity polling
+
+**Data Structure** (per sample):
+
+1. Timestamp (`datetime`)
+2. Raw force (ADC value from HX711)
+3. Calibrated force (N)
+4. Position (mm)
+5. Strain (mm/mm)
+6. Stress (N/mm²)
+
+**Maximum Buffer**: 500 data points, then auto-rescaling
+
+### Data Processing
+
+**Force Calibration**:
+```python
+F_calibrated = -raw_force × scale - offset
+```
+- Default: scale = -0.0065, offset = -24.5185
+- Two-point calibration with known weight
+
+**Position Calculation**:
+```python
+angle_deg = -raw_angle × (360/4096)  # AS5600 sensor
+rotations = angle_deg / 360
+screw_rotations = rotations / 20      # 20:1 gear ratio
+position_mm = screw_rotations × 5     # 5mm pitch
+position_relative = position_mm - position_zero
+```
+- Sign flip: negative (up is down mechanically)
+
+**Velocity Conversion**:
+```python
+# RPM mode: direct from encoder
+# mm/s mode:
+vel_mm_s = vel_rpm / 60 / 20 × 5
+```
+
+**Stress-Strain**:
+```python
+stress = F / A          # σ = F/A (N/mm²)
+strain = δ / L₀         # ε = δ/L₀ (mm/mm)
+```
+- A = cross-sectional area (default: 80 mm²)
+- L₀ = initial length (default: 80 mm)
+
+**Smoothing**: Moving mean filter, 1-second window (~10 samples)
+
+**Incremental Move Calculation**:
+```python
+steps = round(200 × 8 × 20 × distance / 5)
+```
+- 200 steps/revolution
+- 8× microstepping
+- 20:1 gear ratio
+- 5mm pitch lead screw
+
+---
+
+## GUI Layout (1232 × 813 px)
+
+### Top Section - Connection Controls
+```
+[Scan for COM ports]  [COM Dropdown ▼]  [Connection ◯━]  (🟢 Status Lamp)
+```
+
+### Right Panel - Control Section
+
+**Data Stream Toggles** (Vertical switches):
+```
+┌─────────────┐
+│ Load Cell   │  ◯━  On/Off
+│ Position    │  ◯━  On/Off
+│ Velocity    │  ◯━  On/Off
+└─────────────┘
+```
+
+**Speed Display & Control**:
+```
+     ┌──────────┐
+     │  /-240   │  Circular Gauge
+     │ |    |   │  (RPM or mm/s)
+     │  
+         +240   │
+     └──────────┘
+        RPM ◯━ mm
+
+    ⊙  Speed Knob (0-240 RPM or 0-1 mm/s)
+
+    Set RPM: [____] (numeric input)
+```
+
+**Motor Direction & Control**:
+```
+       ⊙  Direction Knob
+       (Up / Stop / Down)
+
+    Motors  ⫯━  On/Off (Rocker)
+
+   ┌──────────────────┐
+   │ Emergency  STOP  │  (Red, large)
+   └──────────────────┘
+```
+
+**Position Display**:
+```
+  ┌──┐
+  │10│
+  │ ║│  Linear Gauge
+  │ 0│  (-10 to +10 mm)
+  │-1│
+  └──┘
+  δ = 0.0000 mm
+
+  [Tare Location]
+```
+
+**Incremental Move Panel**:
+```
+┌────────────────────┐
+│ Incremental Move   │
+│  [Move Up]         │
+│  [1.5____] mm      │
+│  [Move Down]       │
+└────────────────────┘
+```
+
+### Left Panel - Tabbed Interface
+
+**Tab 1: Stress/Strain**
+```
+┌─────────────────────────────────────────┐
+│  Stress-Strain Curve                    │
+│  ┌────────────────────────────────┐     │
+│  │     •    •                     │     │
+│  │    •      •                    │     │
+│  │   •        •                   │     │
+│  │  •          •                  │     │
+│  └────────────────────────────────┘     │
+│  Strain (mm/mm) →                       │
+│                                         │
+│ [Clear] [Tare] ☑Markers                │
+│ Area: [80__] mm²  L₀: [80__] mm        │
+│ [━━━━━━━━━━] Range Slider [Crop]       │
+└─────────────────────────────────────────┘
+┌─────────────────────────────────────────┐
+│  Image Display (Camera/DIC)             │
+│  (Rotated 90°, blob detection overlay)  │
+└─────────────────────────────────────────┘
+```
+
+**Tab 2: Console**
+```
+┌─────────────────────────────────────────┐
+│  Console                                │
+│  ┌────────────────────────────────────┐ │
+│  │ [Monospace font]                   │ │
+│  │ 23:20:40.123 -> Welcome to UTM     │ │
+│  │ 23:20:50.456 -> Load: 1234.5       │ │
+│  │ ...                                │ │
+│  │ (500 line limit, auto-scroll)      │ │
+│  └────────────────────────────────────┘ │
+│                                         │
+│  Command: [__________] [Send]           │
+│  Baud: [9600 ▼] Line: [NL ▼]           │
+│  ☑Auto-scroll ☐Timestamp                │
+│  [Clear Console]                        │
+└─────────────────────────────────────────┘
+```
+
+**Tab 3: Load Plot**
+```
+┌─────────────────────────────────────────┐
+│  Load vs Time                           │
+│  ┌────────────────────────────────────┐ │
+│  │  6000                              │ │
+│  │  4000                              │ │
+│  │  2000  ∿∿∿∿∿∿∿                    │ │
+│  │     0 ────────────────────────     │ │
+│  └────────────────────────────────────┘ │
+│  Time →                                 │
+│                                         │
+│ [Clear] [Tare] ☑Markers                │
+│ [━━━━━━━━━━] Range Slider [Crop]       │
+│                                         │
+│ ┌─ Calibration ──────────────────────┐ │
+│ │ Weight: [___] g  [Calibrate]       │ │
+│ │ Offset: [-24.5185]                 │ │
+│ │ Scale:  [-0.0065]                  │ │
+│ └────────────────────────────────────┘ │
+└─────────────────────────────────────────┘
+```
+
+### Bottom Section
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Camera: [Start] [Stop] [Tare] L₀:[65.12]  [Button]         │
+│                                                              │
+│ FileName: [______________]              [Save Data]          │
+└──────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ Status: Connected to UTM.                                    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Core Features & Behaviors
+
+### 1. Connection Management
+
+**Startup Sequence**:
+1. Auto-scan for COM ports
+2. Populate dropdown
+3. Initialize data structures
+4. Start Timer1 (connection monitor)
+5. Start Timer2 (data polling)
+6. Set UI to disconnected state
+
+**Connection State Changes**:
+
+*Connected*:
+- Enable: Motor controls, data toggles, emergency stop, gauges, tare button, incremental move
+- Disable: Baud rate, line ending, COM port selection
+- Send: `Enable` then `Disable` (clears velocity noise)
+- Status: "Connected to UTM" (green lamp)
+
+*Disconnected*:
+- Enable: Baud rate, line ending, COM port selection
+- Disable: All motor and data controls
+- Status: "Not connected to UTM" (black lamp)
+
+**Health Monitoring**:
+- Timer1 checks connection every 500ms
+- Tests with `getpinstatus()` (MATLAB) or equivalent
+- Triggers state callbacks only on state change
+
+### 2. Motor Control
+
+**Speed Setting**:
+- Input: Knob (continuous 0-240 RPM) or text field
+- RPM mode: Integer values, direct to motor
+- mm/s mode: Float values, converted: `rpm = mm_s × 60 × 20 / 5`
+- Command: `SetSpeed [rpm × 10]` (e.g., 120 RPM → `SetSpeed 1200`)
+
+**Direction Control**:
+- **Stop**: Sends `Stop`
+- **Up**: Sends `SetSpeed [value]`, then `Up`
+- **Down**: Sends `SetSpeed [value]`, then `Down`
+- Direction knob updates send speed before direction change
+
+**Emergency Stop**:
+- Sends `EStop` immediately
+- Resets direction knob to "Stop"
+- Available only when connected
+
+**Incremental Move**:
+- User inputs distance in mm
+- Calculates steps: `steps = 200 × 8 × 20 × distance / 5`
+- Sends `MoveSteps [steps]`
+- Updates direction knob visual state
+
+### 3. Data Streaming
+
+**Load Cell Toggle**:
+- On: Sends `LoadCellOn`, starts receiving data stream
+- Off: Sends `LoadCellOff`, inserts NaN to create plot gap
+- Data parsed from serial: single tab-delimited value
+
+**Position Polling** (10 Hz):
+- Sends `GetTotalAngle` command
+- Parses: `"Total Angle: [raw]	..."`
+- Converts to mm, applies tare offset
+- Updates linear gauge and δ label
+
+**Velocity Polling** (10 Hz):
+- Sends `GetVelocity` command
+- Parses: `"Velocity: [val1]	[val2]"`
+- Updates circular gauge
+- Updates speed label with units
+
+### 4. Load Cell Calibration (Two-Point)
+
+**Workflow**:
+1. User inputs known weight (grams)
+2. Dialog: "Remove any weight from loadcell"
+3. Wait for OK, clear data buffer
+4. Collect 10 seconds of data
+5. Calculate `force0 = mean(raw_values)`
+6. Dialog: "Put the known weight on loadcell"
+7. Wait for OK, clear data buffer
+8. Collect 10 seconds of data
+9. Calculate `force1 = mean(raw_values)`
+10. Calculate:
+    ```
+    deltaForce = force1 - force0
+    scale = (weight_kg × 9.82) / deltaForce
+    offset = force0 × scale
+    ```
+11. Update offset and scale fields
+12. Status: "Load cell is calibrated"
+
+### 5. Data Export
+
+**Save Data Function**:
+- Filename: `[UserInput]_YYYYMMDD_HHmmss.mat`
+- Default name: `UTM_Data` if field empty
+- Format: MATLAB `.mat` file
+- Structure: Cell array `Data` with columns:
+  1. Timestamps (datetime objects)
+  2. Raw force values
+  3. Calibrated force (N)
+  4. Position (mm)
+  5. Strain (mm/mm)
+  6. Stress (N/mm²)
+
+**Python Alternative Formats**:
+- `.mat` using `scipy.io.savemat()`
+- `.csv` using `pandas.to_csv()`
+- `.h5` using `pandas.to_hdf()` or `h5py`
+
+### 6. Real-Time Plotting
+
+**Load Plot** (Force vs Time):
+- X-axis: Timestamp (HH:MM:SS.FFF)
+- Y-axis: Calibrated force (N)
+- Smoothing: Moving mean, window = 10 samples
+- Auto-rescale: After 500 points
+- Markers: Optional (checkbox)
+
+**Stress-Strain Plot**:
+- X-axis: Strain ε (mm/mm)
+- Y-axis: Stress σ (N/mm²)
+- Updates: Real-time with each data point
+- Markers: Optional (checkbox)
+
+**Tare Function**:
+- Averages last 50 data points (or all if <50)
+- Adds average to current offset
+- Zero-adjusts future readings
+
+**Crop Function**:
+- Range slider (0-100%) shows preview lines on plot
+- Crop button trims data array to selected range
+- Slider resets to [0, 100]
+
+### 7. Camera/DIC Integration
+
+**Hardware Configuration**:
+- GenTL-compatible camera (Basler)
+- Settings:
+  - ROI: [888, 300, 303, 1756]
+  - Frame rate: 35 fps
+  - Exposure: 2500 µs
+  - Gamma: 0.5
+  - Manual trigger, infinite repeat
+
+**Processing Pipeline**:
+1. Capture frame → rotate 90°
+2. Binarize with global threshold
+3. Blob analysis:
+   - Area: 100-1000 px
+   - Max blobs: 8
+   - Output: centroids, bounding boxes
+4. Point tracking for DIC strain measurement
+5. Display in ImagePlot axes
+
+**Controls**:
+- Start camera: Initialize and begin acquisition
+- Stop camera: Stop, delete video object
+- Tare: Process current frame for blob detection
+- Snapshot button: Manual frame capture
+
+### 8. Console Tab
+
+**Features**:
+- Displays all serial communication
+- Monospace font (Consolas or equivalent)
+- Optional timestamps: `HH:MM:SS.FFF -> [message]`
+- Auto-scroll (toggle)
+- Line limit: 500 (auto-clears when exceeded)
+- Manual command input with Send button
+- Parses special messages:
+  - "Welcome" → sets `connectionEstablished` flag
+  - "Velocity:" → updates gauge
+  - "Total Angle:" → updates position
+  - "Command:" → filtered out
+
+### 9. Application Close
+
+**Sequence**:
+1. Confirmation dialog: "Are you sure you want to close?"
+2. If Yes:
+   - Delete serial connection
+   - Stop Timer1, delete Timer1
+   - Stop Timer2, delete Timer2
+   - Stop camera (if active)
+   - Delete camera object
+   - Print "Goodbye"
+   - Close application
+
+---
+
+## Implementation Plan for PyQt6
+
+### Required Python Libraries
+```python
+# Core
+PyQt6          # GUI framework
+pyserial       # Serial communication (or PyQt6.QtSerialPort)
+numpy          # Numerical operations
+pandas         # Data management
+
+# Plotting
+matplotlib     # Embedded plots (FigureCanvas)
+
+# Data Export
+scipy          # .mat file support (scipy.io.savemat)
+
+# Optional
+opencv-python  # Camera support
+pypylon        # Basler camera SDK (if needed)
+```
+
+### Recommended Class Structure
+```python
+class UTMApplication(QMainWindow):
+    """Main application window"""
+
+    def __init__(self):
+        # Load UI from .ui file
+        # Initialize managers
+        # Setup timers
+        # Connect signals
+
+class SerialManager(QObject):
+    """Handles serial communication in separate thread"""
+    data_received = pyqtSignal(str)
+    connection_changed = pyqtSignal(bool)
+
+    def connect(port, baud)
+    def disconnect()
+    def send_command(cmd)
+    def parse_response(data)
+
+class DataManager:
+    """Manages data storage and processing"""
+    def __init__(self, max_points=500)
+    def append_data(timestamp, raw_force, position)
+    def calculate_force(raw, scale, offset)
+    def calculate_stress_strain(force, position, area, L0)
+    def clear_data()
+    def export_data(filename, format='mat')
+    def get_dataframe()
+
+class PlotManager:
+    """Manages matplotlib plots"""
+    def __init__(self, canvas)
+    def update_load_plot(x_data, y_data, smooth=True)
+    def update_stress_plot(strain, stress)
+    def clear_plots()
+    def set_markers(enabled)
+    def crop_data(x_range)
+
+class CalibrationManager:
+    """Handles load cell calibration"""
+    def __init__(self, data_manager, serial_manager)
+    def start_calibration(weight_grams)
+    def calibrate_zero()
+    def calibrate_weight()
+    def calculate_scale_offset()
+
+class CameraManager:  # Optional
+    """Manages camera and DIC processing"""
+    def __init__(self) 
+    def start_camera(config)
+    def stop_camera()
+    def process_frame()
+    def blob_detection()
+```
+
+### PyQt6 Component Mapping
+
+| MATLAB Component | PyQt6 Equivalent | Custom? |
+|------------------|------------------|---------|
+| `uibutton` | `QPushButton` | No |
+| `uiswitch` (slider) | `QCheckBox` or custom widget | Maybe |
+| `uiswitch` (rocker) | `QCheckBox` or custom widget | Maybe |
+| `uiknob` (continuous) | `QDial` | No |
+| `uiknob` (discrete) | `QDial` with `notchesVisible` | No |
+| `uigauge` (circular) | Custom `QWidget` with `QPainter` | **Yes** |
+| `uigauge` (linear) | `QProgressBar` or custom | Maybe |
+| `uidropdown` | `QComboBox` | No |
+| `uieditfield` (numeric) | `QDoubleSpinBox` / `QSpinBox` | No |
+| `uieditfield` (text) | `QLineEdit` | No |
+| `uitextarea` | `QTextEdit` | No |
+| `uitabgroup` / `uitab` | `QTabWidget` / `QWidget` | No |
+| `uiaxes` | `matplotlib.FigureCanvas` | No |
+| `uislider` (range) | Two `QSlider` or custom | **Yes** |
+| `uicheckbox` | `QCheckBox` | No |
+| `uipanel` | `QGroupBox` | No |
+| `uilamp` | Custom `QWidget` (circle) | **Yes** |
+
+### Timer Implementation
+```python
+# Timer 1: Connection monitoring (500ms)
+self.connection_timer = QTimer()
+self.connection_timer.setInterval(500)
+self.connection_timer.timeout.connect(self.check_connection)
+self.connection_timer.start()
+
+# Timer 2: Data polling (100ms)
+self.polling_timer = QTimer()
+self.polling_timer.setInterval(100)
+self.polling_timer.timeout.connect(self.poll_sensors)
+self.polling_timer.start()
+```
+
+### Threading Strategy
+```python
+# Serial communication in separate thread
+class SerialThread(QThread):
+    data_received = pyqtSignal(bytes)
+
+    def run(self):
+        while self.running:
+            if self.serial.in_waiting:
+                data = self.serial.readline()
+                self.data_received.emit(data)
+
+# Main thread handles GUI updates via signals
+self.serial_thread.data_received.connect(self.on_data_received)
+```
+
+### Data Storage Options
+
+**Option 1: Pandas DataFrame** (Recommended)
+```python
+import pandas as pd
+
+df = pd.DataFrame(columns=[
+    'timestamp', 'raw_force', 'force',
+    'position', 'strain', 'stress'
+])
+
+# Easy export
+df.to_csv('data.csv')
+df.to_hdf('data.h5', key='utm_data')
+```
+
+**Option 2: Numpy Arrays**
+```python
+import numpy as np
+from scipy.io import savemat
+
+data = {
+    'timestamp': [],
+    'raw_force': np.array([]),
+    'force': np.array([]),
+    # ...
+}
+
+savemat('data.mat', data)
+```
+
+---
+
+## Development Phases
+
+### Phase 1: Foundation (MVP)
+**Goal**: Basic control and monitoring
+- [ ] Qt Designer UI layout (main window, console tab)
+- [ ] Serial connection management
+- [ ] Console with send/receive
+- [ ] Motor enable/disable
+- [ ] Direction control (Up/Stop/Down)
+- [ ] Emergency stop
+- [ ] Status indicators
+
+### Phase 2: Data Acquisition
+**Goal**: Real-time data display
+- [ ] Load cell data streaming
+- [ ] Load vs time plot (matplotlib canvas)
+- [ ] Position polling and display
+- [ ] Linear gauge widget (custom)
+- [ ] Basic data storage (list/array)
+- [ ] Tare functionality
+
+### Phase 3: Advanced Control
+**Goal**: Full motor control
+- [ ] Speed control (knob + field)
+- [ ] RPM ↔ mm/s conversion
+- [ ] Circular gauge widget (custom)
+- [ ] Velocity polling and display
+- [ ] Incremental move functionality
+
+### Phase 4: Stress-Strain
+**Goal**: Material testing features
+- [ ] Stress-strain calculation
+- [ ] Stress-strain plot
+- [ ] Area and L₀ input fields
+- [ ] Stress-strain tab layout
+- [ ] Moving average filter
+- [ ] Markers toggle
+
+### Phase 5: Calibration & Export
+**Goal**: Production-ready features
+- [ ] Two-point calibration workflow
+- [ ] Calibration dialogs
+- [ ] Data export to .mat
+- [ ] Data export to CSV
+- [ ] Filename input
+- [ ] Range slider widget (custom)
+- [ ] Plot cropping
+
+### Phase 6: Polish
+**Goal**: Match MATLAB UX
+- [ ] Load Plot tab complete
+- [ ] Custom rocker switch widget
+- [ ] Status lamp widget
+- [ ] Window sizing and layout refinement
+- [ ] Keyboard shortcuts
+- [ ] Error handling and validation
+
+### Phase 7: Camera/DIC (Optional)
+**Goal**: Advanced strain measurement
+- [ ] Camera initialization (Basler)
+- [ ] Live camera feed
+- [ ] Frame capture and rotation
+- [ ] Blob detection (OpenCV)
+- [ ] Point tracking
+- [ ] DIC strain measurement
+
+---
+
+## Testing Strategy
+
+### Unit Tests
+```python
+# test_data_manager.py
+def test_force_calculation():
+    dm = DataManager()
+    force = dm.calculate_force(raw=1000, scale=-0.0065, offset=-24.5)
+    assert force == expected_value
+
+# test_serial_protocol.py
+def test_command_parsing():
+    response = "Velocity: 120\t45"
+    vel1, vel2 = parse_velocity(response)
+    assert vel1 == 120
+```
+
+### Integration Tests
+```python
+# test_serial_integration.py
+def test_mock_serial():
+    """Test GUI with mock serial connection"""
+    mock_serial = MockSerial()
+    app = UTMApplication(serial=mock_serial)
+    # Simulate commands and responses
+```
+
+### Hardware Tests
+- Test with real Arduino firmware
+- Verify all commands work correctly
+- Check data parsing accuracy
+- Validate calibration procedure
+
+---
+
+## Key Implementation Challenges
+
+### 1. Custom Widgets
+**Circular Gauge** (Speed display):
+- Inherit from `QWidget`
+- Override `paintEvent()` with `QPainter`
+- Draw arc, needle, tick marks, labels
+- Update needle angle based on value
+
+**Linear Gauge** (Position display):
+- Similar to circular, but vertical bar
+- Draw scale, indicator bar, major/minor ticks
+
+**Range Slider**:
+- Two handles for min/max selection
+- Preview lines on plot during drag
+- May use existing library (e.g., `qrangeslider`)
+
+**Status Lamp**:
+- Simple circle drawn with `QPainter`
+- Color property (green/black/red)
+- Minimal implementation
+
+### 2. Real-Time Plotting Performance
+**Challenge**: Matplotlib can be slow for real-time updates
+
+**Solutions**:
+- Use `blitting` for fast canvas updates
+- Update only changed data, not full redraw
+- Limit plot points (downsample if >500)
+- Consider `pyqtgraph` as alternative (faster)
+
+```python
+# Example with blitting
+self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+self.line.set_data(x, y)
+self.canvas.restore_region(self.background)
+self.ax.draw_artist(self.line)
+self.canvas.blit(self.ax.bbox)
+```
+
+### 3. Thread-Safe Data Access
+**Challenge**: Serial thread writes data, GUI thread reads it
+
+**Solution**: Use Qt signals/slots (thread-safe by design)
+```python
+class SerialThread(QThread):
+    data_ready = pyqtSignal(float, float)  # force, position
+
+    def run(self):
+        # Parse data
+        self.data_ready.emit(force, position)
+
+# In main window
+self.serial_thread.data_ready.connect(self.update_data)
+```
+
+### 4. Serial Communication
+**Options**:
+1. **PySerial** (external library)
+   - Mature, well-documented
+   - Use in `QThread` for non-blocking
+2. **QtSerialPort** (Qt native)
+   - Integrated with Qt event loop
+   - Signals for readyRead, error, etc.
+   - Recommended for Qt apps
+
+```python
+from PyQt6.QtSerialPort import QSerialPort, QSerialPortInfo
+
+self.serial = QSerialPort()
+self.serial.setPortName(port)
+self.serial.setBaudRate(baud)
+self.serial.readyRead.connect(self.on_data_ready)
+```
+
+---
+
+## Conversion Priority Summary
+
+### Must Have (Core Functionality)
+- ✅ Serial communication
+- ✅ Motor control (enable, direction, speed)
+- ✅ Load cell data acquisition
+- ✅ Real-time load plotting
+- ✅ Position tracking
+- ✅ Data export
+
+### Should Have (Material Testing)
+- ✅ Stress-strain calculation
+- ✅ Stress-strain plot
+- ✅ Calibration workflow
+- ✅ Console with command history
+- ✅ Incremental move
+
+### Nice to Have (Polish)
+- ⚠️ Custom gauge widgets
+- ⚠️ Range slider with preview
+- ⚠️ Plot cropping
+- ⚠️ Rocker switch widget
+
+### Optional (Advanced)
+- ❌ Camera integration
+- ❌ DIC processing
+- ❌ Blob detection/tracking
+- ❌ Advanced image analysis
+
+---
+
+## Next Steps
+
+1. **Create Base UI** in Qt Designer
+   - Main window layout
+   - Tab structure
+   - Control panel placeholders
+2. **Implement Serial Manager**
+   - Connection management
+   - Command sending
+   - Response parsing
+3. **Build Console Tab**
+   - Serial monitor
+   - Command input
+   - Timestamp toggle
+4. **Develop Data Manager**
+   - Data storage structure
+   - Real-time calculations
+   - Export functionality
+5. **Add Plotting**
+   - Matplotlib integration
+   - Load plot
+   - Stress-strain plot
+6. **Create Custom Widgets**
+   - Circular gauge
+   - Linear gauge
+   - Status lamp
+7. **Integrate All Components**
+   - Connect signals/slots
+   - Test with hardware
+   - Refine UX
+
+---
+
+## Additional Resources
+
+- **PyQt6 Documentation**: https://www.riverbankcomputing.com/static/Docs/PyQt6/
+- **Matplotlib Embedding**: https://matplotlib.org/stable/gallery/user_interfaces/embedding_in_qt_sgskip.html
+- **QtSerialPort**: https://doc.qt.io/qt-6/qserialport.html
+- **Custom Widgets Tutorial**: https://www.pythonguis.com/tutorials/creating-your-own-custom-widgets/

@@ -1,8 +1,16 @@
-classdef UTM_exported < matlab.apps.AppBase
+classdef UTM < matlab.apps.AppBase
 
     % Properties that correspond to app components
     properties (Access = public)
         UIFigure                        matlab.ui.Figure
+        FileNameEditField               matlab.ui.control.EditField
+        FileNameEditFieldLabel          matlab.ui.control.Label
+        Button                          matlab.ui.control.Button
+        L_0EditField                    matlab.ui.control.NumericEditField
+        L_0EditFieldLabel               matlab.ui.control.Label
+        TareButton_2                    matlab.ui.control.Button
+        StopcameraButton                matlab.ui.control.Button
+        StartcameraButton               matlab.ui.control.Button
         IncrementalMovePanel            matlab.ui.container.Panel
         MoveDownButton                  matlab.ui.control.Button
         MoveEditField                   matlab.ui.control.NumericEditField
@@ -44,9 +52,12 @@ classdef UTM_exported < matlab.apps.AppBase
         ScanforCOMportsButton           matlab.ui.control.Button
         TabGroup                        matlab.ui.container.TabGroup
         StressStrainTab                 matlab.ui.container.Tab
+        mmLabel_3                       matlab.ui.control.Label
+        L_0EditField_2                  matlab.ui.control.NumericEditField
+        L_0Label                        matlab.ui.control.Label
         MarkersStressPlotCheckBox       matlab.ui.control.CheckBox
         TareStressPlotButton            matlab.ui.control.Button
-        mmLabel                         matlab.ui.control.Label
+        mm2Label                        matlab.ui.control.Label
         AreaEditField                   matlab.ui.control.NumericEditField
         AreaEditFieldLabel              matlab.ui.control.Label
         StressCropButton                matlab.ui.control.Button
@@ -54,7 +65,7 @@ classdef UTM_exported < matlab.apps.AppBase
         ShowrangeSliderLabel            matlab.ui.control.Label
         ClearStressPlotButton           matlab.ui.control.Button
         ImagePlot                       matlab.ui.control.UIAxes
-        CurvePlot                       matlab.ui.control.UIAxes
+        StressPlot                      matlab.ui.control.UIAxes
         ConsoleTab                      matlab.ui.container.Tab
         BaudRateDropDown                matlab.ui.control.DropDown
         BaudRateDropDownLabel           matlab.ui.control.Label
@@ -75,8 +86,8 @@ classdef UTM_exported < matlab.apps.AppBase
         OffsetEditField                 matlab.ui.control.NumericEditField
         OffsetEditFieldLabel            matlab.ui.control.Label
         CalibrateButton                 matlab.ui.control.Button
-        WeightinKgEditField             matlab.ui.control.NumericEditField
-        WeightinKgEditFieldLabel        matlab.ui.control.Label
+        WeightingEditField              matlab.ui.control.NumericEditField
+        WeightingLabel                  matlab.ui.control.Label
         CropLoadButton                  matlab.ui.control.Button
         CropLoadSlider                  matlab.ui.control.RangeSlider
         ClearLoadPlotButton             matlab.ui.control.Button
@@ -104,6 +115,11 @@ classdef UTM_exported < matlab.apps.AppBase
         Timer1
         Timer2
         hLimitPlots
+        hLimitPlotsStress
+        vid
+        src
+        image
+        imagePos
     end
     
     methods (Access = public)
@@ -177,6 +193,7 @@ classdef UTM_exported < matlab.apps.AppBase
                 str = extractAfter(line, 'Total Angle: ');
                 strArray = strsplit(str, '\t');
                 val = str2double(strArray);
+                val = -val; %Flip sign, up is down, down is up
                 pos = val*360/4096; % degrees
                 pos = pos/360;   % rounds
                 pos = pos/20;    % rounds on screw
@@ -220,8 +237,13 @@ classdef UTM_exported < matlab.apps.AppBase
             timestamp = datetime('now','TimeZone','local','Format','HH:mm:ss.SSS');
             app.data{app.dataCounter, 1} = timestamp;
             app.data{app.dataCounter, 2} = force;
+
+            F = -force * app.ScaleEditField.Value - app.OffsetEditField.Value;
+            app.data{app.dataCounter, 3} = F;
+            app.data{app.dataCounter, 4} = app.position;
             
-            y = [app.data{:,2}];
+            
+            y = [app.data{:,3}];
             x = [app.data{:,1}];
 
             windowDuration = 1;
@@ -232,6 +254,25 @@ classdef UTM_exported < matlab.apps.AppBase
             if length(app.data) >= app.maxDataCount
                 xlim(app.LoadPlot, 'auto');
             end
+            
+            A = app.AreaEditField.Value;
+            stress = F/A;
+
+            delta = app.position;
+            L0 = app.L_0EditField.Value;
+            epsilon = delta/L0;
+            
+            
+            app.data{app.dataCounter, 5} = epsilon;
+            app.data{app.dataCounter, 6} = stress;
+
+
+            set(app.hStressPlot, 'XData', [app.data{:,5}], 'YData', [app.data{:,6}])
+            % if length(app.data) >= app.maxDataCount
+            %     xlim(app.hStressPlot, 'auto');
+            % end
+
+
         end
         
         function RescaleTime(app)
@@ -347,6 +388,19 @@ classdef UTM_exported < matlab.apps.AppBase
             app.SetRPMEditField.Value = 0;
             app.DirectionKnob.Value = "Stop";
         end
+        
+        function SetSpeed(app)
+            if strcmpi(app.RPMSwitch.Value, 'RPM')
+                value = round(app.setRPMKnob.Value);
+                app.SetRPMEditField.Value = value;
+                rpmVal = value;
+            else
+                value = app.setRPMKnob.Value;
+                app.SetRPMEditField.Value = value;
+                rpmVal = round(value*60*20/5);
+            end
+            app.device.writeline(sprintf("SetSpeed %d", rpmVal*10));
+        end
     end
     
 
@@ -378,9 +432,15 @@ classdef UTM_exported < matlab.apps.AppBase
             hold(app.LoadPlot,'On');
             app.hLimitPlots = plot(app.LoadPlot,currentTime, NaN);
 
-            app.OnSerialDisconnected();
-            
+            app.hStressPlot = plot(app.StressPlot, NaN, NaN, '-b.');
+            hold(app.StressPlot,'On');
+            app.hLimitPlotsStress = plot(app.StressPlot, NaN, NaN);
 
+            app.OnSerialDisconnected();
+
+            app.imagePos = app.ImagePlot.Position;
+            
+            
         end
 
         % Button pushed function: ScanforCOMportsButton
@@ -484,16 +544,9 @@ classdef UTM_exported < matlab.apps.AppBase
 
         % Value changed function: setRPMKnob
         function setRPMKnobValueChanged(app, event)
-            if strcmpi(app.RPMSwitch.Value, 'RPM')
-                value = round(app.setRPMKnob.Value);
-                app.SetRPMEditField.Value = value;
-                rpmVal = value;
-            else
-                value = app.setRPMKnob.Value;
-                app.SetRPMEditField.Value = value;
-                rpmVal = round(value*60*20/5)
-            end
-            app.device.writeline(sprintf("SetSpeed %d", rpmVal*10));
+            
+            app.SetSpeed();
+          
         end
 
         % Value changed function: SetRPMEditField
@@ -512,11 +565,14 @@ classdef UTM_exported < matlab.apps.AppBase
 
         % Value changed function: DirectionKnob
         function DirectionKnobValueChanged(app, event)
+            
             value = app.DirectionKnob.Value;
             if strcmpi(value, 'Down')
-                app.device.writeline("Backward");
+                app.SetSpeed();
+                app.device.writeline("Down");
             elseif strcmpi(value, 'Up')
-                app.device.writeline("Forward");
+                app.SetSpeed();
+                app.device.writeline("Up");
             else 
                 app.device.writeline("Stop");
             end
@@ -568,6 +624,7 @@ classdef UTM_exported < matlab.apps.AppBase
                 app.dataCounter = app.dataCounter +1;
                 app.data{app.dataCounter, 1} = currentTime;
                 app.data{app.dataCounter, 2} = NaN;
+                app.data{app.dataCounter, 3} = NaN;
                 % app.RedrawLoadPlot();
             end
         end
@@ -600,14 +657,70 @@ classdef UTM_exported < matlab.apps.AppBase
 
         % Button pushed function: TareButton
         function TareButtonPushed(app, event)
-            % app.device.Port
             
+            loadCellData = [app.data{:,3}];
+            if length(loadCellData) >= 50
+                offset = mean(loadCellData(end-50:end));
+            else
+                offset = mean(loadCellData);
+            end
             
+            app.OffsetEditField.Value = app.OffsetEditField.Value + offset;
         end
 
         % Button pushed function: CalibrateButton
         function CalibrateButtonPushed(app, event)
+            hmsgbox = msgbox("Input the weight in grams to use in the calibration. Press OK when done.");
+            uiwait(hmsgbox)
             
+            weight = app.WeightingEditField.Value
+
+            
+
+            hmsgbox = msgbox("Remove any weight from the loadcell. Press OK when done.");
+            uiwait(hmsgbox)
+
+            app.data = {};
+            app.dataCounter = 0;
+
+            app.StatusBox.Value = "Status: Gathering load cell data for 10 seconds, do not touch the loadcell...";
+            pause(10);
+
+            loadCellData = [app.data{:,2}];
+            force0 = mean(loadCellData) 
+
+
+         
+            hmsgbox = msgbox("Put the known weight on the loadcell.  Press OK when done.");
+            uiwait(hmsgbox)
+
+            app.data = {};
+            app.dataCounter = 0;
+
+            app.StatusBox.Value = "Status: Gathering load cell data for 10 seconds, do not touch the loadcell...";
+            pause(10);
+
+            
+            loadCellData = [app.data{:,2}];
+            force1 = mean(loadCellData)
+            weight = app.WeightingEditField.Value
+            
+            deltaForce = force1-force0
+
+            scale = (weight/1000*9.82) / (deltaForce)
+            
+
+            offset = force0*scale
+
+
+            app.OffsetEditField.Value = offset;
+            app.ScaleEditField.Value = scale;
+            
+            app.StatusBox.Value = "Status: Load cell is calibrated.";
+
+
+
+
         end
 
         % Button pushed function: CropLoadButton
@@ -676,7 +789,23 @@ classdef UTM_exported < matlab.apps.AppBase
 
         % Button pushed function: SaveDataButton
         function SaveDataButtonPushed(app, event)
-             
+            % force = [app.data{:,3}];
+            % delta = [app.data{:,4}];
+            % epsilon = [app.data{:,5}];
+            % stress = [app.data{:,6}];
+            % A = app.AreaEditField.Value;
+            % L0 = app.L_0EditField.Value;
+            
+            currentTime = datetime('now','TimeZone','local','Format','yyyyMMdd_HHmmss');
+            fileName = app.FileNameEditField.Value;
+            if isempty(fileName)
+                fileName = "UTM_Data";
+            end
+            fileName = sprintf("%s_%s.mat",fileName, string(currentTime))
+
+            Data = app.data;
+            save(fileName, "Data")
+
         end
 
         % Value changing function: setRPMKnob
@@ -712,7 +841,7 @@ classdef UTM_exported < matlab.apps.AppBase
 
         % Button pushed function: MoveUpButton
         function MoveUpButtonPushed(app, event)
-            distance = abs(app.MoveEditField.Value);
+            distance = -abs(app.MoveEditField.Value);
             
             nStepsPerRound = 200;
             microStepping = 8;
@@ -722,11 +851,13 @@ classdef UTM_exported < matlab.apps.AppBase
             steps = round(nStepsPerRound*microStepping*gearRatio*distance/pitch);
             
             app.device.writeline(sprintf("MoveSteps %d",steps));
+
+            app.DirectionKnob.Value = "Up";
         end
 
         % Button pushed function: MoveDownButton
         function MoveDownButtonPushed(app, event)
-            distance = -abs(app.MoveEditField.Value);
+            distance = abs(app.MoveEditField.Value);
 
             nStepsPerRound = 200;
             microStepping = 8;
@@ -735,6 +866,115 @@ classdef UTM_exported < matlab.apps.AppBase
 
             steps = round(nStepsPerRound*microStepping*gearRatio*distance/pitch);
             app.device.writeline(sprintf("MoveSteps %d",steps));
+            app.DirectionKnob.Value = "Down";
+        end
+
+        % Button pushed function: StartcameraButton
+        function StartcameraButtonPushed(app, event)
+            imaqreset; % Resets the Image Acquisition Toolbox and releases all hardware
+            app.vid = videoinput("gentl", 1, "Mono8");
+
+            app.vid.ROIPosition = [888 300 303 1756];
+
+
+            app.src = getselectedsource( app.vid );
+            app.src.AcquisitionFrameRate = 35.000525007875119;
+            app.src.AcquisitionFrameRateEnable = "True";
+            app.src.AutoFunctionProfile = "MinimizeExposureTime";
+            app.src.AutoGainUpperLimit = 24;
+            app.src.AutoTargetBrightness = 0.50196078431372548;
+            app.src.ExposureTime = 2500;
+            app.src.Gamma = 0.5;
+
+            triggerconfig(app.vid, 'manual');
+            app.vid.TriggerRepeat = Inf; % Continuous acquisition
+
+            start(app.vid);              % Start acquisition
+
+            frame = getsnapshot(app.vid);
+            app.image = imshow(frame, "Parent", app.ImagePlot);
+
+            % Rotate the image
+            rotatedImage = rot90(app.image.CData); % Rotate the image
+            app.image.CData = rotatedImage;       % Update the image in the axis
+            
+            
+
+            app.ImagePlot.Position = app.imagePos;
+        end
+
+        % Button pushed function: StopcameraButton
+        function StopcameraButtonPushed(app, event)
+            stoppreview(app.vid)
+            stop(app.vid)
+            delete(app.vid)
+            cla(app.ImagePlot)
+        end
+
+        % Button pushed function: TareButton_2
+        function TareButton_2Pushed(app, event)
+            frame = getsnapshot(app.vid);
+            % diff_im =  imsubtract(frame(:,:,1), im2gray(frame));
+            newframe = imbinarize(frame, 'global');
+
+            fig=figure(1); ax = axes(fig);
+            hi = imshow(newframe, "parent", ax);
+            
+            rotatedImage = rot90(newframe);
+            app.image = imshow(rotatedImage, "Parent", app.ImagePlot);
+            
+            app.ImagePlot.Position = app.imagePos;
+            
+
+            pointTracker = vision.PointTracker('MaxBidirectionalError', 2);
+            blobAnalysis = vision.BlobAnalysis('AreaOutputPort', false, ... % Set blob analysis handling
+                'CentroidOutputPort', true, ...
+                'BoundingBoxOutputPort', true', ...
+                'MinimumBlobArea', 100, ...
+                'MaximumBlobArea', 1000, ...
+                'MaximumCount', 8);
+
+          [centroid, bbox] = blobAnalysis(rotatedImage)
+          centroid = double(centroid)
+
+          numblobs = size(bbox, 1)
+
+          
+        end
+
+        % Button pushed function: Button
+        function ButtonPushed(app, event)
+            % app.ImagePlot.Position = [12    14   679   141];
+            frame = getsnapshot(app.vid);
+            rotatedImage = rot90(frame); % Rotate the image
+            app.image.CData = rotatedImage;
+        end
+
+        % Button pushed function: ClearStressPlotButton
+        function ClearStressPlotButtonPushed(app, event)
+            app.ClearLoadData()
+        end
+
+        % Value changed function: MarkersStressPlotCheckBox
+        function MarkersStressPlotCheckBoxValueChanged(app, event)
+            value = app.MarkersStressPlotCheckBox.Value;
+            if value
+                app.hStressPlot.Marker = '.';
+            else
+                app.hStressPlot.Marker = 'none';
+            end
+        end
+
+        % Button pushed function: TareStressPlotButton
+        function TareStressPlotButtonPushed(app, event)
+            loadCellData = [app.data{:,3}];
+            if length(loadCellData) >= 50
+                offset = mean(loadCellData(end-50:end));
+            else
+                offset = mean(loadCellData);
+            end
+            
+            app.OffsetEditField.Value = app.OffsetEditField.Value + offset;
         end
     end
 
@@ -752,71 +992,95 @@ classdef UTM_exported < matlab.apps.AppBase
 
             % Create TabGroup
             app.TabGroup = uitabgroup(app.UIFigure);
-            app.TabGroup.Position = [2 184 699 630];
+            app.TabGroup.Position = [2 125 699 689];
 
             % Create StressStrainTab
             app.StressStrainTab = uitab(app.TabGroup);
             app.StressStrainTab.Title = 'Stress/Strain';
 
-            % Create CurvePlot
-            app.CurvePlot = uiaxes(app.StressStrainTab);
-            title(app.CurvePlot, 'Stress - strain curve')
-            xlabel(app.CurvePlot, 'Strain [mm/mm]')
-            ylabel(app.CurvePlot, 'Stress [N/mm^2]')
-            zlabel(app.CurvePlot, 'Z')
-            app.CurvePlot.Position = [22 213 659 383];
+            % Create StressPlot
+            app.StressPlot = uiaxes(app.StressStrainTab);
+            title(app.StressPlot, 'Stress - strain curve')
+            xlabel(app.StressPlot, 'Strain [mm/mm]')
+            ylabel(app.StressPlot, 'Stress [N/mm^2]')
+            zlabel(app.StressPlot, 'Z')
+            app.StressPlot.Position = [22 272 659 383];
 
             % Create ImagePlot
             app.ImagePlot = uiaxes(app.StressStrainTab);
             title(app.ImagePlot, 'No blobs found in frame')
-            app.ImagePlot.Position = [12 12 679 84];
+            app.ImagePlot.XTick = [];
+            app.ImagePlot.YTick = [];
+            app.ImagePlot.ZTick = [];
+            app.ImagePlot.Position = [3 1 695 160];
 
             % Create ClearStressPlotButton
             app.ClearStressPlotButton = uibutton(app.StressStrainTab, 'push');
-            app.ClearStressPlotButton.Position = [18 172 100 23];
+            app.ClearStressPlotButton.ButtonPushedFcn = createCallbackFcn(app, @ClearStressPlotButtonPushed, true);
+            app.ClearStressPlotButton.Position = [18 231 100 23];
             app.ClearStressPlotButton.Text = 'Clear plot';
 
             % Create ShowrangeSliderLabel
             app.ShowrangeSliderLabel = uilabel(app.StressStrainTab);
             app.ShowrangeSliderLabel.HorizontalAlignment = 'right';
-            app.ShowrangeSliderLabel.Position = [18 146 69 22];
+            app.ShowrangeSliderLabel.Position = [18 205 69 22];
             app.ShowrangeSliderLabel.Text = 'Show range';
 
             % Create StressRangeSlider
             app.StressRangeSlider = uislider(app.StressStrainTab, 'range');
-            app.StressRangeSlider.Position = [19 135 552 3];
+            app.StressRangeSlider.Position = [19 194 552 3];
 
             % Create StressCropButton
             app.StressCropButton = uibutton(app.StressStrainTab, 'push');
-            app.StressCropButton.Position = [589 125 100 23];
+            app.StressCropButton.Position = [589 184 100 23];
             app.StressCropButton.Text = 'Crop';
 
             % Create AreaEditFieldLabel
             app.AreaEditFieldLabel = uilabel(app.StressStrainTab);
-            app.AreaEditFieldLabel.Position = [498 172 34 22];
+            app.AreaEditFieldLabel.Position = [498 231 34 22];
             app.AreaEditFieldLabel.Text = 'Area:';
 
             % Create AreaEditField
             app.AreaEditField = uieditfield(app.StressStrainTab, 'numeric');
             app.AreaEditField.Limits = [0 1000];
             app.AreaEditField.HorizontalAlignment = 'left';
-            app.AreaEditField.Position = [547 172 69 22];
+            app.AreaEditField.Position = [547 231 69 22];
+            app.AreaEditField.Value = 80;
 
-            % Create mmLabel
-            app.mmLabel = uilabel(app.StressStrainTab);
-            app.mmLabel.Position = [620 172 25 22];
-            app.mmLabel.Text = 'mm';
+            % Create mm2Label
+            app.mm2Label = uilabel(app.StressStrainTab);
+            app.mm2Label.Position = [620 231 35 22];
+            app.mm2Label.Text = 'mm^2';
 
             % Create TareStressPlotButton
             app.TareStressPlotButton = uibutton(app.StressStrainTab, 'push');
-            app.TareStressPlotButton.Position = [129 172 100 23];
+            app.TareStressPlotButton.ButtonPushedFcn = createCallbackFcn(app, @TareStressPlotButtonPushed, true);
+            app.TareStressPlotButton.Position = [129 231 100 23];
             app.TareStressPlotButton.Text = 'Tare';
 
             % Create MarkersStressPlotCheckBox
             app.MarkersStressPlotCheckBox = uicheckbox(app.StressStrainTab);
+            app.MarkersStressPlotCheckBox.ValueChangedFcn = createCallbackFcn(app, @MarkersStressPlotCheckBoxValueChanged, true);
             app.MarkersStressPlotCheckBox.Text = 'Markers';
-            app.MarkersStressPlotCheckBox.Position = [255 174 65 22];
+            app.MarkersStressPlotCheckBox.Position = [255 233 65 22];
             app.MarkersStressPlotCheckBox.Value = true;
+
+            % Create L_0Label
+            app.L_0Label = uilabel(app.StressStrainTab);
+            app.L_0Label.HorizontalAlignment = 'right';
+            app.L_0Label.Position = [343 231 25 22];
+            app.L_0Label.Text = 'L_0:';
+
+            % Create L_0EditField_2
+            app.L_0EditField_2 = uieditfield(app.StressStrainTab, 'numeric');
+            app.L_0EditField_2.HorizontalAlignment = 'left';
+            app.L_0EditField_2.Position = [383 231 66 22];
+            app.L_0EditField_2.Value = 80;
+
+            % Create mmLabel_3
+            app.mmLabel_3 = uilabel(app.StressStrainTab);
+            app.mmLabel_3.Position = [456 231 30 22];
+            app.mmLabel_3.Text = 'mm';
 
             % Create ConsoleTab
             app.ConsoleTab = uitab(app.TabGroup);
@@ -826,64 +1090,64 @@ classdef UTM_exported < matlab.apps.AppBase
             app.ConsoleTextAreaLabel = uilabel(app.ConsoleTab);
             app.ConsoleTextAreaLabel.HorizontalAlignment = 'right';
             app.ConsoleTextAreaLabel.FontName = 'Consolas';
-            app.ConsoleTextAreaLabel.Position = [325 574 51 22];
+            app.ConsoleTextAreaLabel.Position = [325 633 51 22];
             app.ConsoleTextAreaLabel.Text = 'Console';
 
             % Create ConsoleTextArea
             app.ConsoleTextArea = uitextarea(app.ConsoleTab);
             app.ConsoleTextArea.FontName = 'Consolas';
-            app.ConsoleTextArea.Position = [12 85 677 477];
+            app.ConsoleTextArea.Position = [12 144 677 477];
 
             % Create SendButton
             app.SendButton = uibutton(app.ConsoleTab, 'push');
             app.SendButton.ButtonPushedFcn = createCallbackFcn(app, @SendButtonPushed, true);
-            app.SendButton.Position = [455 44 65 23];
+            app.SendButton.Position = [455 103 65 23];
             app.SendButton.Text = 'Send';
 
             % Create LineEndingDropDown
             app.LineEndingDropDown = uidropdown(app.ConsoleTab);
             app.LineEndingDropDown.Items = {'New Line', 'Carriage Return', 'Both NL & CR'};
-            app.LineEndingDropDown.Position = [219 7 100 22];
+            app.LineEndingDropDown.Position = [219 66 100 22];
             app.LineEndingDropDown.Value = 'New Line';
 
             % Create AutoscrollButton
             app.AutoscrollButton = uibutton(app.ConsoleTab, 'state');
             app.AutoscrollButton.Text = 'Auto scroll';
-            app.AutoscrollButton.Position = [349 7 66 23];
+            app.AutoscrollButton.Position = [349 66 66 23];
             app.AutoscrollButton.Value = true;
 
             % Create TimeStampButton
             app.TimeStampButton = uibutton(app.ConsoleTab, 'state');
             app.TimeStampButton.Text = 'Time Stamp';
-            app.TimeStampButton.Position = [445 7 76 23];
+            app.TimeStampButton.Position = [445 66 76 23];
 
             % Create ClearConsoleButton
             app.ClearConsoleButton = uibutton(app.ConsoleTab, 'push');
             app.ClearConsoleButton.ButtonPushedFcn = createCallbackFcn(app, @ClearConsoleButtonPushed, true);
-            app.ClearConsoleButton.Position = [541 44 86 23];
+            app.ClearConsoleButton.Position = [541 103 86 23];
             app.ClearConsoleButton.Text = 'Clear Console';
 
             % Create CommandEditFieldLabel
             app.CommandEditFieldLabel = uilabel(app.ConsoleTab);
             app.CommandEditFieldLabel.HorizontalAlignment = 'right';
-            app.CommandEditFieldLabel.Position = [12 44 64 22];
+            app.CommandEditFieldLabel.Position = [12 103 64 22];
             app.CommandEditFieldLabel.Text = 'Command:';
 
             % Create CommandEditField
             app.CommandEditField = uieditfield(app.ConsoleTab, 'text');
             app.CommandEditField.ValueChangedFcn = createCallbackFcn(app, @CommandEditFieldValueChanged, true);
-            app.CommandEditField.Position = [91 44 353 22];
+            app.CommandEditField.Position = [91 103 353 22];
 
             % Create BaudRateDropDownLabel
             app.BaudRateDropDownLabel = uilabel(app.ConsoleTab);
             app.BaudRateDropDownLabel.HorizontalAlignment = 'right';
-            app.BaudRateDropDownLabel.Position = [12 7 62 22];
+            app.BaudRateDropDownLabel.Position = [12 66 62 22];
             app.BaudRateDropDownLabel.Text = 'Baud Rate';
 
             % Create BaudRateDropDown
             app.BaudRateDropDown = uidropdown(app.ConsoleTab);
             app.BaudRateDropDown.Items = {'9600', '57600', '115200', '250000'};
-            app.BaudRateDropDown.Position = [89 7 100 22];
+            app.BaudRateDropDown.Position = [89 66 100 22];
             app.BaudRateDropDown.Value = '9600';
 
             % Create LoadPlotTab
@@ -896,48 +1160,47 @@ classdef UTM_exported < matlab.apps.AppBase
             xlabel(app.LoadPlot, 'X')
             ylabel(app.LoadPlot, 'Y')
             zlabel(app.LoadPlot, 'Z')
-            app.LoadPlot.Position = [21 232 660 364];
+            app.LoadPlot.Position = [21 291 660 364];
 
             % Create TareButton
             app.TareButton = uibutton(app.LoadPlotTab, 'push');
             app.TareButton.ButtonPushedFcn = createCallbackFcn(app, @TareButtonPushed, true);
-            app.TareButton.Position = [142 191 100 23];
+            app.TareButton.Position = [142 250 100 23];
             app.TareButton.Text = 'Tare';
 
             % Create ClearLoadPlotButton
             app.ClearLoadPlotButton = uibutton(app.LoadPlotTab, 'push');
             app.ClearLoadPlotButton.ButtonPushedFcn = createCallbackFcn(app, @ClearLoadPlotButtonPushed, true);
-            app.ClearLoadPlotButton.Position = [22 191 100 23];
+            app.ClearLoadPlotButton.Position = [22 250 100 23];
             app.ClearLoadPlotButton.Text = 'Clear plot';
 
             % Create CropLoadSlider
             app.CropLoadSlider = uislider(app.LoadPlotTab, 'range');
             app.CropLoadSlider.ValueChangedFcn = createCallbackFcn(app, @CropLoadSliderValueChanged, true);
             app.CropLoadSlider.ValueChangingFcn = createCallbackFcn(app, @CropLoadSliderValueChanging, true);
-            app.CropLoadSlider.Position = [27 38 500 3];
+            app.CropLoadSlider.Position = [27 97 500 3];
 
             % Create CropLoadButton
             app.CropLoadButton = uibutton(app.LoadPlotTab, 'push');
             app.CropLoadButton.ButtonPushedFcn = createCallbackFcn(app, @CropLoadButtonPushed, true);
-            app.CropLoadButton.Position = [567 28 100 23];
+            app.CropLoadButton.Position = [567 87 100 23];
             app.CropLoadButton.Text = 'Crop';
 
             % Create CalibrationPanel
             app.CalibrationPanel = uipanel(app.LoadPlotTab);
             app.CalibrationPanel.Title = 'Calibration';
-            app.CalibrationPanel.Position = [351 95 330 119];
+            app.CalibrationPanel.Position = [351 154 330 119];
 
-            % Create WeightinKgEditFieldLabel
-            app.WeightinKgEditFieldLabel = uilabel(app.CalibrationPanel);
-            app.WeightinKgEditFieldLabel.HorizontalAlignment = 'right';
-            app.WeightinKgEditFieldLabel.Position = [5 65 73 22];
-            app.WeightinKgEditFieldLabel.Text = 'Weight in Kg';
+            % Create WeightingLabel
+            app.WeightingLabel = uilabel(app.CalibrationPanel);
+            app.WeightingLabel.Position = [11 65 68 22];
+            app.WeightingLabel.Text = 'Weight in g:';
 
-            % Create WeightinKgEditField
-            app.WeightinKgEditField = uieditfield(app.CalibrationPanel, 'numeric');
-            app.WeightinKgEditField.Limits = [0 1000];
-            app.WeightinKgEditField.HorizontalAlignment = 'left';
-            app.WeightinKgEditField.Position = [85 65 68 22];
+            % Create WeightingEditField
+            app.WeightingEditField = uieditfield(app.CalibrationPanel, 'numeric');
+            app.WeightingEditField.Limits = [0 1000];
+            app.WeightingEditField.HorizontalAlignment = 'left';
+            app.WeightingEditField.Position = [85 65 68 22];
 
             % Create CalibrateButton
             app.CalibrateButton = uibutton(app.CalibrationPanel, 'push');
@@ -954,6 +1217,7 @@ classdef UTM_exported < matlab.apps.AppBase
             app.OffsetEditField = uieditfield(app.CalibrationPanel, 'numeric');
             app.OffsetEditField.HorizontalAlignment = 'left';
             app.OffsetEditField.Position = [10 10 138 22];
+            app.OffsetEditField.Value = -24.5185;
 
             % Create ScaleEditFieldLabel
             app.ScaleEditFieldLabel = uilabel(app.CalibrationPanel);
@@ -964,12 +1228,13 @@ classdef UTM_exported < matlab.apps.AppBase
             app.ScaleEditField = uieditfield(app.CalibrationPanel, 'numeric');
             app.ScaleEditField.HorizontalAlignment = 'left';
             app.ScaleEditField.Position = [160 10 138 22];
+            app.ScaleEditField.Value = -0.0065;
 
             % Create MarkersCheckBox
             app.MarkersCheckBox = uicheckbox(app.LoadPlotTab);
             app.MarkersCheckBox.ValueChangedFcn = createCallbackFcn(app, @MarkersCheckBoxValueChanged, true);
             app.MarkersCheckBox.Text = 'Markers';
-            app.MarkersCheckBox.Position = [268 193 65 22];
+            app.MarkersCheckBox.Position = [268 252 65 22];
             app.MarkersCheckBox.Value = true;
 
             % Create ScanforCOMportsButton
@@ -1016,7 +1281,6 @@ classdef UTM_exported < matlab.apps.AppBase
 
             % Create delta0000mmLabel
             app.delta0000mmLabel = uilabel(app.UIFigure);
-            app.delta0000mmLabel.Interpreter = 'latex';
             app.delta0000mmLabel.Position = [711 212 100 22];
             app.delta0000mmLabel.Text = '\delta \;= 0.000 mm';
 
@@ -1207,6 +1471,51 @@ classdef UTM_exported < matlab.apps.AppBase
             app.MoveDownButton.Position = [5 12 100 23];
             app.MoveDownButton.Text = 'Move Down';
 
+            % Create StartcameraButton
+            app.StartcameraButton = uibutton(app.UIFigure, 'push');
+            app.StartcameraButton.ButtonPushedFcn = createCallbackFcn(app, @StartcameraButtonPushed, true);
+            app.StartcameraButton.Position = [32 78 100 23];
+            app.StartcameraButton.Text = 'Start camera';
+
+            % Create StopcameraButton
+            app.StopcameraButton = uibutton(app.UIFigure, 'push');
+            app.StopcameraButton.ButtonPushedFcn = createCallbackFcn(app, @StopcameraButtonPushed, true);
+            app.StopcameraButton.Position = [32 36 100 23];
+            app.StopcameraButton.Text = 'Stop camera';
+
+            % Create TareButton_2
+            app.TareButton_2 = uibutton(app.UIFigure, 'push');
+            app.TareButton_2.ButtonPushedFcn = createCallbackFcn(app, @TareButton_2Pushed, true);
+            app.TareButton_2.Position = [158 78 100 23];
+            app.TareButton_2.Text = 'Tare';
+
+            % Create L_0EditFieldLabel
+            app.L_0EditFieldLabel = uilabel(app.UIFigure);
+            app.L_0EditFieldLabel.HorizontalAlignment = 'right';
+            app.L_0EditFieldLabel.Position = [361 78 25 22];
+            app.L_0EditFieldLabel.Text = 'L_0';
+
+            % Create L_0EditField
+            app.L_0EditField = uieditfield(app.UIFigure, 'numeric');
+            app.L_0EditField.HorizontalAlignment = 'left';
+            app.L_0EditField.Position = [401 78 100 22];
+            app.L_0EditField.Value = 65.12;
+
+            % Create Button
+            app.Button = uibutton(app.UIFigure, 'push');
+            app.Button.ButtonPushedFcn = createCallbackFcn(app, @ButtonPushed, true);
+            app.Button.Position = [558 77 100 23];
+
+            % Create FileNameEditFieldLabel
+            app.FileNameEditFieldLabel = uilabel(app.UIFigure);
+            app.FileNameEditFieldLabel.HorizontalAlignment = 'right';
+            app.FileNameEditFieldLabel.Position = [810 28 56 22];
+            app.FileNameEditFieldLabel.Text = 'FileName';
+
+            % Create FileNameEditField
+            app.FileNameEditField = uieditfield(app.UIFigure, 'text');
+            app.FileNameEditField.Position = [881 28 225 22];
+
             % Show the figure after all components are created
             app.UIFigure.Visible = 'on';
         end
@@ -1216,7 +1525,7 @@ classdef UTM_exported < matlab.apps.AppBase
     methods (Access = public)
 
         % Construct app
-        function app = UTM_exported
+        function app = UTM
 
             % Create UIFigure and components
             createComponents(app)

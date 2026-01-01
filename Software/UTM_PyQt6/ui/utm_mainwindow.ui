@@ -1,0 +1,809 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1232</width>
+    <height>813</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>UTM Control - Universal Testing Machine</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QHBoxLayout" name="horizontalLayout_main">
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="QWidget" name="consoleTab">
+       <attribute name="title">
+        <string>Console</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout">
+        <item>
+         <widget class="QTextEdit" name="consoleTextEdit">
+          <property name="font">
+           <font>
+            <family>Consolas</family>
+           </font>
+          </property>
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout">
+          <item>
+           <widget class="QLabel" name="label">
+            <property name="text">
+             <string>Command:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="commandLineEdit"/>
+          </item>
+          <item>
+           <widget class="QPushButton" name="sendButton">
+            <property name="text">
+             <string>Send</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_2">
+          <item>
+           <widget class="QPushButton" name="clearConsoleButton">
+            <property name="text">
+             <string>Clear Console</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="autoScrollCheckBox">
+            <property name="text">
+             <string>Auto-scroll</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="timestampCheckBox">
+            <property name="text">
+             <string>Timestamp</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="horizontalSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="stressStrainTab">
+       <attribute name="title">
+        <string>Stress/Strain</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <item>
+         <widget class="QFrame" name="stressStrainPlotFrame">
+          <property name="frameShape">
+           <enum>QFrame::StyledPanel</enum>
+          </property>
+          <property name="frameShadow">
+           <enum>QFrame::Raised</enum>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_3">
+           <item>
+            <widget class="QLabel" name="stressStrainPlotPlaceholder">
+             <property name="text">
+              <string>Stress-Strain Plot (matplotlib canvas will be embedded here)</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QLabel { background-color: #f0f0f0; border: 2px dashed #999; padding: 20px; }</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_3">
+          <item>
+           <widget class="QGroupBox" name="specimenDimensionsGroup">
+            <property name="title">
+             <string>Specimen Dimensions</string>
+            </property>
+            <layout class="QFormLayout" name="formLayout">
+             <item row="0" column="0">
+              <widget class="QLabel" name="areaLabel">
+               <property name="text">
+                <string>Cross-sectional Area (mm²):</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QDoubleSpinBox" name="areaSpinBox">
+               <property name="maximum">
+                <double>10000.000000000000000</double>
+               </property>
+               <property name="value">
+                <double>80.000000000000000</double>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="gaugeLengthLabel">
+               <property name="text">
+                <string>Gauge Length L₀ (mm):</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QDoubleSpinBox" name="gaugeLengthSpinBox">
+               <property name="maximum">
+                <double>1000.000000000000000</double>
+               </property>
+               <property name="value">
+                <double>80.000000000000000</double>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="plotControlsGroup">
+            <property name="title">
+             <string>Plot Controls</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_4">
+             <item>
+              <widget class="QPushButton" name="clearStressStrainButton">
+               <property name="text">
+                <string>Clear Plot</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QCheckBox" name="showMarkersCheckBox">
+               <property name="text">
+                <string>Show Markers</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QCheckBox" name="autoScaleCheckBox">
+               <property name="text">
+                <string>Auto Scale</string>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <spacer name="horizontalSpacer_2">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="loadPlotTab">
+       <attribute name="title">
+        <string>Load Plot</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_5">
+        <item>
+         <widget class="QFrame" name="loadPlotFrame">
+          <property name="frameShape">
+           <enum>QFrame::StyledPanel</enum>
+          </property>
+          <property name="frameShadow">
+           <enum>QFrame::Raised</enum>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_6">
+           <item>
+            <widget class="QLabel" name="loadPlotPlaceholder">
+             <property name="text">
+              <string>Load vs Time Plot (matplotlib canvas will be embedded here)</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QLabel { background-color: #f0f0f0; border: 2px dashed #999; padding: 20px; }</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_4">
+          <item>
+           <widget class="QGroupBox" name="loadDataGroup">
+            <property name="title">
+             <string>Load Data</string>
+            </property>
+            <layout class="QFormLayout" name="formLayout_2">
+             <item row="0" column="0">
+              <widget class="QLabel" name="currentLoadLabel">
+               <property name="text">
+                <string>Current Load (N):</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QLabel" name="currentLoadValue">
+               <property name="text">
+                <string>0.00</string>
+               </property>
+               <property name="font">
+                <font>
+                 <pointsize>12</pointsize>
+                 <weight>75</weight>
+                 <bold>true</bold>
+                </font>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="maxLoadLabel">
+               <property name="text">
+                <string>Max Load (N):</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QLabel" name="maxLoadValue">
+               <property name="text">
+                <string>0.00</string>
+               </property>
+               <property name="font">
+                <font>
+                 <pointsize>10</pointsize>
+                </font>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="loadPlotControlsGroup">
+            <property name="title">
+             <string>Plot Controls</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_7">
+             <item>
+              <widget class="QPushButton" name="clearLoadPlotButton">
+               <property name="text">
+                <string>Clear Plot</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="tareButton">
+               <property name="text">
+                <string>Tare (Zero)</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QCheckBox" name="loadAutoScaleCheckBox">
+               <property name="text">
+                <string>Auto Scale</string>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <spacer name="horizontalSpacer_3">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+    <item>
+     <widget class="QFrame" name="controlPanelFrame">
+      <property name="minimumSize">
+       <size>
+        <width>300</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>350</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::StyledPanel</enum>
+      </property>
+      <property name="frameShadow">
+       <enum>QFrame::Raised</enum>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_controlPanel">
+       <item>
+        <widget class="QGroupBox" name="connectionGroup">
+         <property name="title">
+          <string>Connection</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_connection">
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_comScan">
+            <item>
+             <widget class="QPushButton" name="scanPortsButton">
+              <property name="text">
+               <string>Scan for COM ports</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QComboBox" name="comPortComboBox">
+            <property name="placeholderText">
+             <string>Available COM ports</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_connection">
+            <item>
+             <widget class="QLabel" name="connectionLabel">
+              <property name="text">
+               <string>Connection</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="connectionCheckBox">
+              <property name="text">
+               <string>Off/On</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="statusLamp">
+              <property name="minimumSize">
+               <size>
+                <width>30</width>
+                <height>30</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>30</width>
+                <height>30</height>
+               </size>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QLabel { background-color: black; border-radius: 15px; border: 2px solid #555; }</string>
+              </property>
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="dataStreamsGroup">
+         <property name="title">
+          <string>Data Streams</string>
+         </property>
+         <layout class="QFormLayout" name="formLayout_dataStreams">
+          <item row="0" column="0">
+           <widget class="QLabel" name="loadCellLabel">
+            <property name="text">
+             <string>Load Cell</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QCheckBox" name="loadCellCheckBox">
+            <property name="text">
+             <string>On</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="positionLabel">
+            <property name="text">
+             <string>Position</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QCheckBox" name="positionCheckBox">
+            <property name="text">
+             <string>On</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="velocityLabel">
+            <property name="text">
+             <string>Velocity</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QCheckBox" name="velocityCheckBox">
+            <property name="text">
+             <string>On</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="speedControlGroup">
+         <property name="title">
+          <string>Speed Control</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_speed">
+          <item>
+           <widget class="QLabel" name="speedGaugePlaceholder">
+            <property name="minimumSize">
+             <size>
+              <width>150</width>
+              <height>150</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>150</width>
+              <height>150</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Speed Gauge
+(Circular)</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QLabel { background-color: #e0e0e0; border: 1px solid #999; border-radius: 75px; }</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_speedUnit">
+            <item>
+             <widget class="QLabel" name="label_2">
+              <property name="text">
+               <string>RPM</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="speedUnitCheckBox">
+              <property name="text">
+               <string>mm/s</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="speedDisplayLabel">
+            <property name="text">
+             <string>Speed: 0.0 mm/s</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_setSpeed">
+            <item>
+             <widget class="QLabel" name="label_3">
+              <property name="text">
+               <string>Set RPM:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QDoubleSpinBox" name="setSpeedSpinBox">
+              <property name="maximum">
+               <double>240.000000000000000</double>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="motorControlGroup">
+         <property name="title">
+          <string>Motor Control</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_motorControl">
+          <item>
+           <widget class="QLabel" name="label_4">
+            <property name="text">
+             <string>Direction</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_direction">
+            <item>
+             <widget class="QRadioButton" name="upRadioButton">
+              <property name="text">
+               <string>Up</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QRadioButton" name="stopRadioButton">
+              <property name="text">
+               <string>Stop</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QRadioButton" name="downRadioButton">
+              <property name="text">
+               <string>Down</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_motorsEnable">
+            <item>
+             <widget class="QLabel" name="label_5">
+              <property name="text">
+               <string>Motors</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="motorsCheckBox">
+              <property name="text">
+               <string>On</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QPushButton" name="emergencyStopButton">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>50</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton { background-color: #ff3333; color: white; font-weight: bold; font-size: 16px; }
+QPushButton:hover { background-color: #cc0000; }
+QPushButton:pressed { background-color: #990000; }</string>
+            </property>
+            <property name="text">
+             <string>Emergency STOP</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="positionGroup">
+         <property name="title">
+          <string>Position</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_position">
+          <item>
+           <widget class="QLabel" name="positionGaugePlaceholder">
+            <property name="minimumSize">
+             <size>
+              <width>60</width>
+              <height>120</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>60</width>
+              <height>120</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Linear
+Gauge</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QLabel { background-color: #e0e0e0; border: 1px solid #999; }</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="displacementLabel">
+            <property name="text">
+             <string>δ = 0.0000 mm</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="tareLocationButton">
+            <property name="text">
+             <string>Tare Location</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="incrementalMoveGroup">
+         <property name="title">
+          <string>Incremental Move</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_incrementalMove">
+          <item>
+           <widget class="QPushButton" name="moveUpButton">
+            <property name="text">
+             <string>Move Up</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_moveDistance">
+            <item>
+             <widget class="QDoubleSpinBox" name="moveDistanceSpinBox">
+              <property name="decimals">
+               <number>2</number>
+              </property>
+              <property name="maximum">
+               <double>100.000000000000000</double>
+              </property>
+              <property name="value">
+               <double>1.500000000000000</double>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_6">
+              <property name="text">
+               <string>mm</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QPushButton" name="moveDownButton">
+            <property name="text">
+             <string>Move Down</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QPushButton" name="saveDataButton">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>40</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>Save Data</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1232</width>
+     <height>21</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,4 +1,10 @@
 .vscode/c_cpp_properties.json
 CAD/old
+CAD
 docs/
+
+Software/data
+Software/dataCiP
+TestingMachine
+guides/QUICKSTART.qmd
 

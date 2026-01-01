@@ -1,0 +1,7 @@
+PyQt6
+pyqt6-tools
+numpy
+matplotlib
+pandas
+scipy
+sympy
