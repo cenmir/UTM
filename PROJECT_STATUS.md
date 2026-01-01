@@ -36,9 +36,9 @@
 - All 7 phases implemented
 - Used for teaching at Jönköping University
 
-**PyQt6 GUI (Software/UTM_PyQt6/):** 🚧 ~5% Complete
-- Phase 1 (Foundation): 20% - Console tab functional
-- Phase 2-7: Not started
+**PyQt6 GUI (Software/UTM_PyQt6/):** 🚧 ~25% Complete
+- Phase 1 (Foundation): 85% - GUI structure complete, serial pending
+- Phase 2-7: Structure ready, implementation pending
 
 ---
 
@@ -154,6 +154,117 @@ None currently.
 2. Read APP_DESCRIPTION.qmd (lines 111-255 for GUI layout)
 3. Review GUI.png and MatlabApp.png
 4. Redesign UI with proper two-panel layout (tabs left, controls right)
+
+### Session: 2026-01-02 (Evening) - RIGHT PANEL IMPLEMENTED! ✅
+
+**What We Did:**
+1. ✅ **Completely restructured the UI layout**
+   - Changed from single-column (tabs only) to two-column layout
+   - Left: QTabWidget with all tabs (Console, Stress/Strain, Load Plot)
+   - Right: Persistent control panel (300-350px wide)
+
+2. ✅ **Implemented complete right control panel** with 7 sections:
+   - **Connection Group**: Scan COM ports, dropdown, connect checkbox, status lamp (30×30px circle)
+   - **Data Streams Group**: Load Cell, Position, Velocity toggles
+   - **Speed Control Group**: Circular gauge placeholder (150×150px), RPM/mm/s toggle, speed display, Set RPM spinbox
+   - **Motor Control Group**: Direction radio buttons (Up/Stop/Down), Motors toggle, Emergency STOP button (red, 50px)
+   - **Position Group**: Linear gauge placeholder (60×120px), displacement label, Tare Location button
+   - **Incremental Move Group**: Move Up/Down buttons, distance spinbox (default 1.5mm)
+   - **Save Data Button**: 40px height at bottom
+
+3. ✅ **Wired up all controls in main.py**
+   - Added 15+ signal handler functions
+   - Connection management (scan, connect/disconnect, status lamp updates)
+   - Data stream toggles (load cell, position, velocity)
+   - Motor controls (direction, enable/disable, emergency stop)
+   - Position control (tare, incremental moves)
+   - Data export
+   - All handlers log to console and have TODOs for serial implementation
+
+4. ✅ **Updated documentation**
+   - Updated CLAUDE.md with mandatory 3-step session start checklist
+   - Added warning about APP_DESCRIPTION.qmd being source of truth
+   - Documented the lesson learned
+
+**Code Changes:**
+- Modified: `Software/UTM_PyQt6/ui/utm_mainwindow.ui` (redesigned from 379 to 809 lines)
+- Modified: `Software/UTM_PyQt6/main.py` (added 130+ lines of handler functions)
+
+**Testing:**
+- ✅ Application runs successfully with new layout
+- ✅ All controls are accessible and functional
+- ✅ Status lamp changes color on connection toggle
+- ✅ Emergency stop resets direction and disables motors
+- ✅ All actions log to console tab
+
+**Current State:**
+- **GUI Structure**: 100% complete (matches APP_DESCRIPTION.qmd specification)
+- **Signal Wiring**: 100% complete
+- **Placeholder Widgets**: Ready for custom QPainter implementation
+- **Serial Communication**: 0% (next major task)
+- **Matplotlib Integration**: 0% (next major task)
+
+**Decisions Made:**
+- Used QCheckBox for toggles (will consider custom switches later)
+- Used QRadioButton for direction (matches MATLAB knob behavior)
+- Used styled QPushButton for Emergency STOP (red with hover effects)
+- Used QLabel with styleSheet for status lamp and gauge placeholders
+
+**Next Session Should Start With:**
+1. Read PROJECT_STATUS.md (this file)
+2. Choose next implementation direction:
+   - **Option A**: Implement SerialManager class and COM port communication
+   - **Option B**: Replace gauge placeholders with custom QPainter widgets
+   - **Option C**: Add matplotlib canvases to plot tabs
+3. Recommended: Start with Option A (serial communication) to enable testing with hardware
+
+### Session: 2026-01-02 (Late Evening) - SESSION WRAP-UP AGENT CREATED! ✅
+
+**What We Did:**
+1. ✅ **Created session wrap-up agent** using proper Claude Agent SDK pattern
+   - Initially attempted Python script approach (.claude/agents/session-wrapup/agent.py)
+   - User corrected: "no python files should be used! There is a builtin way"
+   - Researched correct approach using claude-code-guide agent
+   - Recreated as Markdown file with YAML frontmatter
+
+2. ✅ **Implemented .claude/agents/session-wrapup.md**
+   - YAML frontmatter with name, description, tools, model
+   - Comprehensive documentation workflow
+   - Git safety protocol following CLAUDE.md guidelines
+   - SESSION_STATUS.md update template
+   - UTM project-specific handling instructions
+
+**File Changes:**
+- Added: `.claude/agents/session-wrapup.md` (148 lines) - Subagent definition
+- Removed: `.claude/agents/session-wrapup/` directory (incorrect Python approach)
+- Removed: `.claude/skills.json` (not needed for subagents)
+
+**Lessons Learned:**
+- ⚠️ **Claude Code uses Markdown-based subagents, not Python scripts**
+- Subagents = `.md` files with YAML frontmatter in `.claude/agents/`
+- The Agent SDK can be used programmatically, but for Claude Code integration, use subagents
+- Subagents are automatically available once the file is created
+
+**Agent Capabilities:**
+- Reads PROJECT_STATUS.md and git status
+- Updates session history with detailed entries
+- Creates git commits with proper Claude Code attribution
+- Commits only: .py, .ui, .md, .qmd, requirements.txt files
+- Follows git safety protocol (no force push, no destructive commands)
+- Provides structured session documentation template
+
+**Current State:**
+- **Session Wrap-Up Agent**: 100% complete and ready to use
+- **Integration**: Agent can be invoked in future sessions for documentation
+- **Usage**: "Use the session-wrapup agent" or invoke via Task tool
+
+**Next Session Should Start With:**
+1. Read PROJECT_STATUS.md (this file)
+2. Test the session-wrapup agent if desired
+3. Choose next implementation direction:
+   - **Option A (Recommended)**: Implement SerialManager class and COM port communication
+   - **Option B**: Replace gauge placeholders with custom QPainter widgets
+   - **Option C**: Add matplotlib canvases to plot tabs
 
 ---
 
