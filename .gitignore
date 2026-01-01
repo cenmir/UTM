@@ -8,3 +8,5 @@ Software/dataCiP
 TestingMachine
 guides/QUICKSTART.qmd
 
+Software/QT_test/main.py
+Software/QT_test/test.ui
