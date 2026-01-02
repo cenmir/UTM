@@ -14,7 +14,7 @@
 // ============================================
 // FIRMWARE VERSION - UPDATE ON EVERY UPLOAD!
 // ============================================
-const char* FIRMWARE_VERSION = "1.2.0";
+const char* FIRMWARE_VERSION = "1.3.1";
 
 
 
@@ -24,9 +24,12 @@ const char* FIRMWARE_VERSION = "1.2.0";
 #define DIR_PIN    27      // Stepper driver direction  pin
 #define ENABLE_PIN 26      // Stepper driver enable pin
 
-const int SPEED_SWITCH_PIN = 2; // HIGH is slow 
+const int SPEED_SWITCH_PIN = 2; // HIGH is slow
 const int UP_BUTTON_PIN    = 17;
 const int DOWN_BUTTON_PIN  = 15;
+
+// Safety limits
+const int MAX_SPEED_RPM10 = 4500;  // Maximum speed: 450 RPM * 10 = 4500
 
 #define TCAADDR 0x70 // I2C multiplexer adress
 #define SENS_IDX 0   // Which sensor to read
@@ -202,28 +205,29 @@ void CheckButtonStates(){
 
 void MoveUp(){
   digitalWrite(ENABLE_PIN, HIGH);
+  int speed;
   if (speedSwitchState == LOW){
     Serial.println("Going up fast!");
-    stepper.setSpeed(5000);
+    speed = MAX_SPEED_RPM10;  // Use max speed (450 RPM)
   } else{
     Serial.println("Going up!");
-    stepper.setSpeed(500);
+    speed = 500;  // 50 RPM (slow mode)
   }
-  
+  stepper.setSpeed(speed);
   stepper.rotate(-1);
-  
 }
 
 void MoveDown(){
   digitalWrite(ENABLE_PIN, HIGH);
+  int speed;
   if (speedSwitchState == LOW){
     Serial.println("Going down fast!");
-    stepper.setSpeed(5000);
+    speed = MAX_SPEED_RPM10;  // Use max speed (450 RPM)
   } else{
     Serial.println("Going down!");
-    stepper.setSpeed(500);
+    speed = 500;  // 50 RPM (slow mode)
   }
-
+  stepper.setSpeed(speed);
   stepper.rotate(1);
 }
 
@@ -365,6 +369,15 @@ void ProcessSerialCommands() {
   // Parameterized commands
   else if (cmdHandler->startsWith("SetSpeed")) {
     int rpm10 = cmdHandler->getIntParam();
+    // SAFETY: Clamp speed to maximum
+    if (rpm10 > MAX_SPEED_RPM10) {
+      Serial.print("Warning: Speed limited from ");
+      Serial.print((float)rpm10 / 10);
+      Serial.print(" RPM to ");
+      Serial.print((float)MAX_SPEED_RPM10 / 10);
+      Serial.println(" RPM (max)");
+      rpm10 = MAX_SPEED_RPM10;
+    }
     Serial.print("Setting speed: ");
     Serial.print((float)rpm10 / 10);
     Serial.println(" RPM");
