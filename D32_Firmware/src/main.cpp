@@ -1,8 +1,19 @@
+#include <Arduino.h>
 #include <HX711.h> // https://github.com/RobTillaart/HX711
 
 #include <Wire.h>
 #include <MobaTools.h>
 #include "Sensors.h"
+
+// Define LED_BUILTIN for ESP32 if not already defined
+#ifndef LED_BUILTIN
+#define LED_BUILTIN 2
+#endif
+
+// ============================================
+// FIRMWARE VERSION - UPDATE ON EVERY UPLOAD!
+// ============================================
+const char* FIRMWARE_VERSION = "1.1.1";
 
 
 
@@ -13,7 +24,7 @@
 #define ENABLE_PIN 26      // Stepper driver enable pin
 
 const int SPEED_SWITCH_PIN = 2; // HIGH is slow 
-const int UP_BUTTON_PIN    = 0;
+const int UP_BUTTON_PIN    = 17;
 const int DOWN_BUTTON_PIN  = 15;
 
 #define TCAADDR 0x70 // I2C multiplexer adress
@@ -34,14 +45,12 @@ long force = 0;
 
 bool speedSwitchState = HIGH; // HIGH is slow and default
 bool upButtonState = HIGH;
-bool lastUpButtonState = HIGH;
 bool downButtonState = HIGH;
-bool lastDownButtonState = HIGH;
 
 // Variables for debouncing
 unsigned long lastUpDebounceTime = 0;
 unsigned long lastDownDebounceTime = 0;
-const unsigned long debounceDelay = 800; // Debounce time in milliseconds
+const unsigned long debounceDelay = 50; // Debounce time in milliseconds (50ms is typical)
 
 HX711 LoadCell;
 
@@ -50,6 +59,18 @@ Sensors sensors; // Rotation sensors
 const int STEPS_REVOLUTION = 200*8;
 MoToStepper stepper( STEPS_REVOLUTION, STEPDIR ); // Mode is stepdir
 
+// Function declarations
+void ProcessSensors();
+void ReportLoadCell();
+float Average(float buffer[]);
+void CheckButtonStates();
+void MoveUp();
+void MoveDown();
+void Stop();
+void StartUp();
+void ScanI2C();
+void ReadSerial();
+void DisplayHelp();
 
 void setup() {
   Wire.begin();
@@ -82,7 +103,7 @@ void setup() {
   //stepper.attachEnable(ENABLE_PIN, 10, HIGH);
   // if you want to switch off power when stepper reached position
   
-  stepper.setRampLen(300);
+  stepper.setRampLen(100);
   // Ramp length in steps. The permissible ramp length depends on the step rate, and a
   // maximum of 16000 for high step rates. For step rates below 2steps/sec, ramping is no
   // longer possible. If ramplen is outside the permissible range, the value is adjusted.
@@ -160,57 +181,42 @@ void CheckButtonStates(){
   speedSwitchState         = digitalRead(SPEED_SWITCH_PIN);
   bool rawUpButtonState    = digitalRead(UP_BUTTON_PIN);
   bool rawDownButtonState  = digitalRead(DOWN_BUTTON_PIN);
-  
-  // Check if the button state has changed
-  if (upButtonState != lastUpButtonState) {
-    lastUpButtonState = millis(); // Reset the debounce timer
-  }
-  // Check if the button state has changed
-  if (downButtonState != lastDownButtonState) {
-    lastDownButtonState = millis(); // Reset the debounce timer
-  }
 
-  // Check if enough time has passed to consider the input stable
-  if ((millis() - lastUpButtonState) > debounceDelay) {
-    // If the state has stabilized, update the button state
-    if (rawUpButtonState != upButtonState) {
+  // UP BUTTON debounce logic
+  if (rawUpButtonState != upButtonState) {
+    // Button state changed - check if debounce time has passed
+    if ((millis() - lastUpDebounceTime) > debounceDelay) {
+      lastUpDebounceTime = millis();
       upButtonState = rawUpButtonState;
 
-      // Detect button press (LOW to HIGH transition)
+      // Button pressed (pulled LOW)
       if (upButtonState == LOW) {
         MoveUp();
       }
-
-      // Detect button release (HIGH to LOW transition)
-      if (upButtonState == HIGH) {
+      // Button released (pulled HIGH)
+      else {
         Stop();
       }
     }
   }
-  // Update the last button state for the next loop
-  lastUpButtonState = upButtonState;
 
-
-
-  // Check if enough time has passed to consider the input stable
-  if ((millis() - lastDownButtonState) > debounceDelay) {
-    // If the state has stabilized, update the button state
-    if (rawDownButtonState != downButtonState) {
+  // DOWN BUTTON debounce logic
+  if (rawDownButtonState != downButtonState) {
+    // Button state changed - check if debounce time has passed
+    if ((millis() - lastDownDebounceTime) > debounceDelay) {
+      lastDownDebounceTime = millis();
       downButtonState = rawDownButtonState;
-      
-      // Detect button press (LOW to HIGH transition)
+
+      // Button pressed (pulled LOW)
       if (downButtonState == LOW) {
         MoveDown();
       }
-
-      // Detect button release (HIGH to LOW transition)
-      if (downButtonState == HIGH) {
+      // Button released (pulled HIGH)
+      else {
         Stop();
       }
     }
   }
-  // Update the last button state for the next loop
-  lastDownButtonState = downButtonState;
 }
 
 void MoveUp(){
@@ -223,7 +229,7 @@ void MoveUp(){
     stepper.setSpeed(500);
   }
   
-  stepper.rotate(1);
+  stepper.rotate(-1);
   
 }
 
@@ -237,12 +243,10 @@ void MoveDown(){
     stepper.setSpeed(500);
   }
 
-  stepper.rotate(-1);
+  stepper.rotate(1);
 }
 
 void Stop(){
-  Serial.println("");
-  Serial.println("");
   Serial.println("Stop and halt!");
 
   stepper.rotate(0);
@@ -343,6 +347,12 @@ void ReadSerial() {
     Serial.print(angularSpeed); Serial.print("\t"); 
     Serial.print(averageAngularSpeed); Serial.print("\n"); 
   }
+  
+  else if(command == "GetVersion" || command == "version" || command == "v"){
+    Serial.print("Firmware Version: ");
+    Serial.println(FIRMWARE_VERSION);
+  }
+
 
   else if(command == "Enable"){
     //Serial.println("Enabling motors.");
@@ -364,18 +374,19 @@ void ReadSerial() {
     stepper.stop(); //Emergency stop
   }
 
-  else if(command =="Forward"){
-    //Serial.println("Going Forward...");
-    stepper.rotate(1);
+  else if(command =="Up"){
+    //Serial.println("Going Up...");
+    stepper.rotate(-1);
   }
 
-  else if(command == "Backward"){
-    //Serial.println("Going Backwards...");
-    stepper.rotate(-1);
+  else if(command == "Down"){
+    //Serial.println("Going Down...");
+    stepper.rotate(1);
   }
 
   else if(command == "Start"){
     digitalWrite(ENABLE_PIN, HIGH);
+    Serial.println("Going Down with 100rpm");
     stepper.setSpeed(1000);
     stepper.rotate(1);
   }
@@ -426,7 +437,7 @@ void ReadSerial() {
 
 /*
 void Calibrate(){
-  Serial.println("\n\nCALIBRATION\n===========");
+  Serial.println("\n\n\nCALIBRATION\n===========");
   Serial.println("remove all weight from the loadcell");
   //  flush Serial input
   while (Serial.available()) Serial.read();
@@ -488,6 +499,7 @@ void DisplayHelp() {
   Serial.println("'GetVelocity'                       - Returns the angular velocty of each sensor");
   Serial.println("'GetTotalAngle'                     - Returns the total change of the angle since start");
   Serial.println("'GetSteps'                          - Returns the total number of steps since start");
+  Serial.println("'GetVersion'                        - Returns the firmware version number");
   Serial.println("'Enable' / 'Disable'                - Enables/Disables the motors");
   Serial.println("'Stop'                              - Slows the motors to a stop");
   Serial.println("'EStop'                             - Breaks to motors to a stop immediately");
