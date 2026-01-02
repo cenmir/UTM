@@ -4,6 +4,7 @@
 #include <Wire.h>
 #include <MobaTools.h>
 #include "Sensors.h"
+#include "CommandHandler.h"
 
 // Define LED_BUILTIN for ESP32 if not already defined
 #ifndef LED_BUILTIN
@@ -13,7 +14,7 @@
 // ============================================
 // FIRMWARE VERSION - UPDATE ON EVERY UPLOAD!
 // ============================================
-const char* FIRMWARE_VERSION = "1.1.1";
+const char* FIRMWARE_VERSION = "1.2.0";
 
 
 
@@ -44,13 +45,6 @@ float averageAngularSpeed;      // Averaged angular speed values
 long force = 0;
 
 bool speedSwitchState = HIGH; // HIGH is slow and default
-bool upButtonState = HIGH;
-bool downButtonState = HIGH;
-
-// Variables for debouncing
-unsigned long lastUpDebounceTime = 0;
-unsigned long lastDownDebounceTime = 0;
-const unsigned long debounceDelay = 50; // Debounce time in milliseconds (50ms is typical)
 
 HX711 LoadCell;
 
@@ -58,6 +52,14 @@ Sensors sensors; // Rotation sensors
 
 const int STEPS_REVOLUTION = 200*8;
 MoToStepper stepper( STEPS_REVOLUTION, STEPDIR ); // Mode is stepdir
+
+// MoToButtons setup for simplified button handling
+const byte buttonPins[] = {UP_BUTTON_PIN, DOWN_BUTTON_PIN};
+MoToButtons buttons(buttonPins, 2, 20, 500); // 2 buttons, 20ms debounce, 500ms for long press
+enum { UP_BTN = 0, DOWN_BTN = 1 }; // Button indices
+
+// Command handler for serial communication
+CommandHandler* cmdHandler = nullptr;
 
 // Function declarations
 void ProcessSensors();
@@ -69,8 +71,7 @@ void MoveDown();
 void Stop();
 void StartUp();
 void ScanI2C();
-void ReadSerial();
-void DisplayHelp();
+void ProcessSerialCommands();
 
 void setup() {
   Wire.begin();
@@ -79,8 +80,6 @@ void setup() {
 
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(SPEED_SWITCH_PIN, INPUT_PULLUP);
-  pinMode(UP_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(DOWN_BUTTON_PIN, INPUT_PULLUP);
 
   LoadCell.begin(DATA_PIN, CLOCK_PIN, true);
   // Loadcell calibration is done in external software
@@ -109,14 +108,16 @@ void setup() {
   // longer possible. If ramplen is outside the permissible range, the value is adjusted.
 
   pinMode(ENABLE_PIN, OUTPUT);
-  digitalWrite(ENABLE_PIN, LOW); 
+  digitalWrite(ENABLE_PIN, LOW);
   
-
-  DisplayHelp();
+  // Initialize command handler
+  cmdHandler = new CommandHandler();
+  
+  cmdHandler->displayHelp();
 }
 
 void loop() {
-  ReadSerial();
+  ProcessSerialCommands();
   CheckButtonStates();
 
   // Only read data when it is already available.
@@ -178,44 +179,24 @@ float Average(float buffer[]) {
 
 
 void CheckButtonStates(){
-  speedSwitchState         = digitalRead(SPEED_SWITCH_PIN);
-  bool rawUpButtonState    = digitalRead(UP_BUTTON_PIN);
-  bool rawDownButtonState  = digitalRead(DOWN_BUTTON_PIN);
-
-  // UP BUTTON debounce logic
-  if (rawUpButtonState != upButtonState) {
-    // Button state changed - check if debounce time has passed
-    if ((millis() - lastUpDebounceTime) > debounceDelay) {
-      lastUpDebounceTime = millis();
-      upButtonState = rawUpButtonState;
-
-      // Button pressed (pulled LOW)
-      if (upButtonState == LOW) {
-        MoveUp();
-      }
-      // Button released (pulled HIGH)
-      else {
-        Stop();
-      }
-    }
+  buttons.processButtons(); // Process button states with debouncing
+  
+  speedSwitchState = digitalRead(SPEED_SWITCH_PIN);
+  
+  // UP button - start moving when pressed, stop when released
+  if (buttons.pressed(UP_BTN)) {
+    MoveUp();
   }
-
-  // DOWN BUTTON debounce logic
-  if (rawDownButtonState != downButtonState) {
-    // Button state changed - check if debounce time has passed
-    if ((millis() - lastDownDebounceTime) > debounceDelay) {
-      lastDownDebounceTime = millis();
-      downButtonState = rawDownButtonState;
-
-      // Button pressed (pulled LOW)
-      if (downButtonState == LOW) {
-        MoveDown();
-      }
-      // Button released (pulled HIGH)
-      else {
-        Stop();
-      }
-    }
+  if (buttons.released(UP_BTN)) {
+    Stop();
+  }
+  
+  // DOWN button - start moving when pressed, stop when released
+  if (buttons.pressed(DOWN_BTN)) {
+    MoveDown();
+  }
+  if (buttons.released(DOWN_BTN)) {
+    Stop();
   }
 }
 
@@ -312,127 +293,99 @@ void ScanI2C(){
   }
 }
 
-void ReadSerial() {
-  if( !Serial.available() ){ return; }
+
+
+void ProcessSerialCommands() {
+  if (!cmdHandler->readCommand()) return;
   
-  String command = Serial.readStringUntil('\n');
-  //Serial.println("Command recieved: " + command);
-  
-  if(command == "LoadCellOn"){
+  // Toggle commands
+  if (cmdHandler->is("LoadCellOn")) {
     readLoadCell = true;
   }
-
-  else if(command == "LoadCellOff"){
+  else if (cmdHandler->is("LoadCellOff")) {
     readLoadCell = false;
   }
-
-  else if(command == "SensorsOn"){
+  else if (cmdHandler->is("SensorsOn")) {
     readSensors = true;
   }
-  else if(command == "SensorsOff"){
+  else if (cmdHandler->is("SensorsOff")) {
     readSensors = false;
   }
   
-
-  else if(command == "GetLoad"){
-    Serial.print("Load: "); Serial.println(force);
+  // Get/Query commands
+  else if (cmdHandler->is("GetLoad")) {
+    Serial.print("Load: ");
+    Serial.println(force);
   }
-  else if(command == "GetTotalAngle"){
-    Serial.print("Total Angle: "); 
-    //Serial.print(totalPosition[0]); Serial.print("\t"); 
-    Serial.print(totalPosition); Serial.print("\n"); 
+  else if (cmdHandler->is("GetTotalAngle")) {
+    Serial.print("Total Angle: ");
+    Serial.println(totalPosition);
   }
-  else if(command == "GetVelocity"){
-    Serial.print("Velocity: "); 
-    Serial.print(angularSpeed); Serial.print("\t"); 
-    Serial.print(averageAngularSpeed); Serial.print("\n"); 
+  else if (cmdHandler->is("GetVelocity")) {
+    Serial.print("Velocity: ");
+    Serial.print(angularSpeed);
+    Serial.print("\t");
+    Serial.println(averageAngularSpeed);
   }
-  
-  else if(command == "GetVersion" || command == "version" || command == "v"){
+  else if (cmdHandler->is("GetVersion") || cmdHandler->is("version") || cmdHandler->is("v")) {
     Serial.print("Firmware Version: ");
     Serial.println(FIRMWARE_VERSION);
   }
-
-
-  else if(command == "Enable"){
-    //Serial.println("Enabling motors.");
+  else if (cmdHandler->is("GetSteps")) {
+    Serial.print("Total Steps: ");
+    Serial.println(stepper.readSteps());
+  }
+  
+  // Motor control commands
+  else if (cmdHandler->is("Enable")) {
     digitalWrite(ENABLE_PIN, HIGH);
   }
-
-  else if(command == "Disable"){
-    //Serial.println("Disabling motors.");
+  else if (cmdHandler->is("Disable")) {
     digitalWrite(ENABLE_PIN, LOW);
   }
-
-  else if(command == "Stop"){
-    //Serial.println("Stopping...");
+  else if (cmdHandler->is("Stop")) {
     stepper.rotate(0);
   }
-
-  else if(command == "EStop"){
-    //Serial.println("Emergency stop!");
-    stepper.stop(); //Emergency stop
+  else if (cmdHandler->is("EStop")) {
+    stepper.stop(); // Emergency stop
   }
-
-  else if(command =="Up"){
-    //Serial.println("Going Up...");
+  else if (cmdHandler->is("Up")) {
     stepper.rotate(-1);
   }
-
-  else if(command == "Down"){
-    //Serial.println("Going Down...");
+  else if (cmdHandler->is("Down")) {
     stepper.rotate(1);
   }
-
-  else if(command == "Start"){
+  else if (cmdHandler->is("Start")) {
     digitalWrite(ENABLE_PIN, HIGH);
     Serial.println("Going Down with 100rpm");
     stepper.setSpeed(1000);
     stepper.rotate(1);
   }
-
-  else if(command.indexOf("SetSpeed") > -1){ //RPM
-    Serial.print("Setting speed: ");
-    int ind = command.indexOf(' ');  //finds location of first ' '
-    String sval = command.substring(ind+1);
-    int rpm10 = sval.toInt(); 
-    Serial.print((float)rpm10/10); Serial.print(" RPM\n");
-    stepper.setSpeed(rpm10); // revolution per minute times 10
-  }
-
-  else if(command.indexOf("MoveSteps") > -1){ 
-    Serial.print("Moving: ");
-    int ind = command.indexOf(' ');  //finds location of first ' '
-    String sval = command.substring(ind+1);
-    long steps = sval.toInt(); 
-    Serial.print(steps); Serial.print(" steps.\n");
-    stepper.move(steps); // 
-  }
-
-  else if(command.indexOf("SetRampLength") > -1){ 
-    // Ramp length in steps. The permissible ramp length depends on the step rate, and a
-    // maximum of 16000 for high step rates. For step rates below 2steps/sec, ramping is no
-    // longer possible. If ramplen is outside the permissible range, the value is adjusted.
-
-    Serial.print("Setting ramp length: ");
-    int ind = command.indexOf(' ');  //finds location of first ' '
-    String sval = command.substring(ind+1);
-    int ramp = sval.toInt(); 
-    Serial.print(ramp); Serial.print(" ramp length\n");
-    uint32_t rampLen = stepper.setRampLen(ramp);
-    Serial.print("Current rampLen: "); Serial.print(rampLen); Serial.print("\n");
-  }
   
-  else if(command == "GetSteps"){
-    Serial.print("Total Steps: ");
-    Serial.println(stepper.readSteps());
+  // Parameterized commands
+  else if (cmdHandler->startsWith("SetSpeed")) {
+    int rpm10 = cmdHandler->getIntParam();
+    Serial.print("Setting speed: ");
+    Serial.print((float)rpm10 / 10);
+    Serial.println(" RPM");
+    stepper.setSpeed(rpm10);
   }
-
-  else{
-    //Serial.println("Unrecognized command.");
-    //DisplayHelp();
+  else if (cmdHandler->startsWith("MoveSteps")) {
+    long steps = cmdHandler->getLongParam();
+    Serial.print("Moving: ");
+    Serial.print(steps);
+    Serial.println(" steps.");
+    stepper.move(steps);
   }
-
+  else if (cmdHandler->startsWith("SetRampLength")) {
+    int ramp = cmdHandler->getIntParam();
+    Serial.print("Setting ramp length: ");
+    Serial.print(ramp);
+    Serial.println(" ramp length");
+    uint32_t rampLen = stepper.setRampLen(ramp);
+    Serial.print("Current rampLen: ");
+    Serial.println(rampLen);
+  }
 }
 
 /*
@@ -491,23 +444,4 @@ void Calibrate(){
 }
 */
 
-void DisplayHelp() {
-  Serial.println("----------------------");
-  Serial.println("Valid Commands are:");
-  Serial.println("");
-  Serial.println("'GetLoad'                           - Returns the latest load cell reading");
-  Serial.println("'GetVelocity'                       - Returns the angular velocty of each sensor");
-  Serial.println("'GetTotalAngle'                     - Returns the total change of the angle since start");
-  Serial.println("'GetSteps'                          - Returns the total number of steps since start");
-  Serial.println("'GetVersion'                        - Returns the firmware version number");
-  Serial.println("'Enable' / 'Disable'                - Enables/Disables the motors");
-  Serial.println("'Stop'                              - Slows the motors to a stop");
-  Serial.println("'EStop'                             - Breaks to motors to a stop immediately");
-  Serial.println("'SetSpeed' <RPM*10>                 - Sets the rotational speed to rpm times 10. ");
-  Serial.println("'Forward' / 'Backward'              - Moves the motors");
-  Serial.println("'Start'                             - Start rotating the motors at 100 rpm forward");
-  Serial.println("'LoadCellOn' / 'LoadCellOff'        - Continuous reading every 50ms");
-  Serial.println("'SensorsOn' / 'SensorsOff'          - Continuous reading every 50ms");
-  Serial.println("'VelocityOn' / 'VelocityOff'        - Continuous reading every 50ms");
-  Serial.println("----------------------");
-}
+
