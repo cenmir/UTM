@@ -14,9 +14,11 @@
    <string>UTM Control - Universal Testing Machine</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QHBoxLayout" name="horizontalLayout_main">
+   <layout class="QVBoxLayout" name="verticalLayout_main">
     <item>
-     <widget class="QTabWidget" name="tabWidget">
+     <layout class="QHBoxLayout" name="horizontalLayout_main">
+      <item>
+       <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
        <number>0</number>
       </property>
@@ -794,7 +796,40 @@ Gauge</string>
      </widget>
     </item>
    </layout>
-  </widget>
+  </item>
+  <item>
+   <widget class="QLineEdit" name="statusLineEdit">
+    <property name="minimumSize">
+     <size>
+      <width>0</width>
+      <height>28</height>
+     </size>
+    </property>
+    <property name="maximumSize">
+     <size>
+      <width>16777215</width>
+      <height>28</height>
+     </size>
+    </property>
+    <property name="font">
+     <font>
+      <family>Segoe UI</family>
+      <pointsize>10</pointsize>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QLineEdit { background-color: #2b2b2b; color: #cccccc; border: 1px solid #555; padding-left: 8px; }</string>
+    </property>
+    <property name="text">
+     <string>Ready</string>
+    </property>
+    <property name="readOnly">
+     <bool>true</bool>
+    </property>
+   </widget>
+  </item>
+ </layout>
+</widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>

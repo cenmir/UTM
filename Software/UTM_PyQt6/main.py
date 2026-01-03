@@ -9,7 +9,7 @@ APPLICATION VERSION - UPDATE ON EVERY COMMIT!
 ============================================
 """
 
-__version__ = "0.2.4"
+__version__ = "0.2.6"
 
 
 import sys
@@ -258,6 +258,7 @@ class UTMApplication(QMainWindow):
         self.stall_count = 0  # Counter for consecutive stall readings
         self.stall_count_threshold = 3  # Number of consecutive readings before triggering stall
         self.incremental_move_active = False  # True during MoveSteps command
+        self.incremental_move_grace_period = False  # True briefly after starting incremental move
         self.movement_start_grace_period = False  # True briefly after starting movement
 
         # Polling timers for motor data
@@ -276,6 +277,12 @@ class UTMApplication(QMainWindow):
         self.grace_period_timer.setSingleShot(True)
         self.grace_period_timer.setInterval(1000)  # 1 second grace period
         self.grace_period_timer.timeout.connect(self._end_grace_period)
+
+        # Timer for incremental move grace period (1 second to allow motor to start)
+        self.incremental_grace_timer = QTimer()
+        self.incremental_grace_timer.setSingleShot(True)
+        self.incremental_grace_timer.setInterval(1000)  # 1 second grace period
+        self.incremental_grace_timer.timeout.connect(self._end_incremental_grace_period)
 
         # Console initialization
         self.append_to_console("UTM Control Application Started")
@@ -328,6 +335,23 @@ class UTMApplication(QMainWindow):
         if self.autoScrollCheckBox.isChecked():
             scrollbar = self.consoleTextEdit.verticalScrollBar()
             scrollbar.setValue(scrollbar.maximum())
+
+    def set_status(self, message, is_warning=False):
+        """Set the status bar message
+
+        Args:
+            message: The status message to display
+            is_warning: If True, display in warning style (orange/red)
+        """
+        self.statusLineEdit.setText(message)
+        if is_warning:
+            self.statusLineEdit.setStyleSheet(
+                "QLineEdit { background-color: #4a3000; color: #ffaa00; border: 1px solid #ff6600; padding-left: 8px; }"
+            )
+        else:
+            self.statusLineEdit.setStyleSheet(
+                "QLineEdit { background-color: #2b2b2b; color: #cccccc; border: 1px solid #555; padding-left: 8px; }"
+            )
 
     def on_send_command(self):
         """Handle send button click or Enter key in command field"""
@@ -577,6 +601,15 @@ class UTMApplication(QMainWindow):
         """Called when grace period ends - stall detection can now activate"""
         self.movement_start_grace_period = False
 
+    def _start_incremental_grace_period(self):
+        """Start a grace period for incremental move (allows motor to start)"""
+        self.incremental_move_grace_period = True
+        self.incremental_grace_timer.start()
+
+    def _end_incremental_grace_period(self):
+        """Called when incremental grace period ends - completion detection can now activate"""
+        self.incremental_move_grace_period = False
+
     # ========== Speed Control Functions ==========
 
     # Conversion constants
@@ -725,18 +758,31 @@ class UTMApplication(QMainWindow):
 
         if self.upRadioButton.isChecked():
             self.append_to_console(f"Direction: UP at {speed_rpm:.1f} RPM")
+            # Show speed in selected unit
+            if self.speedUnitMmRadio.isChecked():
+                speed_display = speed_rpm * self.MM_PER_S_PER_RPM
+                self.set_status(f"Moving UP at {speed_display:.3f} mm/s")
+            else:
+                self.set_status(f"Moving UP at {speed_rpm:.1f} RPM")
             self.serial_manager.send_command(f"SetSpeed {firmware_speed}")
             self.serial_manager.send_command("Up")
             # Start grace period for stall detection
             self._start_movement_grace_period()
         elif self.downRadioButton.isChecked():
             self.append_to_console(f"Direction: DOWN at {speed_rpm:.1f} RPM")
+            # Show speed in selected unit
+            if self.speedUnitMmRadio.isChecked():
+                speed_display = speed_rpm * self.MM_PER_S_PER_RPM
+                self.set_status(f"Moving DOWN at {speed_display:.3f} mm/s")
+            else:
+                self.set_status(f"Moving DOWN at {speed_rpm:.1f} RPM")
             self.serial_manager.send_command(f"SetSpeed {firmware_speed}")
             self.serial_manager.send_command("Down")
             # Start grace period for stall detection
             self._start_movement_grace_period()
         else:
             self.append_to_console("Direction: STOP")
+            self.set_status("Motors enabled - Stopped")
             self.serial_manager.send_command("Stop")
             # Cancel grace period if stopping
             self.grace_period_timer.stop()
@@ -751,6 +797,7 @@ class UTMApplication(QMainWindow):
             self.stopRadioButton.blockSignals(False)
 
             self.append_to_console("Motors ENABLED (direction set to STOP)")
+            self.set_status("Motors enabled - Select direction to move")
             if self.connected:
                 self.serial_manager.send_command("Enable")
                 # Start velocity polling when motors are enabled
@@ -762,6 +809,7 @@ class UTMApplication(QMainWindow):
             self.stopRadioButton.blockSignals(False)
 
             self.append_to_console("Motors DISABLED (stopped)")
+            self.set_status("Motors disabled")
             if self.connected:
                 self.serial_manager.send_command("Stop")
                 self.serial_manager.send_command("Disable")
@@ -778,6 +826,7 @@ class UTMApplication(QMainWindow):
     def on_emergency_stop(self):
         """Emergency stop button pressed"""
         self.append_to_console("EMERGENCY STOP activated!")
+        self.set_status("⚠ EMERGENCY STOP - Motors halted", is_warning=True)
         if self.connected:
             self.serial_manager.send_command("EStop")
         self.stopRadioButton.setChecked(True)
@@ -804,9 +853,12 @@ class UTMApplication(QMainWindow):
         firmware_speed = self.get_firmware_speed()
         speed_rpm = self.get_speed_rpm()
         self.append_to_console(f"Moving up {distance} mm at {speed_rpm:.1f} RPM")
+        self.set_status(f"Moving UP {distance} mm...")
 
         # Mark incremental move active (disables stall detection during move)
         self.incremental_move_active = True
+        # Start grace period to allow motor to start before detecting completion
+        self._start_incremental_grace_period()
 
         # Update direction indicator to show Up (block signals to prevent sending direction command)
         self.upRadioButton.blockSignals(True)
@@ -826,9 +878,12 @@ class UTMApplication(QMainWindow):
         firmware_speed = self.get_firmware_speed()
         speed_rpm = self.get_speed_rpm()
         self.append_to_console(f"Moving down {distance} mm at {speed_rpm:.1f} RPM")
+        self.set_status(f"Moving DOWN {distance} mm...")
 
         # Mark incremental move active (disables stall detection during move)
         self.incremental_move_active = True
+        # Start grace period to allow motor to start before detecting completion
+        self._start_incremental_grace_period()
 
         # Update direction indicator to show Down (block signals to prevent sending direction command)
         self.downRadioButton.blockSignals(True)
@@ -859,6 +914,7 @@ class UTMApplication(QMainWindow):
         if connected:
             self.update_status_lamp(True)
             self.append_to_console("✓ Connected to UTM")
+            self.set_status("Connected to UTM - Ready")
             # Ensure switch is on (it should be, but just in case)
             if not self.connectionSwitch.isChecked():
                 self.connectionSwitch.blockSignals(True)
@@ -868,6 +924,7 @@ class UTMApplication(QMainWindow):
             self._start_motor_polling()
         else:
             self.update_status_lamp(False)
+            self.set_status("Disconnected")
             # Update switch state - block signals to prevent triggering disconnect again
             if self.connectionSwitch.isChecked():
                 self.connectionSwitch.blockSignals(True)
@@ -944,14 +1001,17 @@ class UTMApplication(QMainWindow):
             self._update_measured_speed_display()
 
         # Check if incremental move completed (velocity near zero)
+        # Skip detection during grace period (motor is still starting)
         if self.incremental_move_active:
-            if abs(vel1) < self.stall_velocity_threshold and abs(vel2) < self.stall_velocity_threshold:
-                # Incremental move completed - set direction to STOP
-                self.incremental_move_active = False
-                self.stopRadioButton.blockSignals(True)
-                self.stopRadioButton.setChecked(True)
-                self.stopRadioButton.blockSignals(False)
-                self.append_to_console("Incremental move completed")
+            if not self.incremental_move_grace_period:
+                if abs(vel1) < self.stall_velocity_threshold and abs(vel2) < self.stall_velocity_threshold:
+                    # Incremental move completed - set direction to STOP
+                    self.incremental_move_active = False
+                    self.stopRadioButton.blockSignals(True)
+                    self.stopRadioButton.setChecked(True)
+                    self.stopRadioButton.blockSignals(False)
+                    self.append_to_console("Incremental move completed")
+                    self.set_status("Incremental move completed")
             # Skip stall detection during incremental moves
             return
 
@@ -981,6 +1041,7 @@ class UTMApplication(QMainWindow):
         """Handle detected motor stall - emergency stop and warn user"""
         self.append_to_console("⚠ WARNING: MOTOR STALL DETECTED!")
         self.append_to_console("⚠ Motors stopped for safety!")
+        self.set_status("⚠ MOTOR STALL DETECTED - Motors stopped for safety!", is_warning=True)
 
         # Trigger emergency stop
         if self.connected:
