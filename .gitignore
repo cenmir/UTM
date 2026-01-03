@@ -11,3 +11,18 @@ guides/QUICKSTART.qmd
 Software/QT_test/main.py
 Software/QT_test/test.ui
 D32_Firmware/.vscode/extensions.json
+Software/UTM_PyQt6/__pycache__/
+.claude/settings.local.json
+
+# PyInstaller build artifacts
+Software/UTM_PyQt6/build/
+Software/UTM_PyQt6/dist/
+Software/UTM_PyQt6/*.spec
+
+# Test data files
+*.csv
+
+# Claude Code / AI documentation (local only)
+CLAUDE.md
+APP_DESCRIPTION.qmd
+Software/UTM_PyQt6/DEPLOYMENT.md

@@ -9,7 +9,7 @@ APPLICATION VERSION - UPDATE ON EVERY COMMIT!
 ============================================
 """
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 
 import sys
@@ -38,6 +38,9 @@ class UTMApplication(QMainWindow):
 
         # Load the UI file
         uic.loadUi(UI_FILE, self)
+
+        # Set window title with version
+        self.setWindowTitle(f"UTM Control v{__version__}")
 
         # Apply custom styles
         self.apply_styles()

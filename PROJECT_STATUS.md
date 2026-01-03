@@ -36,14 +36,15 @@
 - All 7 phases implemented
 - Used for teaching at Jönköping University
 
-**PyQt6 GUI (Software/UTM_PyQt6/):** 🚧 ~75% Complete (v0.5.0)
+**PyQt6 GUI (Software/UTM_PyQt6/):** 🚧 ~85% Complete (v0.5.1)
 - Phase 1 (Foundation): 100% - GUI + serial communication implemented
 - Phase 2 (Data Acquisition): 100% - Load plot, calibration, data cropping complete
 - Phase 3 (Advanced Control): 100% - Speed control with limits, SpeedGauge widget
 - Phase 4 (Stress-Strain): 100% - Real-time stress-strain plot with synchronization
 - Phase 5 (Calibration & Export): 100% - CSV export/import with metadata
 - Phase 6 (Polish): 20% - Custom widgets done, keyboard shortcuts pending
-- Phase 7 (Camera/DIC): 0% - Optional, not started
+- Phase 7 (Deployment): 100% - PyInstaller build script, DEPLOYMENT.md guide
+- Phase 8 (Camera/DIC): 0% - Optional, not started
 
 ---
 
@@ -769,6 +770,33 @@ gauge.setUnit("RPM")    # Or "mm/s"
 
 **Version:** 0.5.0 (pre-release, stress-strain milestone)
 
+### Session: 2026-01-04 - BUG FIXES & DEPLOYMENT SETUP! ✅
+
+**What We Did:**
+1. ✅ **Bug fixes from hardware testing**
+   - Fixed ssCropRangeSlider signal connection order (startup crash)
+   - Fixed identical xlim warning in stress-strain plot
+   - Fixed areaSpinBox naming in CSV import
+   - Added sync for duplicate controls (tareButton_2, etc.)
+
+2. ✅ **Improvements**
+   - Displacement now positive going down
+   - Auto-tare position and load cell on connection (500ms delay)
+   - UTF-8 encoding for CSV export (mm² symbol)
+   - Added File ID field for custom filename prefix
+   - Added GitHub URL and firmware version to CSV header
+   - CSV preamble displayed in console on import
+   - Default speed changed to 0.1 mm/s
+
+3. ✅ **Deployment setup**
+   - Added version number to window title
+   - Created build_exe.py for PyInstaller builds
+   - Successfully built UTM_Control_v0.5.1.exe (63.5 MB)
+   - Created DEPLOYMENT.md with release instructions
+   - Updated .gitignore for build artifacts
+
+**Version:** 0.5.1 (pre-release, deployment milestone)
+
 **Current State:**
 - **GUI Structure**: 100% complete
 - **Load Plot**: 100% complete
@@ -776,16 +804,17 @@ gauge.setUnit("RPM")    # Or "mm/s"
 - **Data Export/Import**: 100% complete
 - **Calibration**: 100% complete
 - **Custom Widgets**: SpeedGauge, RangeSlider, FluentSwitch done
+- **Deployment**: 100% - PyInstaller build working
 - **Keyboard Shortcuts**: 0% (pending)
 - **Camera/DIC**: 0% (optional, not started)
 
 **Next Session Should Start With:**
 1. Read PROJECT_STATUS.md (this file)
 2. Choose next implementation direction:
-   - **Option A**: Add keyboard shortcuts (E-stop, motor control)
-   - **Option B**: Hardware testing and bug fixes
+   - **Option A**: Create first GitHub release (v0.5.1)
+   - **Option B**: Add keyboard shortcuts (E-stop, motor control)
    - **Option C**: Camera/DIC integration (optional)
-   - **Option D**: Polish and documentation
+   - **Option D**: More hardware testing
 
 ---
 
