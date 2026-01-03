@@ -172,6 +172,69 @@
               <item>
                <layout class="QHBoxLayout" name="horizontalLayout_3">
                 <item>
+                 <widget class="QGroupBox" name="stressDataGroup">
+                  <property name="title">
+                   <string>Stress/Strain Data</string>
+                  </property>
+                  <layout class="QFormLayout" name="formLayout_stressData">
+                   <item row="0" column="0">
+                    <widget class="QLabel" name="maxStressLabel">
+                     <property name="text">
+                      <string>Max Stress (MPa):</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="1">
+                    <widget class="QLabel" name="maxStressValue">
+                     <property name="font">
+                      <font>
+                       <weight>75</weight>
+                       <bold>true</bold>
+                      </font>
+                     </property>
+                     <property name="text">
+                      <string>0.0000</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="0">
+                    <widget class="QLabel" name="maxStrainLabel">
+                     <property name="text">
+                      <string>Max Strain:</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="1">
+                    <widget class="QLabel" name="maxStrainValue">
+                     <property name="font">
+                      <font>
+                       <weight>75</weight>
+                       <bold>true</bold>
+                      </font>
+                     </property>
+                     <property name="text">
+                      <string>0.000000</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="0">
+                    <widget class="QLabel" name="ssCurrentPointsLabel">
+                     <property name="text">
+                      <string>Current points:</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="1">
+                    <widget class="QLabel" name="ssCurrentPointsValue">
+                     <property name="text">
+                      <string>0</string>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item>
                  <widget class="QGroupBox" name="specimenDimensionsGroup">
                   <property name="title">
                    <string>Specimen Dimensions</string>
@@ -215,7 +278,7 @@
                  </widget>
                 </item>
                 <item>
-                 <widget class="QGroupBox" name="plotControlsGroup">
+                 <widget class="QGroupBox" name="ssPlotControlsGroup">
                   <property name="title">
                    <string>Plot Controls</string>
                   </property>
@@ -228,16 +291,26 @@
                     </widget>
                    </item>
                    <item>
-                    <widget class="QCheckBox" name="showMarkersCheckBox">
+                    <widget class="QCheckBox" name="ssShowMarkersCheckBox">
                      <property name="text">
                       <string>Show Markers</string>
                      </property>
                     </widget>
                    </item>
                    <item>
-                    <widget class="QCheckBox" name="autoScaleCheckBox">
+                    <widget class="QCheckBox" name="ssAutoScaleCheckBox">
                      <property name="text">
                       <string>Auto Scale</string>
+                     </property>
+                     <property name="checked">
+                      <bool>true</bool>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QCheckBox" name="ssTogglePlotCheckBox">
+                     <property name="text">
+                      <string>Start/Stop plotting</string>
                      </property>
                      <property name="checked">
                       <bool>true</bool>
@@ -261,6 +334,32 @@
                  </spacer>
                 </item>
                </layout>
+              </item>
+              <item>
+               <widget class="QGroupBox" name="ssDataCroppingGroup">
+                <property name="title">
+                 <string>Data Cropping</string>
+                </property>
+                <layout class="QVBoxLayout" name="verticalLayout_ssCrop">
+                 <item>
+                  <widget class="QLabel" name="ssRangeSliderPlaceholder">
+                   <property name="text">
+                    <string>Range Slider Placeholder</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="ssCropDataButton">
+                   <property name="text">
+                    <string>Crop Data</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
               </item>
              </layout>
             </widget>

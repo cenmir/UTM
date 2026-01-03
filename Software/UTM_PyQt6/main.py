@@ -9,7 +9,7 @@ APPLICATION VERSION - UPDATE ON EVERY COMMIT!
 ============================================
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 
 import sys
@@ -248,6 +248,84 @@ class UTMApplication(QMainWindow):
         # Connect the range changed signal
         self.cropRangeSlider.rangeChanged.connect(self._on_crop_range_changed)
 
+    def _setup_stress_strain_plot(self):
+        """Setup the matplotlib canvas for the stress-strain plot"""
+        # Create the matplotlib figure and canvas
+        self.ss_figure = Figure(figsize=(8, 4), dpi=100)
+        self.ss_figure.set_facecolor('#f0f0f0')
+        self.ss_canvas = FigureCanvas(self.ss_figure)
+
+        # Create the axes
+        self.ss_ax = self.ss_figure.add_subplot(111)
+        self.ss_ax.set_xlabel('Strain (mm/mm)')
+        self.ss_ax.set_ylabel('Stress (MPa)')
+        self.ss_ax.set_title('Stress vs Strain')
+        self.ss_ax.grid(True, alpha=0.3)
+
+        # Create the line object (empty initially)
+        self.ss_line, = self.ss_ax.plot([], [], 'b-', linewidth=1)
+        self.ss_markers, = self.ss_ax.plot([], [], 'b.', markersize=3)
+
+        # Create crop selection markers (vertical lines and shaded region)
+        self.ss_crop_line_low = self.ss_ax.axvline(x=0, color='red', linestyle='--', linewidth=1.5, visible=False)
+        self.ss_crop_line_high = self.ss_ax.axvline(x=0, color='red', linestyle='--', linewidth=1.5, visible=False)
+        self.ss_crop_span = self.ss_ax.axvspan(0, 1, alpha=0.2, color='yellow', visible=False)
+
+        # Replace the placeholder with the canvas
+        layout = self.stressStrainPlotFrame.layout()
+        if layout is not None:
+            # Remove the placeholder
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                if item and item.widget() == self.stressStrainPlotPlaceholder:
+                    layout.removeWidget(self.stressStrainPlotPlaceholder)
+                    self.stressStrainPlotPlaceholder.hide()
+                    self.stressStrainPlotPlaceholder.deleteLater()
+                    break
+            # Add the canvas
+            layout.addWidget(self.ss_canvas)
+        else:
+            # Create a layout if none exists
+            layout = QVBoxLayout(self.stressStrainPlotFrame)
+            layout.setContentsMargins(0, 0, 0, 0)
+            self.stressStrainPlotPlaceholder.hide()
+            self.stressStrainPlotPlaceholder.deleteLater()
+            layout.addWidget(self.ss_canvas)
+
+        self.ss_figure.tight_layout()
+
+    def _setup_ss_range_slider(self):
+        """Setup the range slider for stress-strain data cropping"""
+        # Create the range slider widget
+        self.ssCropRangeSlider = RangeSlider()
+        self.ssCropRangeSlider.setRange(0, 100)
+
+        # Replace the placeholder with the range slider
+        parent = self.ssRangeSliderPlaceholder.parent()
+        layout = parent.layout()
+
+        if layout is not None:
+            # Find and replace the placeholder in the layout
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                if item and item.widget() == self.ssRangeSliderPlaceholder:
+                    layout.removeWidget(self.ssRangeSliderPlaceholder)
+                    self.ssRangeSliderPlaceholder.hide()
+                    self.ssRangeSliderPlaceholder.deleteLater()
+                    layout.insertWidget(i, self.ssCropRangeSlider)
+                    break
+        else:
+            # Fallback to geometry-based replacement
+            geometry = self.ssRangeSliderPlaceholder.geometry()
+            self.ssRangeSliderPlaceholder.hide()
+            self.ssRangeSliderPlaceholder.deleteLater()
+            self.ssCropRangeSlider.setParent(parent)
+            self.ssCropRangeSlider.setGeometry(geometry)
+            self.ssCropRangeSlider.show()
+
+        # Connect the range changed signal
+        self.ssCropRangeSlider.rangeChanged.connect(self._on_ss_crop_range_changed)
+
     def _update_load_plot(self):
         """Update the load plot (called by timer at 5 Hz)"""
         if not self.load_plot_needs_update:
@@ -295,6 +373,52 @@ class UTMApplication(QMainWindow):
         # Redraw the canvas
         self.load_canvas.draw_idle()
 
+    def _update_stress_strain_plot(self):
+        """Update the stress-strain plot (called by timer)"""
+        if not self.stress_strain_plot_needs_update:
+            return
+
+        self.stress_strain_plot_needs_update = False
+
+        n_points = len(self.stress_strain_strains)
+        if n_points == 0:
+            return
+
+        # Downsample for display if we have too many points
+        if n_points > self.LOAD_PLOT_DOWNSAMPLE_THRESHOLD:
+            # Calculate step size to get approximately DISPLAY_POINTS
+            step = max(1, n_points // self.LOAD_PLOT_DISPLAY_POINTS)
+            strains = self.stress_strain_strains[::step]
+            stresses = self.stress_strain_stresses[::step]
+            # Always include the last point for real-time feel
+            if self.stress_strain_strains[-1] not in strains:
+                strains = strains + [self.stress_strain_strains[-1]]
+                stresses = stresses + [self.stress_strain_stresses[-1]]
+        else:
+            strains = list(self.stress_strain_strains)
+            stresses = list(self.stress_strain_stresses)
+
+        # Update the line data
+        self.ss_line.set_data(strains, stresses)
+
+        # Update markers if enabled
+        if hasattr(self, 'ssShowMarkersCheckBox') and self.ssShowMarkersCheckBox.isChecked():
+            self.ss_markers.set_data(strains, stresses)
+            self.ss_markers.set_visible(True)
+        else:
+            self.ss_markers.set_visible(False)
+
+        # Auto-scale if enabled
+        if hasattr(self, 'ssAutoScaleCheckBox') and self.ssAutoScaleCheckBox.isChecked():
+            if len(strains) > 1:
+                self.ss_ax.set_xlim(min(strains), max(strains))
+            # Recalculate y-axis limits
+            self.ss_ax.relim()
+            self.ss_ax.autoscale_view(scalex=False, scaley=True)
+
+        # Redraw the canvas
+        self.ss_canvas.draw_idle()
+
     def connect_signals(self):
         """Connect UI signals to their respective slot functions"""
         # Console controls
@@ -303,9 +427,15 @@ class UTMApplication(QMainWindow):
         self.commandLineEdit.returnPressed.connect(self.on_send_command)
 
         # Stress/Strain tab controls
-        self.clearStressStrainButton.clicked.connect(self.on_clear_stress_strain_plot)
+        self.clearStressStrainButton.clicked.connect(self.on_clear_load_plot)  # Shared clear (clears both)
         self.areaSpinBox.valueChanged.connect(self.on_specimen_dimensions_changed)
         self.gaugeLengthSpinBox.valueChanged.connect(self.on_specimen_dimensions_changed)
+        self.ssCropDataButton.clicked.connect(self.on_crop_data)  # Shared crop
+        self.ssCropRangeSlider.rangeChanged.connect(self._on_ss_crop_range_changed)
+
+        # Stress/Strain plot toggle sync with Load Plot toggle
+        self.ssTogglePlotCheckBox.stateChanged.connect(self._sync_plot_toggles)
+        self.loadTogglePlotCheckBox.stateChanged.connect(self._sync_plot_toggles)
 
         # Load Plot tab controls
         self.clearLoadPlotButton.clicked.connect(self.on_clear_load_plot)
@@ -384,9 +514,22 @@ class UTMApplication(QMainWindow):
         self.LOAD_PLOT_DOWNSAMPLE_THRESHOLD = 1000  # Start downsampling after this many points
         self.LOAD_PLOT_DISPLAY_POINTS = 500  # Target points to display when downsampling
 
+        # Stress-strain plot data (calculated from load plot data)
+        self.stress_strain_strains = []  # Strain values (dimensionless)
+        self.stress_strain_stresses = []  # Stress values (MPa)
+        self.stress_strain_plot_needs_update = False  # Flag to trigger plot redraw
+
+        # Max values tracking for stress-strain
+        self.max_stress = 0.0  # MPa
+        self.max_strain = 0.0  # dimensionless
+
         # Initialize the load plot and range slider
         self._setup_load_plot()
         self._setup_range_slider()
+
+        # Initialize the stress-strain plot and range slider
+        self._setup_stress_strain_plot()
+        self._setup_ss_range_slider()
 
         # Calibration values (synced with UI spinboxes)
         self.force_scale = self.scaleSpinBox.value()
@@ -446,10 +589,12 @@ class UTMApplication(QMainWindow):
         self.incremental_grace_timer.setInterval(1000)  # 1 second grace period
         self.incremental_grace_timer.timeout.connect(self._end_incremental_grace_period)
 
-        # Timer for load plot updates (rate controlled by displayRateSpinBox)
+        # Timer for plot updates (rate controlled by displayRateSpinBox)
+        # Synced between Load Plot and Stress-Strain tabs
         self.load_plot_timer = QTimer()
         self._update_display_rate()  # Set initial interval from spinbox
         self.load_plot_timer.timeout.connect(self._update_load_plot)
+        self.load_plot_timer.timeout.connect(self._update_stress_strain_plot)
         self.load_plot_timer.start()  # Always running, but only redraws when needed
 
         # Console initialization
@@ -574,43 +719,71 @@ class UTMApplication(QMainWindow):
         self.load_canvas.draw_idle()
 
     def on_clear_load_plot(self):
-        """Clear the load plot data"""
-        # Clear all stored data
+        """Clear the load plot data (also clears stress-strain data since they are synced)"""
+        # Clear all load plot stored data
         self.load_plot_times.clear()
         self.load_plot_forces.clear()
         self.load_plot_raw_forces.clear()
         self.load_plot_positions.clear()
         self.load_plot_speeds.clear()
 
+        # Clear stress-strain data
+        self.stress_strain_strains.clear()
+        self.stress_strain_stresses.clear()
+
         # Reset max load
         self.max_load = 0.0
         self.maxLoadValue.setText("0.00")
 
-        # Reset current points count
+        # Reset max stress/strain
+        self.max_stress = 0.0
+        self.max_strain = 0.0
+        self.maxStressValue.setText("0.0000")
+        self.maxStrainValue.setText("0.000000")
+
+        # Reset current points count (both tabs)
         self.currentPointsValue.setText("0")
+        self.ssCurrentPointsValue.setText("0")
 
         # Reset unsaved flag and update title
         self.data_unsaved = False
         self._update_plot_title()
 
-        # Reset the range slider to full range
+        # Reset the load plot range slider to full range
         self.cropRangeSlider.blockSignals(True)
         self.cropRangeSlider.setRange(0, 100)
         self.cropRangeSlider.blockSignals(False)
 
-        # Hide crop markers
+        # Reset the stress-strain range slider to full range
+        self.ssCropRangeSlider.blockSignals(True)
+        self.ssCropRangeSlider.setRange(0, 100)
+        self.ssCropRangeSlider.blockSignals(False)
+
+        # Hide load plot crop markers
         self.crop_line_low.set_visible(False)
         self.crop_line_high.set_visible(False)
         self.crop_span.set_visible(False)
 
-        # Clear the plot display
+        # Hide stress-strain crop markers
+        self.ss_crop_line_low.set_visible(False)
+        self.ss_crop_line_high.set_visible(False)
+        self.ss_crop_span.set_visible(False)
+
+        # Clear the load plot display
         self.load_line.set_data([], [])
         self.load_markers.set_data([], [])
         self.load_ax.relim()
         self.load_ax.autoscale_view()
         self.load_canvas.draw_idle()
 
-        self.append_to_console("Load plot cleared")
+        # Clear the stress-strain plot display
+        self.ss_line.set_data([], [])
+        self.ss_markers.set_data([], [])
+        self.ss_ax.relim()
+        self.ss_ax.autoscale_view()
+        self.ss_canvas.draw_idle()
+
+        self.append_to_console("Plots cleared")
 
     def _update_display_rate(self):
         """Update the load plot timer interval from the display rate spinbox"""
@@ -660,13 +833,75 @@ class UTMApplication(QMainWindow):
 
         self.load_canvas.draw_idle()
 
+    def _on_ss_crop_range_changed(self, low, high):
+        """Handle stress-strain range slider value changes - update crop markers on plot"""
+        n_points = len(self.stress_strain_strains)
+        if n_points == 0:
+            # No data - hide markers
+            self.ss_crop_line_low.set_visible(False)
+            self.ss_crop_line_high.set_visible(False)
+            self.ss_crop_span.set_visible(False)
+            self.ss_canvas.draw_idle()
+            return
+
+        # If at full range (0-100), hide markers
+        if low == 0 and high == 100:
+            self.ss_crop_line_low.set_visible(False)
+            self.ss_crop_line_high.set_visible(False)
+            self.ss_crop_span.set_visible(False)
+            self.ss_canvas.draw_idle()
+            return
+
+        # Calculate indices from percentages
+        low_idx = int((low / 100.0) * (n_points - 1))
+        high_idx = int((high / 100.0) * (n_points - 1))
+
+        # Get x positions (strain values) for the markers
+        low_strain = self.stress_strain_strains[low_idx]
+        high_strain = self.stress_strain_strains[high_idx]
+
+        # Update vertical line positions
+        self.ss_crop_line_low.set_xdata([low_strain, low_strain])
+        self.ss_crop_line_high.set_xdata([high_strain, high_strain])
+
+        # Update the span (shaded region)
+        self.ss_crop_span.remove()
+        self.ss_crop_span = self.ss_ax.axvspan(low_strain, high_strain, alpha=0.2, color='yellow', visible=True)
+
+        # Show the markers
+        self.ss_crop_line_low.set_visible(True)
+        self.ss_crop_line_high.set_visible(True)
+
+        self.ss_canvas.draw_idle()
+
+        # Keep both range sliders in sync
+        self.cropRangeSlider.blockSignals(True)
+        self.cropRangeSlider.setLow(low)
+        self.cropRangeSlider.setHigh(high)
+        self.cropRangeSlider.blockSignals(False)
+        # Update load plot crop markers
+        self._on_crop_range_changed(low, high)
+
+    def _sync_plot_toggles(self):
+        """Keep both plot toggle checkboxes in sync"""
+        sender = self.sender()
+        if sender == self.loadTogglePlotCheckBox:
+            self.ssTogglePlotCheckBox.blockSignals(True)
+            self.ssTogglePlotCheckBox.setChecked(self.loadTogglePlotCheckBox.isChecked())
+            self.ssTogglePlotCheckBox.blockSignals(False)
+        elif sender == self.ssTogglePlotCheckBox:
+            self.loadTogglePlotCheckBox.blockSignals(True)
+            self.loadTogglePlotCheckBox.setChecked(self.ssTogglePlotCheckBox.isChecked())
+            self.loadTogglePlotCheckBox.blockSignals(False)
+
     def on_crop_data(self):
-        """Crop the data to the selected range"""
+        """Crop the data to the selected range (affects both plots since data is synced)"""
         n_points = len(self.load_plot_times)
         if n_points == 0:
             self.append_to_console("No data to crop")
             return
 
+        # Use whichever range slider has been adjusted (both should be in sync)
         low = self.cropRangeSlider.low()
         high = self.cropRangeSlider.high()
 
@@ -679,12 +914,16 @@ class UTMApplication(QMainWindow):
         low_idx = int((low / 100.0) * (n_points - 1))
         high_idx = int((high / 100.0) * (n_points - 1))
 
-        # Crop the data
+        # Crop the load plot data
         self.load_plot_times = self.load_plot_times[low_idx:high_idx + 1]
         self.load_plot_forces = self.load_plot_forces[low_idx:high_idx + 1]
         self.load_plot_raw_forces = self.load_plot_raw_forces[low_idx:high_idx + 1]
         self.load_plot_positions = self.load_plot_positions[low_idx:high_idx + 1]
         self.load_plot_speeds = self.load_plot_speeds[low_idx:high_idx + 1]
+
+        # Crop the stress-strain data
+        self.stress_strain_strains = self.stress_strain_strains[low_idx:high_idx + 1]
+        self.stress_strain_stresses = self.stress_strain_stresses[low_idx:high_idx + 1]
 
         # Recalculate max load from cropped data (by absolute value, preserving sign)
         if self.load_plot_forces:
@@ -694,22 +933,49 @@ class UTMApplication(QMainWindow):
             self.max_load = 0.0
             self.maxLoadValue.setText("0.00")
 
-        # Update current points count
-        self.currentPointsValue.setText(str(len(self.load_plot_forces)))
+        # Recalculate max stress/strain from cropped data
+        if self.stress_strain_stresses:
+            self.max_stress = max(self.stress_strain_stresses, key=abs)
+            self.maxStressValue.setText(f"{self.max_stress:.4f}")
+        else:
+            self.max_stress = 0.0
+            self.maxStressValue.setText("0.0000")
 
-        # Reset the range slider to full range
+        if self.stress_strain_strains:
+            self.max_strain = max(self.stress_strain_strains, key=abs)
+            self.maxStrainValue.setText(f"{self.max_strain:.6f}")
+        else:
+            self.max_strain = 0.0
+            self.maxStrainValue.setText("0.000000")
+
+        # Update current points count (both tabs)
+        self.currentPointsValue.setText(str(len(self.load_plot_forces)))
+        self.ssCurrentPointsValue.setText(str(len(self.stress_strain_stresses)))
+
+        # Reset both range sliders to full range
         self.cropRangeSlider.blockSignals(True)
         self.cropRangeSlider.setRange(0, 100)
         self.cropRangeSlider.blockSignals(False)
 
-        # Hide the crop markers
+        self.ssCropRangeSlider.blockSignals(True)
+        self.ssCropRangeSlider.setRange(0, 100)
+        self.ssCropRangeSlider.blockSignals(False)
+
+        # Hide the load plot crop markers
         self.crop_line_low.set_visible(False)
         self.crop_line_high.set_visible(False)
         self.crop_span.set_visible(False)
 
-        # Force plot update
+        # Hide the stress-strain crop markers
+        self.ss_crop_line_low.set_visible(False)
+        self.ss_crop_line_high.set_visible(False)
+        self.ss_crop_span.set_visible(False)
+
+        # Force both plots to update
         self.load_plot_needs_update = True
+        self.stress_strain_plot_needs_update = True
         self._update_load_plot()
+        self._update_stress_strain_plot()
 
         self.append_to_console(f"Data cropped: {n_points} -> {len(self.load_plot_times)} points")
 
@@ -1709,21 +1975,40 @@ class UTMApplication(QMainWindow):
             speed_mm_s = self.motor_velocity_rpm * 5.0 / 1200.0
             self.load_plot_speeds.append(speed_mm_s)
 
+            # Calculate stress and strain for stress-strain plot
+            # Strain = displacement / gauge_length (dimensionless)
+            strain = self.motor_displacement_mm / self.gauge_length if self.gauge_length > 0 else 0
+            # Stress = force / area (N/mm² = MPa)
+            stress = force / self.cross_sectional_area if self.cross_sectional_area > 0 else 0
+
+            self.stress_strain_strains.append(strain)
+            self.stress_strain_stresses.append(stress)
+
             # Update max load if this is a new maximum (by absolute value, preserving sign)
             if abs(force) > abs(self.max_load):
                 self.max_load = force
                 self.maxLoadValue.setText(f"{self.max_load:.2f}")
 
-            # Update current points count
+            # Update max stress/strain if new maximum (by absolute value, preserving sign)
+            if abs(stress) > abs(self.max_stress):
+                self.max_stress = stress
+                self.maxStressValue.setText(f"{self.max_stress:.4f}")
+            if abs(strain) > abs(self.max_strain):
+                self.max_strain = strain
+                self.maxStrainValue.setText(f"{self.max_strain:.6f}")
+
+            # Update current points count (same for both plots)
             self.currentPointsValue.setText(str(len(self.load_plot_forces)))
+            self.ssCurrentPointsValue.setText(str(len(self.stress_strain_stresses)))
 
             # Mark data as unsaved and update plot title
             if not self.data_unsaved:
                 self.data_unsaved = True
                 self._update_plot_title()
 
-            # Flag for plot update
+            # Flag both plots for update
             self.load_plot_needs_update = True
+            self.stress_strain_plot_needs_update = True
 
     def on_motor_position_data(self, raw_angle):
         """Handle parsed motor position data from encoder"""
