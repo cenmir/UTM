@@ -9,7 +9,7 @@ APPLICATION VERSION - UPDATE ON EVERY COMMIT!
 ============================================
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.4"
 
 
 import sys
@@ -17,7 +17,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QMainWindow
 from PyQt6 import uic
 from serial_manager import SerialManager
-from widgets import FluentSwitch
+from widgets import FluentSwitch, SpeedGauge
 
 # Path to the UI file
 UI_FILE = Path(__file__).parent / "ui" / "utm_mainwindow.ui"
@@ -76,6 +76,96 @@ class UTMApplication(QMainWindow):
                 layout.insertWidget(i, self.motorsSwitch)
                 break
 
+        # Replace Data Stream checkboxes with FluentSwitch toggles
+        # These control whether data is displayed to console (polling is automatic)
+        self._replace_checkbox_with_switch('loadCellCheckBox', 'loadCellSwitch', 'formLayout_dataStreams', 0)
+        self._replace_checkbox_with_switch('positionCheckBox', 'positionSwitch', 'formLayout_dataStreams', 1)
+        self._replace_checkbox_with_switch('velocityCheckBox', 'velocitySwitch', 'formLayout_dataStreams', 2)
+
+        # Replace speed unit checkbox with radio buttons
+        self._setup_speed_unit_controls()
+
+        # Replace speed gauge placeholder with actual SpeedGauge widget
+        self._setup_speed_gauge()
+
+    def _replace_checkbox_with_switch(self, checkbox_name, switch_name, layout_name, row):
+        """Helper to replace a checkbox with FluentSwitch in a form layout"""
+        checkbox = getattr(self, checkbox_name, None)
+        layout = getattr(self, layout_name, None)
+
+        if checkbox and layout:
+            switch = FluentSwitch()
+            switch.setFixedSize(44, 22)
+            setattr(self, switch_name, switch)
+
+            # Remove old checkbox and add switch
+            layout.removeWidget(checkbox)
+            checkbox.hide()
+            checkbox.deleteLater()
+            layout.setWidget(row, layout.ItemRole.FieldRole, switch)
+
+    def _setup_speed_unit_controls(self):
+        """Replace speed unit checkbox with radio buttons and reorganize speed controls"""
+        from PyQt6.QtWidgets import QRadioButton, QLabel, QButtonGroup
+
+        # Get the speed unit layout
+        layout = self.horizontalLayout_speedUnit
+
+        # Clear existing widgets
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # Create "Speed unit:" label
+        speed_unit_label = QLabel("Speed unit:")
+        layout.addWidget(speed_unit_label)
+
+        # Create radio buttons for mm/s and RPM
+        self.speedUnitMmRadio = QRadioButton("mm/s")
+        self.speedUnitRpmRadio = QRadioButton("RPM")
+
+        # Create button group for mutual exclusivity
+        self.speedUnitGroup = QButtonGroup(self)
+        self.speedUnitGroup.addButton(self.speedUnitMmRadio)
+        self.speedUnitGroup.addButton(self.speedUnitRpmRadio)
+
+        # Default to mm/s
+        self.speedUnitMmRadio.setChecked(True)
+
+        layout.addWidget(self.speedUnitMmRadio)
+        layout.addWidget(self.speedUnitRpmRadio)
+        layout.addStretch()
+
+        # Update the "Set RPM:" label to "Set speed:"
+        self.label_3.setText("Set speed:")
+
+        # Add unit label after spinbox
+        self.speedUnitValueLabel = QLabel("mm/s")
+        self.horizontalLayout_setSpeed.addWidget(self.speedUnitValueLabel)
+
+    def _setup_speed_gauge(self):
+        """Replace the speed gauge placeholder with actual SpeedGauge widget"""
+        # Get the layout containing the placeholder
+        layout = self.verticalLayout_speed
+
+        # Find and replace the placeholder
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            if item and item.widget() == self.speedGaugePlaceholder:
+                # Create the speed gauge
+                self.speedGauge = SpeedGauge()
+                self.speedGauge.setFixedSize(150, 150)
+                self.speedGauge.setMaxValue(self.MAX_RPM)
+                self.speedGauge.setUnit("RPM")
+
+                # Remove placeholder and insert gauge
+                layout.removeWidget(self.speedGaugePlaceholder)
+                self.speedGaugePlaceholder.hide()
+                self.speedGaugePlaceholder.deleteLater()
+                layout.insertWidget(i, self.speedGauge)
+                break
+
     def connect_signals(self):
         """Connect UI signals to their respective slot functions"""
         # Console controls
@@ -96,10 +186,17 @@ class UTMApplication(QMainWindow):
         self.scanPortsButton.clicked.connect(self.on_scan_ports)
         self.connectionSwitch.clicked.connect(self.on_connection_toggle)
 
-        # Right panel - Data stream toggles
-        self.loadCellCheckBox.stateChanged.connect(self.on_load_cell_toggle)
-        self.positionCheckBox.stateChanged.connect(self.on_position_toggle)
-        self.velocityCheckBox.stateChanged.connect(self.on_velocity_toggle)
+        # Right panel - Data stream toggles (control console display, not polling)
+        # Polling is automatic - these control whether data is printed to console
+        self.loadCellSwitch.clicked.connect(lambda: self.on_load_cell_toggle(self.loadCellSwitch.isChecked()))
+        self.positionSwitch.clicked.connect(lambda: self.on_position_toggle(self.positionSwitch.isChecked()))
+        self.velocitySwitch.clicked.connect(lambda: self.on_velocity_toggle(self.velocitySwitch.isChecked()))
+
+        # Right panel - Speed unit radio buttons
+        self.speedUnitMmRadio.toggled.connect(self.on_speed_unit_changed)
+        self.speedUnitRpmRadio.toggled.connect(self.on_speed_unit_changed)
+        # Use editingFinished instead of valueChanged to only update on Enter or focus lost
+        self.setSpeedSpinBox.editingFinished.connect(self.on_speed_editing_finished)
 
         # Right panel - Motor controls
         self.upRadioButton.toggled.connect(self.on_direction_changed)
@@ -118,16 +215,18 @@ class UTMApplication(QMainWindow):
 
     def init_state(self):
         """Initialize application state variables"""
+        from PyQt6.QtCore import QTimer
+
         # Serial communication
         self.serial_manager = SerialManager()
         self.connected = False
-        
+
         # Connect serial manager signals
         self.serial_manager.connection_changed.connect(self.on_connection_state_changed)
         self.serial_manager.data_received.connect(self.on_serial_data_received)
         self.serial_manager.load_cell_data.connect(self.on_load_cell_data)
-        self.serial_manager.position_data.connect(self.on_position_data)
-        self.serial_manager.velocity_data.connect(self.on_velocity_data)
+        self.serial_manager.position_data.connect(self.on_motor_position_data)
+        self.serial_manager.velocity_data.connect(self.on_motor_velocity_data)
         self.serial_manager.firmware_version.connect(self.on_firmware_version)
         self.serial_manager.error_occurred.connect(self.on_serial_error)
 
@@ -136,15 +235,47 @@ class UTMApplication(QMainWindow):
         self.max_load = 0.0
         self.cross_sectional_area = 80.0  # mm²
         self.gauge_length = 80.0  # mm
-        
+
         # Calibration values
         self.force_scale = -0.0065
         self.force_offset = -24.5185
-        
-        # Position tracking
-        self.position_zero = 0.0  # Tare offset
-        self.current_position_mm = 0.0
-        self.current_velocity_rpm = 0.0
+
+        # Motor position tracking (from encoder)
+        # Note: This is motor/encoder-based displacement. DIC strain will be separate.
+        self.motor_position_zero = 0.0  # Tare offset for motor position
+        self.motor_position_raw = 0  # Raw encoder value
+        self.motor_displacement_mm = 0.0  # Calculated displacement in mm
+        self.motor_velocity_rpm = 0.0  # Current motor velocity
+        self.motor_velocity_avg_rpm = 0.0  # Averaged motor velocity
+
+        # Console display toggles (data is always polled, these control console output)
+        self.display_position_to_console = False
+        self.display_velocity_to_console = False
+
+        # Stall detection (only for continuous movement, not incremental moves)
+        self.stall_detection_enabled = True
+        self.stall_velocity_threshold = 0.5  # RPM below this is considered stalled
+        self.stall_count = 0  # Counter for consecutive stall readings
+        self.stall_count_threshold = 3  # Number of consecutive readings before triggering stall
+        self.incremental_move_active = False  # True during MoveSteps command
+        self.movement_start_grace_period = False  # True briefly after starting movement
+
+        # Polling timers for motor data
+        # Timer for position polling (always when connected)
+        self.motor_position_timer = QTimer()
+        self.motor_position_timer.setInterval(100)  # 10 Hz polling
+        self.motor_position_timer.timeout.connect(self._poll_motor_position)
+
+        # Timer for velocity polling (when motors enabled)
+        self.motor_velocity_timer = QTimer()
+        self.motor_velocity_timer.setInterval(200)  # 5 Hz polling
+        self.motor_velocity_timer.timeout.connect(self._poll_motor_velocity)
+
+        # Timer for movement start grace period (1 second to allow motor acceleration)
+        self.grace_period_timer = QTimer()
+        self.grace_period_timer.setSingleShot(True)
+        self.grace_period_timer.setInterval(1000)  # 1 second grace period
+        self.grace_period_timer.timeout.connect(self._end_grace_period)
 
         # Console initialization
         self.append_to_console("UTM Control Application Started")
@@ -153,6 +284,9 @@ class UTMApplication(QMainWindow):
         self.auto_scan_ports()
 
         self.append_to_console("Ready to connect to device")
+
+        # Initialize speed control for mm/s mode (default)
+        self._init_speed_controls()
 
         # Update UI with initial values
         self.update_load_display()
@@ -338,14 +472,16 @@ class UTMApplication(QMainWindow):
         connected = self.connected
         motors_enabled = self.motorsSwitch.isChecked()
 
-        # Data Streams group - enabled only when connected
-        self.loadCellCheckBox.setEnabled(connected)
-        self.positionCheckBox.setEnabled(connected)
-        self.velocityCheckBox.setEnabled(connected)
+        # Data Streams group - toggles enabled when connected
+        self.loadCellSwitch.setEnabled(connected)
+        self.positionSwitch.setEnabled(connected)
+        self.velocitySwitch.setEnabled(connected)
 
         # Speed Control group - enabled only when connected
-        self.speedGaugePlaceholder.setEnabled(connected)
-        # TODO: Enable speed spinbox and other speed controls when they exist
+        self.speedGauge.setEnabled(connected)
+        self.setSpeedSpinBox.setEnabled(connected)
+        self.speedUnitMmRadio.setEnabled(connected)
+        self.speedUnitRpmRadio.setEnabled(connected)
 
         # Motor Control group - Motors toggle enabled when connected
         self.motorsSwitch.setEnabled(connected)
@@ -374,7 +510,7 @@ class UTMApplication(QMainWindow):
     # ========== Data Stream Functions ==========
 
     def on_load_cell_toggle(self, state):
-        """Toggle load cell data streaming"""
+        """Toggle load cell data streaming to firmware"""
         if state:
             self.append_to_console("Load cell data ON")
             if self.connected:
@@ -385,22 +521,191 @@ class UTMApplication(QMainWindow):
                 self.serial_manager.send_command("LoadCellOff")
 
     def on_position_toggle(self, state):
-        """Toggle position data streaming"""
+        """Toggle position data display in console"""
+        self.display_position_to_console = state
         if state:
-            self.append_to_console("Position data ON")
-            # TODO: Start position polling
+            self.append_to_console("Position display ON")
         else:
-            self.append_to_console("Position data OFF")
-            # TODO: Stop position polling
+            self.append_to_console("Position display OFF")
 
     def on_velocity_toggle(self, state):
-        """Toggle velocity data streaming"""
+        """Toggle velocity data display in console"""
+        self.display_velocity_to_console = state
         if state:
-            self.append_to_console("Velocity data ON")
-            # TODO: Start velocity polling
+            self.append_to_console("Velocity display ON")
         else:
-            self.append_to_console("Velocity data OFF")
-            # TODO: Stop velocity polling
+            self.append_to_console("Velocity display OFF")
+
+    # ========== Motor Data Polling ==========
+
+    def _start_motor_polling(self):
+        """Start polling motor position (called when connected)"""
+        self.motor_position_timer.start()
+        self.append_to_console("Motor position polling started")
+
+    def _stop_motor_polling(self):
+        """Stop all motor polling (called when disconnected)"""
+        self.motor_position_timer.stop()
+        self.motor_velocity_timer.stop()
+
+    def _start_velocity_polling(self):
+        """Start polling motor velocity (called when motors enabled)"""
+        if not self.motor_velocity_timer.isActive():
+            self.motor_velocity_timer.start()
+
+    def _stop_velocity_polling(self):
+        """Stop polling motor velocity (called when motors disabled)"""
+        self.motor_velocity_timer.stop()
+
+    def _poll_motor_position(self):
+        """Timer callback to poll motor position"""
+        if self.connected:
+            self.serial_manager.send_command("GetTotalAngle")
+
+    def _poll_motor_velocity(self):
+        """Timer callback to poll motor velocity"""
+        if self.connected:
+            self.serial_manager.send_command("GetVelocity")
+
+    def _start_movement_grace_period(self):
+        """Start a grace period after beginning movement (allows motor to accelerate)"""
+        self.movement_start_grace_period = True
+        self.stall_count = 0  # Reset stall counter
+        self.grace_period_timer.start()
+
+    def _end_grace_period(self):
+        """Called when grace period ends - stall detection can now activate"""
+        self.movement_start_grace_period = False
+
+    # ========== Speed Control Functions ==========
+
+    # Conversion constants
+    # Lead screw: 5mm pitch, 20:1 gear ratio
+    # 1 RPM = 5mm / 20 / 60 = 0.004167 mm/s
+    MM_PER_S_PER_RPM = 5.0 / 20.0 / 60.0  # ~0.004167
+
+    # Safety limits
+    MAX_RPM = 450  # Maximum allowed RPM (hardware limit)
+    MAX_MM_PER_S = MAX_RPM * MM_PER_S_PER_RPM  # ~1.875 mm/s
+
+    def _init_speed_controls(self):
+        """Initialize speed controls with mm/s defaults"""
+        # Set spinbox for mm/s mode with safety limit
+        self.setSpeedSpinBox.setMaximum(self.MAX_MM_PER_S)  # Limited by MAX_RPM
+        self.setSpeedSpinBox.setDecimals(3)
+        self.setSpeedSpinBox.setSingleStep(0.1)
+        self.setSpeedSpinBox.setValue(0.5)  # Default 0.5 mm/s (~120 RPM)
+
+        # Initialize speed display to 0 (no measured speed yet)
+        self.speedDisplayLabel.setText("Speed: 0.00 mm/s")
+
+    def on_speed_unit_changed(self, checked):
+        """Handle speed unit radio button change"""
+        if not checked:
+            return
+
+        is_mm = self.speedUnitMmRadio.isChecked()
+        unit = "mm/s" if is_mm else "RPM"
+
+        # Get current value BEFORE changing spinbox settings
+        current_value = self.setSpeedSpinBox.value()
+
+        # Block signals to prevent sending commands during conversion
+        self.setSpeedSpinBox.blockSignals(True)
+
+        # Convert current spinbox value to new unit
+        if is_mm:
+            # Switching TO mm/s FROM RPM - convert RPM to mm/s
+            new_value = current_value * self.MM_PER_S_PER_RPM
+            self.setSpeedSpinBox.setMaximum(self.MAX_MM_PER_S)  # Limited by MAX_RPM
+            self.setSpeedSpinBox.setDecimals(3)
+            self.setSpeedSpinBox.setSingleStep(0.1)
+        else:
+            # Switching TO RPM FROM mm/s - convert mm/s to RPM
+            new_value = current_value / self.MM_PER_S_PER_RPM if self.MM_PER_S_PER_RPM > 0 else 0
+            self.setSpeedSpinBox.setMaximum(self.MAX_RPM)  # Safety limit
+            self.setSpeedSpinBox.setDecimals(1)
+            self.setSpeedSpinBox.setSingleStep(1.0)
+
+        # Clamp new value to max (in case of rounding errors)
+        new_value = min(new_value, self.setSpeedSpinBox.maximum())
+
+        self.setSpeedSpinBox.setValue(new_value)
+        self.setSpeedSpinBox.blockSignals(False)
+
+        # Update unit label next to spinbox
+        self.speedUnitValueLabel.setText(unit)
+
+        # Update the speed display label
+        self._update_speed_display()
+
+        # Update speed gauge unit and max
+        if is_mm:
+            self.speedGauge.setMaxValue(self.MAX_MM_PER_S)
+            self.speedGauge.setUnit("mm/s")
+        else:
+            self.speedGauge.setMaxValue(self.MAX_RPM)
+            self.speedGauge.setUnit("RPM")
+
+        self.append_to_console(f"Speed unit changed to {unit} ({new_value:.2f} {unit})")
+
+    def on_speed_editing_finished(self):
+        """Handle speed spinbox editing finished (Enter pressed or focus lost)"""
+        self._update_speed_display()
+
+        # If motors are running and moving (not STOP), update speed
+        if self.connected and self.motorsSwitch.isChecked():
+            if not self.stopRadioButton.isChecked():
+                firmware_speed = self.get_firmware_speed()
+                speed_rpm = self.get_speed_rpm()
+                self.append_to_console(f"Speed updated to {speed_rpm:.1f} RPM")
+                self.serial_manager.send_command(f"SetSpeed {firmware_speed}")
+
+    def _update_speed_display(self):
+        """Update the speed display label with SET speed (when motors are off)"""
+        is_mm = self.speedUnitMmRadio.isChecked()
+        value = self.setSpeedSpinBox.value()
+        unit = "mm/s" if is_mm else "RPM"
+        self.speedDisplayLabel.setText(f"Set: {value:.2f} {unit}")
+
+    def _update_measured_speed_display(self):
+        """Update the speed display label and gauge with MEASURED velocity (when motors are running)"""
+        is_mm = self.speedUnitMmRadio.isChecked()
+        if is_mm:
+            # Convert RPM to mm/s
+            value = self.motor_velocity_rpm * self.MM_PER_S_PER_RPM
+            unit = "mm/s"
+            max_value = self.MAX_MM_PER_S
+        else:
+            value = self.motor_velocity_rpm
+            unit = "RPM"
+            max_value = self.MAX_RPM
+        self.speedDisplayLabel.setText(f"Speed: {value:.2f} {unit}")
+
+        # Update the speed gauge
+        self.speedGauge.setMaxValue(max_value)
+        self.speedGauge.setUnit(unit)
+        self.speedGauge.setValue(value)
+
+    def get_speed_rpm(self):
+        """Get the current speed setting in RPM (for firmware commands)"""
+        value = self.setSpeedSpinBox.value()
+        if self.speedUnitMmRadio.isChecked():
+            # Convert mm/s to RPM
+            rpm = value / self.MM_PER_S_PER_RPM if self.MM_PER_S_PER_RPM > 0 else 0
+        else:
+            rpm = value
+        # Safety clamp (should be caught by spinbox limits, but just in case)
+        return min(rpm, self.MAX_RPM)
+
+    def get_firmware_speed(self):
+        """Get speed in firmware units (RPM × 10), clamped to MAX_RPM for safety"""
+        rpm = self.get_speed_rpm()
+        # SAFETY: Clamp to maximum RPM to prevent dangerous speeds
+        if rpm > self.MAX_RPM:
+            self.append_to_console(f"WARNING: Speed {rpm:.1f} RPM clamped to {self.MAX_RPM} RPM (max)")
+            rpm = self.MAX_RPM
+        return int(rpm * 10)
 
     # ========== Motor Control Functions ==========
 
@@ -410,26 +715,32 @@ class UTMApplication(QMainWindow):
         # Radio buttons emit toggled(False) for old button and toggled(True) for new button
         if not checked:
             return
-            
+
         if not self.connected:
             return
-        
-        # Default speed: 50 RPM (500 in firmware units = RPM × 10)
-        # TODO: Get this from speed control UI when implemented
-        default_speed_rpm = 50
-        firmware_speed = default_speed_rpm * 10  # Firmware expects RPM × 10
-        
+
+        # Get speed from the speed selector
+        firmware_speed = self.get_firmware_speed()
+        speed_rpm = self.get_speed_rpm()
+
         if self.upRadioButton.isChecked():
-            self.append_to_console(f"Direction: UP at {default_speed_rpm} RPM")
+            self.append_to_console(f"Direction: UP at {speed_rpm:.1f} RPM")
             self.serial_manager.send_command(f"SetSpeed {firmware_speed}")
             self.serial_manager.send_command("Up")
+            # Start grace period for stall detection
+            self._start_movement_grace_period()
         elif self.downRadioButton.isChecked():
-            self.append_to_console(f"Direction: DOWN at {default_speed_rpm} RPM")
+            self.append_to_console(f"Direction: DOWN at {speed_rpm:.1f} RPM")
             self.serial_manager.send_command(f"SetSpeed {firmware_speed}")
             self.serial_manager.send_command("Down")
+            # Start grace period for stall detection
+            self._start_movement_grace_period()
         else:
             self.append_to_console("Direction: STOP")
             self.serial_manager.send_command("Stop")
+            # Cancel grace period if stopping
+            self.grace_period_timer.stop()
+            self.movement_start_grace_period = False
 
     def on_motors_toggle(self, state):
         """Toggle motor enable/disable"""
@@ -442,6 +753,8 @@ class UTMApplication(QMainWindow):
             self.append_to_console("Motors ENABLED (direction set to STOP)")
             if self.connected:
                 self.serial_manager.send_command("Enable")
+                # Start velocity polling when motors are enabled
+                self._start_velocity_polling()
         else:
             # SAFETY: Stop motor rotation and set direction to STOP before disabling
             self.stopRadioButton.blockSignals(True)
@@ -452,6 +765,12 @@ class UTMApplication(QMainWindow):
             if self.connected:
                 self.serial_manager.send_command("Stop")
                 self.serial_manager.send_command("Disable")
+            # Stop velocity polling when motors are disabled
+            self._stop_velocity_polling()
+            # Switch speed display back to showing SET speed
+            self._update_speed_display()
+            # Reset speed gauge to 0
+            self.speedGauge.setValue(0)
 
         # Update direction and incremental move controls based on motor state
         self.update_controls_enabled_state()
@@ -467,16 +786,36 @@ class UTMApplication(QMainWindow):
     # ========== Position & Incremental Move Functions ==========
 
     def on_tare_location(self):
-        """Tare the position (zero the displacement)"""
-        self.position_zero = self.current_position_mm
-        self.append_to_console(f"Position tared (offset: {self.position_zero:.4f} mm)")
+        """Tare the motor position (zero the displacement)"""
+        # Calculate current absolute position from raw encoder value
+        angle_deg = -self.motor_position_raw * (360.0 / 4096.0)
+        rotations = angle_deg / 360.0
+        screw_rotations = rotations / 20.0  # 20:1 gear ratio
+        current_position_mm = screw_rotations * 5.0  # 5mm pitch
+
+        self.motor_position_zero = current_position_mm
+        self.motor_displacement_mm = 0.0
+        self.append_to_console(f"Motor position tared (offset: {self.motor_position_zero:.4f} mm)")
         self.displacementLabel.setText("δ = 0.0000 mm")
 
     def on_move_up(self):
         """Move up by specified distance"""
         distance = self.moveDistanceSpinBox.value()
-        self.append_to_console(f"Moving up {distance} mm")
+        firmware_speed = self.get_firmware_speed()
+        speed_rpm = self.get_speed_rpm()
+        self.append_to_console(f"Moving up {distance} mm at {speed_rpm:.1f} RPM")
+
+        # Mark incremental move active (disables stall detection during move)
+        self.incremental_move_active = True
+
+        # Update direction indicator to show Up (block signals to prevent sending direction command)
+        self.upRadioButton.blockSignals(True)
+        self.upRadioButton.setChecked(True)
+        self.upRadioButton.blockSignals(False)
+
         if self.connected:
+            # Set speed first
+            self.serial_manager.send_command(f"SetSpeed {firmware_speed}")
             # Calculate steps: 200 steps/rev * 8 microstepping * 20 gear ratio / 5mm pitch
             steps = round(200 * 8 * 20 * distance / 5)
             self.serial_manager.send_command(f"MoveSteps {steps}")
@@ -484,8 +823,21 @@ class UTMApplication(QMainWindow):
     def on_move_down(self):
         """Move down by specified distance"""
         distance = self.moveDistanceSpinBox.value()
-        self.append_to_console(f"Moving down {distance} mm")
+        firmware_speed = self.get_firmware_speed()
+        speed_rpm = self.get_speed_rpm()
+        self.append_to_console(f"Moving down {distance} mm at {speed_rpm:.1f} RPM")
+
+        # Mark incremental move active (disables stall detection during move)
+        self.incremental_move_active = True
+
+        # Update direction indicator to show Down (block signals to prevent sending direction command)
+        self.downRadioButton.blockSignals(True)
+        self.downRadioButton.setChecked(True)
+        self.downRadioButton.blockSignals(False)
+
         if self.connected:
+            # Set speed first
+            self.serial_manager.send_command(f"SetSpeed {firmware_speed}")
             # Calculate steps (negative for down)
             steps = -round(200 * 8 * 20 * distance / 5)
             self.serial_manager.send_command(f"MoveSteps {steps}")
@@ -512,6 +864,8 @@ class UTMApplication(QMainWindow):
                 self.connectionSwitch.blockSignals(True)
                 self.connectionSwitch.setChecked(True)
                 self.connectionSwitch.blockSignals(False)
+            # Start motor position polling
+            self._start_motor_polling()
         else:
             self.update_status_lamp(False)
             # Update switch state - block signals to prevent triggering disconnect again
@@ -519,13 +873,26 @@ class UTMApplication(QMainWindow):
                 self.connectionSwitch.blockSignals(True)
                 self.connectionSwitch.setChecked(False)
                 self.connectionSwitch.blockSignals(False)
+            # Stop all motor polling
+            self._stop_motor_polling()
 
         # Update all control enabled states
         self.update_controls_enabled_state()
 
     def on_serial_data_received(self, data):
-        """Handle raw serial data (display in console)"""
-        # Display received data in console
+        """Handle raw serial data (display in console based on toggle states)"""
+        # Filter out position/velocity data based on toggle states
+        # These are parsed separately and displayed via their own handlers
+        if data.startswith("Total Angle:"):
+            # Position data - only show if position toggle is on
+            # (handled by on_motor_position_data)
+            return
+        if data.startswith("Velocity:"):
+            # Velocity data - only show if velocity toggle is on
+            # (handled by on_motor_velocity_data)
+            return
+
+        # Display other received data in console
         self.append_to_console(f"<< {data}")
 
     def on_load_cell_data(self, raw_value):
@@ -540,26 +907,102 @@ class UTMApplication(QMainWindow):
         self.update_load_display()
         # TODO: Add to data storage and update plots
 
-    def on_position_data(self, raw_angle):
-        """Handle parsed position data"""
+    def on_motor_position_data(self, raw_angle):
+        """Handle parsed motor position data from encoder"""
+        # Store raw value
+        self.motor_position_raw = raw_angle
+
         # Convert raw angle to mm: angle_deg = -raw * (360/4096)
         angle_deg = -raw_angle * (360.0 / 4096.0)
         rotations = angle_deg / 360.0
         screw_rotations = rotations / 20.0  # 20:1 gear ratio
         position_mm = screw_rotations * 5.0  # 5mm pitch
-        
-        self.current_position_mm = position_mm
-        displacement = position_mm - self.position_zero
-        
+
+        # Calculate displacement relative to tare point
+        self.motor_displacement_mm = position_mm - self.motor_position_zero
+
         # Update displacement label
-        self.displacementLabel.setText(f"δ = {displacement:.4f} mm")
+        self.displacementLabel.setText(f"δ = {self.motor_displacement_mm:.4f} mm")
+
+        # Display to console if toggle is on
+        if self.display_position_to_console:
+            self.append_to_console(f"Position: {self.motor_displacement_mm:.4f} mm (raw: {raw_angle})")
+
         # TODO: Update linear gauge visual
 
-    def on_velocity_data(self, vel1, vel2):
-        """Handle parsed velocity data"""
-        self.current_velocity_rpm = vel1
-        # TODO: Update speed gauge and label
-        # For now, just store the value
+    def on_motor_velocity_data(self, vel1, vel2):
+        """Handle parsed motor velocity data with stall detection"""
+        self.motor_velocity_rpm = vel1
+        self.motor_velocity_avg_rpm = vel2
+
+        # Display to console if toggle is on
+        if self.display_velocity_to_console:
+            self.append_to_console(f"Velocity: {vel1:.2f} RPM (avg: {vel2:.2f} RPM)")
+
+        # Update speed display label to show MEASURED velocity when motors are running
+        if self.motorsSwitch.isChecked():
+            self._update_measured_speed_display()
+
+        # Check if incremental move completed (velocity near zero)
+        if self.incremental_move_active:
+            if abs(vel1) < self.stall_velocity_threshold and abs(vel2) < self.stall_velocity_threshold:
+                # Incremental move completed - set direction to STOP
+                self.incremental_move_active = False
+                self.stopRadioButton.blockSignals(True)
+                self.stopRadioButton.setChecked(True)
+                self.stopRadioButton.blockSignals(False)
+                self.append_to_console("Incremental move completed")
+            # Skip stall detection during incremental moves
+            return
+
+        # Stall detection: check if motors should be moving but aren't
+        # Only applies to continuous movement (Up/Down direction), not incremental moves
+        # Skip during grace period (motor is still accelerating)
+        if self.stall_detection_enabled and self.motorsSwitch.isChecked() and not self.movement_start_grace_period:
+            # Check if direction is not STOP (motors should be moving)
+            motors_should_move = not self.stopRadioButton.isChecked()
+
+            if motors_should_move:
+                # Check both instantaneous and averaged velocity
+                if abs(vel1) < self.stall_velocity_threshold and abs(vel2) < self.stall_velocity_threshold:
+                    self.stall_count += 1
+                    if self.stall_count >= self.stall_count_threshold:
+                        self._handle_motor_stall()
+                else:
+                    # Reset stall counter if we're moving
+                    self.stall_count = 0
+            else:
+                # Motors are in STOP, reset stall counter
+                self.stall_count = 0
+
+        # TODO: Update speed gauge visual
+
+    def _handle_motor_stall(self):
+        """Handle detected motor stall - emergency stop and warn user"""
+        self.append_to_console("⚠ WARNING: MOTOR STALL DETECTED!")
+        self.append_to_console("⚠ Motors stopped for safety!")
+
+        # Trigger emergency stop
+        if self.connected:
+            self.serial_manager.send_command("EStop")
+
+        # Reset UI state
+        self.stopRadioButton.blockSignals(True)
+        self.stopRadioButton.setChecked(True)
+        self.stopRadioButton.blockSignals(False)
+
+        self.motorsSwitch.blockSignals(True)
+        self.motorsSwitch.setChecked(False)
+        self.motorsSwitch.blockSignals(False)
+
+        # Stop velocity polling
+        self._stop_velocity_polling()
+
+        # Reset stall counter
+        self.stall_count = 0
+
+        # Update controls
+        self.update_controls_enabled_state()
     
     def on_firmware_version(self, version):
         """Handle firmware version received from ESP32"""

@@ -9,9 +9,10 @@ Contains custom Qt widgets including toggle switches and gauges.
 # Retrieved 2026-01-02, License - CC BY-SA 4.0
 # Modified for PyQt6 compatibility
 
+import math
 from PyQt6.QtCore import QObject, QSize, QPointF, QRectF, QPropertyAnimation, QEasingCurve, pyqtProperty, pyqtSlot, Qt
-from PyQt6.QtGui import QPainter, QPalette, QLinearGradient, QGradient, QColor, QPen
-from PyQt6.QtWidgets import QAbstractButton
+from PyQt6.QtGui import QPainter, QPalette, QLinearGradient, QGradient, QColor, QPen, QFont, QConicalGradient, QBrush
+from PyQt6.QtWidgets import QAbstractButton, QWidget
 
 
 class SwitchPrivate(QObject):
@@ -225,3 +226,300 @@ class FluentSwitch(QAbstractButton):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(indicator_color)
         painter.drawEllipse(QPointF(indicator_x, indicator_y), indicator_radius, indicator_radius)
+
+
+class SpeedGauge(QWidget):
+    """
+    A circular speed gauge widget for displaying RPM or mm/s.
+
+    Features:
+    - Circular arc showing speed range from -max to +max
+    - Zero point at top (12 o'clock position)
+    - Needle indicator pointing to current value
+    - Digital readout in center
+    - Color gradient based on absolute speed (green low, red high)
+
+    Usage:
+        gauge = SpeedGauge()
+        gauge.setValue(120.0)  # Set current speed (positive or negative)
+        gauge.setMaxValue(450)  # Set maximum (default 450 RPM, range is -450 to +450)
+        gauge.setUnit("RPM")  # Set unit label
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._value = 0.0
+        self._max_value = 450.0  # Default max RPM (symmetric range: -max to +max)
+        self._unit = "RPM"
+
+        # Visual settings
+        self._arc_width = 12
+        # Arc spans from 7 o'clock (-max) through 12 o'clock (0) to 5 o'clock (+max)
+        # In Qt coordinate system: 0° is 3 o'clock, positive is counter-clockwise
+        # 225° is 7 o'clock (bottom-left), 90° is 12 o'clock (top), -45° (315°) is 5 o'clock (bottom-right)
+        self._start_angle = 225  # 7 o'clock position (for -max)
+        self._span_angle = 270   # Total arc span (225° to -45°, going clockwise)
+
+        # Colors
+        self._background_color = QColor(40, 40, 40)
+        self._arc_background = QColor(60, 60, 60)
+        self._text_color = QColor(220, 220, 220)
+        self._needle_color = QColor(255, 80, 80)
+
+        self.setMinimumSize(120, 120)
+
+    def sizeHint(self):
+        return QSize(150, 150)
+
+    def setValue(self, value):
+        """Set the current speed value (can be negative or positive)"""
+        # Clamp to symmetric range: -max to +max
+        self._value = max(-self._max_value, min(value, self._max_value))
+        self.update()
+
+    def value(self):
+        return self._value
+
+    def setMaxValue(self, max_val):
+        """Set the maximum value on the gauge (range becomes -max to +max)"""
+        self._max_value = abs(max_val)  # Ensure positive
+        self.update()
+
+    def setUnit(self, unit):
+        """Set the unit label (e.g., 'RPM' or 'mm/s')"""
+        self._unit = unit
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Calculate dimensions
+        side = min(self.width(), self.height())
+        painter.translate(self.width() / 2, self.height() / 2)
+
+        # Scale to fit
+        scale = side / 160.0
+        painter.scale(scale, scale)
+
+        # Draw background circle
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._background_color)
+        painter.drawEllipse(QPointF(0, 0), 75, 75)
+
+        # Draw arc background (gray track)
+        self._draw_arc(painter, self._arc_background, 0, self._span_angle)
+
+        # Draw colored arc from center (0) to current value
+        # Range is -max to +max, with 0 at center (top, 12 o'clock)
+        # Left half (225° to 90°) is negative, right half (90° to -45°) is positive
+        if self._max_value > 0:
+            # Normalize value to -1 to +1 range
+            normalized = self._value / self._max_value
+            normalized = max(-1, min(1, normalized))
+
+            # Calculate arc span from center (0 is at half of total span)
+            # Positive values: arc goes from center toward right (clockwise)
+            # Negative values: arc goes from center toward left (counter-clockwise)
+            half_span = self._span_angle / 2  # 135 degrees
+
+            # Color gradient based on absolute speed (green low, red high)
+            abs_normalized = abs(normalized)
+            if abs_normalized < 0.5:
+                # Green to yellow
+                r = int(100 + abs_normalized * 2 * 155)
+                g = 200
+                b = 100
+            else:
+                # Yellow to red
+                r = 255
+                g = int(200 - (abs_normalized - 0.5) * 2 * 150)
+                b = int(100 - (abs_normalized - 0.5) * 2 * 100)
+
+            arc_color = QColor(r, g, b)
+
+            if normalized >= 0:
+                # Positive: draw from center toward +max (clockwise from 90° toward -45°)
+                arc_span = normalized * half_span
+                self._draw_arc_from_center(painter, arc_color, arc_span, positive=True)
+            else:
+                # Negative: draw from center toward -max (counter-clockwise from 90° toward 225°)
+                arc_span = abs(normalized) * half_span
+                self._draw_arc_from_center(painter, arc_color, arc_span, positive=False)
+
+        # Draw tick marks
+        self._draw_ticks(painter)
+
+        # Draw needle
+        self._draw_needle(painter)
+
+        # Draw center cap
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(80, 80, 80))
+        painter.drawEllipse(QPointF(0, 0), 12, 12)
+        painter.setBrush(QColor(60, 60, 60))
+        painter.drawEllipse(QPointF(0, 0), 8, 8)
+
+        # Draw digital readout
+        self._draw_text(painter)
+
+    def _draw_arc(self, painter, color, start_offset, span):
+        """Draw an arc segment from the start position"""
+        pen = QPen(color)
+        pen.setWidth(self._arc_width)
+        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        rect = QRectF(-60, -60, 120, 120)
+        # Convert to Qt angles (16ths of a degree, 0 = 3 o'clock, counter-clockwise positive)
+        start = (self._start_angle - start_offset) * 16
+        span_qt = -span * 16  # Negative for clockwise
+        painter.drawArc(rect, int(start), int(span_qt))
+
+    def _draw_arc_from_center(self, painter, color, span, positive=True):
+        """Draw an arc segment from the center (0 position at top) toward positive or negative max"""
+        pen = QPen(color)
+        pen.setWidth(self._arc_width)
+        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        rect = QRectF(-60, -60, 120, 120)
+        # Center position is at 90° (12 o'clock, top)
+        # In Qt: angles are in 16ths of a degree, 0 = 3 o'clock, positive = counter-clockwise
+        center_angle = 90  # 12 o'clock position
+
+        if positive:
+            # Draw clockwise from center toward +max (toward 5 o'clock / -45°)
+            start = center_angle * 16
+            span_qt = -span * 16  # Negative for clockwise
+        else:
+            # Draw counter-clockwise from center toward -max (toward 7 o'clock / 225°)
+            start = center_angle * 16
+            span_qt = span * 16  # Positive for counter-clockwise
+
+        painter.drawArc(rect, int(start), int(span_qt))
+
+    def _draw_ticks(self, painter):
+        """Draw tick marks around the gauge with labels for -max, 0, +max"""
+        painter.save()
+
+        # Rotate to start position (7 o'clock for -max)
+        painter.rotate(-(self._start_angle - 90))
+
+        # 9 major ticks: -max, -3/4, -1/2, -1/4, 0, +1/4, +1/2, +3/4, +max
+        num_major_ticks = 9
+        num_minor_ticks = 2  # Between each major tick
+
+        total_ticks = (num_major_ticks - 1) * (num_minor_ticks + 1) + 1
+        angle_step = self._span_angle / (total_ticks - 1)
+
+        for i in range(total_ticks):
+            is_major = i % (num_minor_ticks + 1) == 0
+
+            if is_major:
+                painter.setPen(QPen(QColor(200, 200, 200), 2))
+                inner_radius = 48
+                outer_radius = 54
+            else:
+                painter.setPen(QPen(QColor(120, 120, 120), 1))
+                inner_radius = 50
+                outer_radius = 54
+
+            painter.drawLine(QPointF(0, -inner_radius), QPointF(0, -outer_radius))
+            painter.rotate(angle_step)
+
+        painter.restore()
+
+        # Draw labels for -max, 0, +max
+        self._draw_tick_labels(painter)
+
+    def _draw_tick_labels(self, painter):
+        """Draw labels for key tick positions"""
+        font = QFont("Arial", 8)
+        painter.setFont(font)
+        painter.setPen(QColor(160, 160, 160))
+
+        # Label positions (radius from center)
+        label_radius = 40
+
+        # -max label (7 o'clock position, 225°)
+        angle_neg = math.radians(225 - 90)  # Convert to radians, adjust for coordinate system
+        x_neg = label_radius * math.cos(angle_neg)
+        y_neg = -label_radius * math.sin(angle_neg)
+        neg_label = f"-{int(self._max_value)}"
+        painter.drawText(QRectF(x_neg - 20, y_neg - 8, 40, 16), Qt.AlignmentFlag.AlignCenter, neg_label)
+
+        # 0 label (12 o'clock position, 90°)
+        painter.drawText(QRectF(-10, -45, 20, 16), Qt.AlignmentFlag.AlignCenter, "0")
+
+        # +max label (5 o'clock position, -45° or 315°)
+        angle_pos = math.radians(-45 - 90)  # Convert to radians
+        x_pos = label_radius * math.cos(angle_pos)
+        y_pos = -label_radius * math.sin(angle_pos)
+        pos_label = f"+{int(self._max_value)}"
+        painter.drawText(QRectF(x_pos - 20, y_pos - 8, 40, 16), Qt.AlignmentFlag.AlignCenter, pos_label)
+
+    def _draw_needle(self, painter):
+        """Draw the needle indicator"""
+        painter.save()
+
+        # Calculate needle angle for symmetric range (-max to +max)
+        # 0 is at 12 o'clock (0° rotation from vertical)
+        # -max is at 7 o'clock (-135° from vertical)
+        # +max is at 5 o'clock (+135° from vertical)
+        if self._max_value > 0:
+            # Normalize to -1 to +1
+            normalized = self._value / self._max_value
+            normalized = max(-1, min(1, normalized))
+            # Convert to angle: -1 -> -135°, 0 -> 0°, +1 -> +135°
+            half_span = self._span_angle / 2  # 135 degrees
+            needle_angle = normalized * half_span
+        else:
+            needle_angle = 0
+
+        painter.rotate(needle_angle)
+
+        # Draw needle
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._needle_color)
+
+        # Needle as a triangle
+        needle = [
+            QPointF(0, -50),   # Tip
+            QPointF(-4, 10),   # Base left
+            QPointF(4, 10),    # Base right
+        ]
+        painter.drawPolygon(needle)
+
+        painter.restore()
+
+    def _draw_text(self, painter):
+        """Draw the digital readout text"""
+        # Value text
+        font = QFont("Arial", 14, QFont.Weight.Bold)
+        painter.setFont(font)
+        painter.setPen(self._text_color)
+
+        # Format value appropriately (handle negative values)
+        abs_value = abs(self._value)
+        sign = "-" if self._value < 0 else ""
+        if abs_value >= 100:
+            value_text = f"{sign}{abs_value:.0f}"
+        elif abs_value >= 10:
+            value_text = f"{sign}{abs_value:.1f}"
+        else:
+            value_text = f"{sign}{abs_value:.2f}"
+
+        value_rect = QRectF(-40, 15, 80, 25)
+        painter.drawText(value_rect, Qt.AlignmentFlag.AlignCenter, value_text)
+
+        # Unit text
+        font.setPointSize(9)
+        font.setWeight(QFont.Weight.Normal)
+        painter.setFont(font)
+        painter.setPen(QColor(150, 150, 150))
+
+        unit_rect = QRectF(-40, 35, 80, 20)
+        painter.drawText(unit_rect, Qt.AlignmentFlag.AlignCenter, self._unit)
