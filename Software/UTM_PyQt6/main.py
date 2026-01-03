@@ -9,12 +9,12 @@ APPLICATION VERSION - UPDATE ON EVERY COMMIT!
 ============================================
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 
 import sys
 from pathlib import Path
-from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QProgressDialog, QVBoxLayout
+from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QProgressDialog, QVBoxLayout, QFileDialog
 from PyQt6.QtCore import QTimer
 from PyQt6 import uic
 from serial_manager import SerialManager
@@ -344,8 +344,9 @@ class UTMApplication(QMainWindow):
         self.moveUpButton.clicked.connect(self.on_move_up)
         self.moveDownButton.clicked.connect(self.on_move_down)
 
-        # Right panel - Save data
+        # Right panel - Data export/import
         self.saveDataButton.clicked.connect(self.on_save_data)
+        self.openDataButton.clicked.connect(self.on_open_data)
 
     def init_state(self):
         """Initialize application state variables"""
@@ -374,7 +375,10 @@ class UTMApplication(QMainWindow):
         self.load_plot_times = []  # All timestamps
         self.load_plot_forces = []  # All force values (calibrated)
         self.load_plot_raw_forces = []  # Raw ADC values for export
+        self.load_plot_positions = []  # Crosshead position (mm) for export
+        self.load_plot_speeds = []  # Crosshead speed (mm/s) for export
         self.load_plot_needs_update = False  # Flag to trigger plot redraw
+        self.data_unsaved = False  # Flag to track if data needs saving
 
         # Downsampling for display performance (plot every Nth point when > threshold)
         self.LOAD_PLOT_DOWNSAMPLE_THRESHOLD = 1000  # Start downsampling after this many points
@@ -560,12 +564,23 @@ class UTMApplication(QMainWindow):
 
     # ========== Load Plot Functions ==========
 
+    def _update_plot_title(self):
+        """Update plot title to show unsaved indicator"""
+        base_title = "Load vs Time"
+        if self.data_unsaved:
+            self.load_ax.set_title(f"{base_title} *")
+        else:
+            self.load_ax.set_title(base_title)
+        self.load_canvas.draw_idle()
+
     def on_clear_load_plot(self):
         """Clear the load plot data"""
         # Clear all stored data
         self.load_plot_times.clear()
         self.load_plot_forces.clear()
         self.load_plot_raw_forces.clear()
+        self.load_plot_positions.clear()
+        self.load_plot_speeds.clear()
 
         # Reset max load
         self.max_load = 0.0
@@ -573,6 +588,10 @@ class UTMApplication(QMainWindow):
 
         # Reset current points count
         self.currentPointsValue.setText("0")
+
+        # Reset unsaved flag and update title
+        self.data_unsaved = False
+        self._update_plot_title()
 
         # Reset the range slider to full range
         self.cropRangeSlider.blockSignals(True)
@@ -664,6 +683,8 @@ class UTMApplication(QMainWindow):
         self.load_plot_times = self.load_plot_times[low_idx:high_idx + 1]
         self.load_plot_forces = self.load_plot_forces[low_idx:high_idx + 1]
         self.load_plot_raw_forces = self.load_plot_raw_forces[low_idx:high_idx + 1]
+        self.load_plot_positions = self.load_plot_positions[low_idx:high_idx + 1]
+        self.load_plot_speeds = self.load_plot_speeds[low_idx:high_idx + 1]
 
         # Recalculate max load from cropped data (by absolute value, preserving sign)
         if self.load_plot_forces:
@@ -1369,10 +1390,242 @@ class UTMApplication(QMainWindow):
     # ========== Data Export Functions ==========
 
     def on_save_data(self):
-        """Save data to file"""
-        self.append_to_console("Saving data...")
-        # TODO: Implement data export
-        self.append_to_console("Data saved (not yet implemented)")
+        """Save data to CSV file with metadata header"""
+        # Check if there's data to save
+        if len(self.load_plot_times) == 0:
+            QMessageBox.warning(self, "No Data", "No data to save. Record some data first.")
+            return
+
+        # Generate default filename with timestamp
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_filename = f"UTM_Test_{timestamp_str}.csv"
+
+        # Open file dialog
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Test Data",
+            default_filename,
+            "CSV Files (*.csv);;All Files (*)"
+        )
+
+        if not file_path:
+            return  # User cancelled
+
+        try:
+            self._export_csv(file_path)
+            self.data_unsaved = False
+            self._update_plot_title()
+            self.append_to_console(f"Data saved to: {file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to save data:\n{str(e)}")
+            self.append_to_console(f"Export error: {str(e)}")
+
+    def _export_csv(self, file_path):
+        """Export data to CSV file with metadata header"""
+        # Calculate derived values
+        n_points = len(self.load_plot_times)
+        first_time = self.load_plot_times[0]
+        last_time = self.load_plot_times[-1]
+        duration_s = (last_time - first_time).total_seconds()
+
+        # Calculate max stress and strain
+        max_stress = self.max_load / self.cross_sectional_area if self.cross_sectional_area > 0 else 0
+        # Find max strain (based on max position)
+        max_position = max(self.load_plot_positions, key=abs) if self.load_plot_positions else 0
+        max_strain = max_position / self.gauge_length if self.gauge_length > 0 else 0
+
+        # Get comment from UI if available
+        comment = ""
+        if hasattr(self, 'commentLineEdit'):
+            comment = self.commentLineEdit.text()
+
+        with open(file_path, 'w', newline='') as f:
+            # Write metadata header
+            f.write("# UTM Test Data Export\n")
+            f.write(f"# Test Date: {first_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"# Duration: {duration_s:.1f} s\n")
+            f.write(f"# Data Points: {n_points}\n")
+            if comment:
+                f.write(f"# Comment: {comment}\n")
+            f.write("#\n")
+            f.write(f"# Calibration - Scale: {self.force_scale}, Offset: {self.force_offset}\n")
+            f.write(f"# Specimen - Area: {self.cross_sectional_area} mm², Gauge Length: {self.gauge_length} mm\n")
+            f.write("#\n")
+            f.write(f"# Max Load: {self.max_load:.2f} N\n")
+            f.write(f"# Max Stress: {max_stress:.4f} MPa\n")
+            f.write(f"# Max Strain: {max_strain:.6f}\n")
+            f.write("#\n")
+            f.write(f"# App Version: {__version__}\n")
+            f.write("#\n")
+
+            # Write data header
+            f.write("Time_s,RawADC,Force_N,Position_mm,Speed_mm_s,Strain,Stress_MPa\n")
+
+            # Write data rows
+            for i in range(n_points):
+                elapsed_s = (self.load_plot_times[i] - first_time).total_seconds()
+                raw_adc = self.load_plot_raw_forces[i]
+                force = self.load_plot_forces[i]
+                position = self.load_plot_positions[i] if i < len(self.load_plot_positions) else 0
+                speed = self.load_plot_speeds[i] if i < len(self.load_plot_speeds) else 0
+                strain = position / self.gauge_length if self.gauge_length > 0 else 0
+                stress = force / self.cross_sectional_area if self.cross_sectional_area > 0 else 0
+
+                f.write(f"{elapsed_s:.3f},{raw_adc:.0f},{force:.4f},{position:.4f},{speed:.4f},{strain:.6f},{stress:.4f}\n")
+
+    def on_open_data(self):
+        """Open and load data from a CSV file"""
+        # Open file dialog
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Test Data",
+            "",
+            "CSV Files (*.csv);;All Files (*)"
+        )
+
+        if not file_path:
+            return  # User cancelled
+
+        try:
+            self._import_csv(file_path)
+            self.append_to_console(f"Data loaded from: {file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Import Error", f"Failed to load data:\n{str(e)}")
+            self.append_to_console(f"Import error: {str(e)}")
+
+    def _import_csv(self, file_path):
+        """Import data from CSV file with metadata header"""
+        import re
+
+        # Clear existing data
+        self.load_plot_times.clear()
+        self.load_plot_forces.clear()
+        self.load_plot_raw_forces.clear()
+        self.load_plot_positions.clear()
+        self.load_plot_speeds.clear()
+
+        # Metadata to extract
+        comment = ""
+        calibration_scale = None
+        calibration_offset = None
+        specimen_area = None
+        gauge_length = None
+
+        with open(file_path, 'r') as f:
+            lines = f.readlines()
+
+        # Parse metadata from header comments
+        data_start_line = 0
+        for i, line in enumerate(lines):
+            line = line.strip()
+            if line.startswith('#'):
+                # Parse metadata
+                if '# Comment:' in line:
+                    comment = line.replace('# Comment:', '').strip()
+                elif '# Calibration' in line:
+                    # Parse: # Calibration - Scale: -0.0065, Offset: -24.5185
+                    match = re.search(r'Scale:\s*([+-]?\d*\.?\d+),\s*Offset:\s*([+-]?\d*\.?\d+)', line)
+                    if match:
+                        calibration_scale = float(match.group(1))
+                        calibration_offset = float(match.group(2))
+                elif '# Specimen' in line:
+                    # Parse: # Specimen - Area: 80.0 mm², Gauge Length: 80.0 mm
+                    match = re.search(r'Area:\s*([+-]?\d*\.?\d+)', line)
+                    if match:
+                        specimen_area = float(match.group(1))
+                    match = re.search(r'Gauge Length:\s*([+-]?\d*\.?\d+)', line)
+                    if match:
+                        gauge_length = float(match.group(1))
+            elif line and not line.startswith('#'):
+                # First non-comment, non-empty line should be header
+                if 'Time_s' in line or 'Force_N' in line:
+                    data_start_line = i + 1
+                    break
+                else:
+                    data_start_line = i
+                    break
+
+        # Update UI with loaded metadata
+        if calibration_scale is not None:
+            self.scaleSpinBox.blockSignals(True)
+            self.scaleSpinBox.setValue(calibration_scale)
+            self.scaleSpinBox.blockSignals(False)
+            self.force_scale = calibration_scale
+
+        if calibration_offset is not None:
+            self.offsetSpinBox.blockSignals(True)
+            self.offsetSpinBox.setValue(calibration_offset)
+            self.offsetSpinBox.blockSignals(False)
+            self.force_offset = calibration_offset
+
+        if specimen_area is not None:
+            self.crossSectionSpinBox.blockSignals(True)
+            self.crossSectionSpinBox.setValue(specimen_area)
+            self.crossSectionSpinBox.blockSignals(False)
+            self.cross_sectional_area = specimen_area
+
+        if gauge_length is not None:
+            self.gaugeLengthSpinBox.blockSignals(True)
+            self.gaugeLengthSpinBox.setValue(gauge_length)
+            self.gaugeLengthSpinBox.blockSignals(False)
+            self.gauge_length = gauge_length
+
+        if comment and hasattr(self, 'commentLineEdit'):
+            self.commentLineEdit.setText(comment)
+
+        # Parse data rows
+        # Use first timestamp as base time
+        base_time = datetime.now()
+
+        for line in lines[data_start_line:]:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+
+            parts = line.split(',')
+            if len(parts) >= 3:
+                try:
+                    elapsed_s = float(parts[0])
+                    raw_adc = float(parts[1]) if len(parts) > 1 else 0
+                    force = float(parts[2]) if len(parts) > 2 else 0
+                    position = float(parts[3]) if len(parts) > 3 else 0
+                    speed = float(parts[4]) if len(parts) > 4 else 0
+
+                    # Create timestamp from elapsed time
+                    from datetime import timedelta
+                    timestamp = base_time + timedelta(seconds=elapsed_s)
+
+                    self.load_plot_times.append(timestamp)
+                    self.load_plot_raw_forces.append(raw_adc)
+                    self.load_plot_forces.append(force)
+                    self.load_plot_positions.append(position)
+                    self.load_plot_speeds.append(speed)
+                except ValueError:
+                    continue  # Skip malformed rows
+
+        # Recalculate max load
+        if self.load_plot_forces:
+            self.max_load = max(self.load_plot_forces, key=abs)
+            self.maxLoadValue.setText(f"{self.max_load:.2f}")
+        else:
+            self.max_load = 0.0
+            self.maxLoadValue.setText("0.00")
+
+        # Update current points count
+        self.currentPointsValue.setText(str(len(self.load_plot_forces)))
+
+        # Mark data as not unsaved (just loaded)
+        self.data_unsaved = False
+        self._update_plot_title()
+
+        # Reset the range slider
+        self.cropRangeSlider.blockSignals(True)
+        self.cropRangeSlider.setRange(0, 100)
+        self.cropRangeSlider.blockSignals(False)
+
+        # Force plot update
+        self.load_plot_needs_update = True
+        self._update_load_plot()
 
     # ========== Serial Communication Signal Handlers ==========
 
@@ -1451,6 +1704,10 @@ class UTMApplication(QMainWindow):
             self.load_plot_times.append(now)
             self.load_plot_forces.append(force)
             self.load_plot_raw_forces.append(raw_value)
+            self.load_plot_positions.append(self.motor_displacement_mm)
+            # Convert RPM to mm/s: (RPM / 60) * (5mm / 20) = RPM * 5 / 1200
+            speed_mm_s = self.motor_velocity_rpm * 5.0 / 1200.0
+            self.load_plot_speeds.append(speed_mm_s)
 
             # Update max load if this is a new maximum (by absolute value, preserving sign)
             if abs(force) > abs(self.max_load):
@@ -1459,6 +1716,11 @@ class UTMApplication(QMainWindow):
 
             # Update current points count
             self.currentPointsValue.setText(str(len(self.load_plot_forces)))
+
+            # Mark data as unsaved and update plot title
+            if not self.data_unsaved:
+                self.data_unsaved = True
+                self._update_plot_title()
 
             # Flag for plot update
             self.load_plot_needs_update = True
