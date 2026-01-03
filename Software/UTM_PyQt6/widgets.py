@@ -494,3 +494,162 @@ class SpeedGauge(QWidget):
 
         unit_rect = QRectF(-40, 35, 80, 20)
         painter.drawText(unit_rect, Qt.AlignmentFlag.AlignCenter, self._unit)
+
+
+class RangeSlider(QWidget):
+    """
+    A custom range slider widget with two handles for selecting a range.
+
+    Emits rangeChanged signal when either handle is moved.
+    Values are in percentage (0-100).
+    """
+    from PyQt6.QtCore import pyqtSignal
+    rangeChanged = pyqtSignal(int, int)  # (low, high) percentages
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._low = 0
+        self._high = 100
+        self._pressed_handle = None  # 'low', 'high', or None
+        self._handle_width = 12
+        self._handle_height = 20
+        self._track_height = 6
+
+        self.setMinimumHeight(30)
+        self.setMinimumWidth(100)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def low(self):
+        """Get the low value (0-100)"""
+        return self._low
+
+    def high(self):
+        """Get the high value (0-100)"""
+        return self._high
+
+    def setLow(self, value):
+        """Set the low value (0-100)"""
+        value = max(0, min(value, self._high))
+        if value != self._low:
+            self._low = value
+            self.update()
+            self.rangeChanged.emit(self._low, self._high)
+
+    def setHigh(self, value):
+        """Set the high value (0-100)"""
+        value = max(self._low, min(value, 100))
+        if value != self._high:
+            self._high = value
+            self.update()
+            self.rangeChanged.emit(self._low, self._high)
+
+    def setRange(self, low, high):
+        """Set both values at once"""
+        low = max(0, min(low, 100))
+        high = max(low, min(high, 100))
+        if low != self._low or high != self._high:
+            self._low = low
+            self._high = high
+            self.update()
+            self.rangeChanged.emit(self._low, self._high)
+
+    def _value_to_x(self, value):
+        """Convert a value (0-100) to x coordinate"""
+        usable_width = self.width() - self._handle_width
+        return int(self._handle_width / 2 + (value / 100.0) * usable_width)
+
+    def _x_to_value(self, x):
+        """Convert an x coordinate to a value (0-100)"""
+        usable_width = self.width() - self._handle_width
+        value = ((x - self._handle_width / 2) / usable_width) * 100
+        return int(max(0, min(100, value)))
+
+    def _handle_rect(self, which):
+        """Get the rectangle for a handle ('low' or 'high')"""
+        value = self._low if which == 'low' else self._high
+        x = self._value_to_x(value)
+        y = (self.height() - self._handle_height) // 2
+        return QRectF(x - self._handle_width / 2, y, self._handle_width, self._handle_height)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Track background
+        track_y = (self.height() - self._track_height) // 2
+        track_rect = QRectF(self._handle_width / 2, track_y,
+                           self.width() - self._handle_width, self._track_height)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(200, 200, 200))
+        painter.drawRoundedRect(track_rect, 3, 3)
+
+        # Selected range highlight
+        low_x = self._value_to_x(self._low)
+        high_x = self._value_to_x(self._high)
+        if self._low > 0 or self._high < 100:
+            selected_rect = QRectF(low_x, track_y, high_x - low_x, self._track_height)
+            painter.setBrush(QColor(0, 120, 215))
+            painter.drawRoundedRect(selected_rect, 3, 3)
+
+        # Draw handles
+        for which in ['low', 'high']:
+            rect = self._handle_rect(which)
+
+            # Handle shadow
+            painter.setBrush(QColor(100, 100, 100))
+            shadow_rect = QRectF(rect.x() + 1, rect.y() + 1, rect.width(), rect.height())
+            painter.drawRoundedRect(shadow_rect, 3, 3)
+
+            # Handle body
+            if self._pressed_handle == which:
+                painter.setBrush(QColor(0, 100, 180))
+            else:
+                painter.setBrush(QColor(0, 120, 215))
+            painter.drawRoundedRect(rect, 3, 3)
+
+            # Handle grip lines
+            painter.setPen(QPen(QColor(255, 255, 255, 150), 1))
+            cx = rect.center().x()
+            cy = rect.center().y()
+            for offset in [-2, 0, 2]:
+                painter.drawLine(QPointF(cx + offset, cy - 4), QPointF(cx + offset, cy + 4))
+            painter.setPen(Qt.PenStyle.NoPen)
+
+    def mousePressEvent(self, event):
+        pos = event.position()
+        low_rect = self._handle_rect('low')
+        high_rect = self._handle_rect('high')
+
+        # Check which handle was clicked (prefer the one on top if overlapping)
+        if high_rect.contains(pos):
+            self._pressed_handle = 'high'
+        elif low_rect.contains(pos):
+            self._pressed_handle = 'low'
+        else:
+            # Click on track - move nearest handle
+            x = pos.x()
+            low_x = self._value_to_x(self._low)
+            high_x = self._value_to_x(self._high)
+            if abs(x - low_x) < abs(x - high_x):
+                self._pressed_handle = 'low'
+                self.setLow(self._x_to_value(x))
+            else:
+                self._pressed_handle = 'high'
+                self.setHigh(self._x_to_value(x))
+
+        self.update()
+
+    def mouseMoveEvent(self, event):
+        if self._pressed_handle:
+            value = self._x_to_value(event.position().x())
+            if self._pressed_handle == 'low':
+                self.setLow(value)
+            else:
+                self.setHigh(value)
+
+    def mouseReleaseEvent(self, event):
+        self._pressed_handle = None
+        self.update()
+
+    def sizeHint(self):
+        return QSize(200, 30)

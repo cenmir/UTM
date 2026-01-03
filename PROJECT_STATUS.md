@@ -36,11 +36,12 @@
 - All 7 phases implemented
 - Used for teaching at Jönköping University
 
-**PyQt6 GUI (Software/UTM_PyQt6/):** 🚧 ~48% Complete (v0.2.6)
+**PyQt6 GUI (Software/UTM_PyQt6/):** 🚧 ~55% Complete (v0.3.0)
 - Phase 1 (Foundation): 95% - GUI + serial communication implemented
-- Phase 2 (Data Acquisition): 20% - parsing ready, motor polling active
+- Phase 2 (Data Acquisition): 80% - Load plot, calibration, data cropping complete
 - Phase 3 (Advanced Control): 60% - Speed control with limits, SpeedGauge widget
-- Phase 4-7: Structure ready, implementation pending
+- Phase 4 (Stress-Strain): 0% - pending
+- Phase 5 (Calibration & Export): 50% - calibration done, export pending
 
 ---
 
@@ -644,6 +645,76 @@ gauge.setUnit("RPM")    # Or "mm/s"
    - **Option A**: Implement data plotting (matplotlib or pyqtgraph)
    - **Option B**: Add load cell calibration workflow
    - **Option C**: Implement crosshead position display improvements
+
+### Session: 2026-01-03 (Evening) - LOAD PLOT & CALIBRATION IMPLEMENTED! ✅
+
+**What We Did:**
+1. ✅ **Implemented Load Plot with matplotlib**
+   - Embedded matplotlib canvas in Load Plot tab
+   - Real-time Force vs Time plot with datetime x-axis
+   - Configurable display rate (default 0.01s = 100 Hz refresh)
+   - Downsampling for performance (500 display points when > 1000 total)
+   - Show/hide markers toggle
+   - Auto-scale toggle
+
+2. ✅ **Implemented RangeSlider custom widget**
+   - Two-handle slider for selecting data range (0-100%)
+   - Blue highlight for selected region
+   - Grip lines on handles for visual feedback
+   - Crop markers on plot (red dashed lines + yellow span)
+
+3. ✅ **Implemented data cropping**
+   - Visual crop region selection with range slider
+   - "Crop Data" button to permanently trim data
+   - Recalculates max load after cropping
+
+4. ✅ **Implemented two-point load cell calibration**
+   - Step 1: Remove all loads, collect 100 samples → force0_raw
+   - Step 2: Apply known weight, collect 100 samples → force1_raw
+   - Calculates scale and offset using formula from APP_DESCRIPTION.qmd
+   - Progress dialog shows collection progress
+   - Updates offset/scale spinboxes with new values
+
+5. ✅ **Fixed several bugs:**
+   - Data collection only starts when BOTH loadCellSwitch AND loadTogglePlotCheckBox are enabled
+   - X-axis datetime scaling now works correctly (explicit set_xlim)
+   - Fixed warning when only 1 data point exists (check len > 1 before set_xlim)
+   - Max load now tracks maximum absolute value while preserving sign (e.g., -5.8 > 1.3)
+
+6. ✅ **Load Data panel shows:**
+   - Current Load (N) - real-time calibrated force
+   - Max Load (N) - maximum absolute value with sign preserved
+   - Current points - total data points collected
+
+**Files Modified:**
+- `Software/UTM_PyQt6/main.py` - Load plot, calibration, bug fixes, v0.2.8
+- `Software/UTM_PyQt6/widgets.py` - Added RangeSlider widget
+- `Software/UTM_PyQt6/ui/utm_mainwindow.ui` - Load Plot tab UI, display rate default 0.01s
+
+**Key Design Decisions:**
+- Max load uses `max(forces, key=abs)` - tension loads (negative) can be larger than compression
+- Display rate default 0.01s (100 Hz) - works well even at 10000 points
+- Data only collected when load cell stream is ON AND plot checkbox is checked
+- X-axis uses explicit set_xlim() instead of relying on matplotlib autoscale for datetime
+
+**Current State:**
+- **GUI Structure**: 100% complete
+- **Load Plot**: 100% complete (real-time, downsampling, markers, auto-scale)
+- **RangeSlider Widget**: 100% complete
+- **Data Cropping**: 100% complete
+- **Load Cell Calibration**: 100% complete (two-point method)
+- **Data Export**: 0% (pending)
+- **Stress-Strain Plot**: 0% (pending)
+
+**Version:** 0.3.0 (pre-release, load plot milestone)
+
+**Next Session Should Start With:**
+1. Read PROJECT_STATUS.md (this file)
+2. Test load plot and calibration with hardware
+3. Choose next implementation direction:
+   - **Option A**: Implement data export (.mat, .csv)
+   - **Option B**: Implement Stress-Strain plot
+   - **Option C**: Add tare averaging (use last 50 readings)
 
 ---
 

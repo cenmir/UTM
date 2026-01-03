@@ -9,15 +9,22 @@ APPLICATION VERSION - UPDATE ON EVERY COMMIT!
 ============================================
 """
 
-__version__ = "0.2.7"
+__version__ = "0.3.0"
 
 
 import sys
 from pathlib import Path
-from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QProgressDialog, QVBoxLayout
+from PyQt6.QtCore import QTimer
 from PyQt6 import uic
 from serial_manager import SerialManager
-from widgets import FluentSwitch, SpeedGauge
+from widgets import FluentSwitch, SpeedGauge, RangeSlider
+from datetime import datetime
+
+# Matplotlib imports for embedding plots
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+import matplotlib.dates as mdates
 
 # Path to the UI file
 UI_FILE = Path(__file__).parent / "ui" / "utm_mainwindow.ui"
@@ -170,6 +177,124 @@ class UTMApplication(QMainWindow):
                 layout.insertWidget(i, self.speedGauge)
                 break
 
+    def _setup_load_plot(self):
+        """Setup the matplotlib canvas for the load plot"""
+        # Create the matplotlib figure and canvas
+        self.load_figure = Figure(figsize=(8, 4), dpi=100)
+        self.load_figure.set_facecolor('#f0f0f0')
+        self.load_canvas = FigureCanvas(self.load_figure)
+
+        # Create the axes
+        self.load_ax = self.load_figure.add_subplot(111)
+        self.load_ax.set_xlabel('Time')
+        self.load_ax.set_ylabel('Force (N)')
+        self.load_ax.set_title('Load vs Time')
+        self.load_ax.grid(True, alpha=0.3)
+
+        # Create the line object (empty initially)
+        self.load_line, = self.load_ax.plot([], [], 'b-', linewidth=1)
+        self.load_markers, = self.load_ax.plot([], [], 'b.', markersize=3)
+
+        # Create crop selection markers (vertical lines and shaded region)
+        self.crop_line_low = self.load_ax.axvline(x=0, color='red', linestyle='--', linewidth=1.5, visible=False)
+        self.crop_line_high = self.load_ax.axvline(x=0, color='red', linestyle='--', linewidth=1.5, visible=False)
+        self.crop_span = self.load_ax.axvspan(0, 1, alpha=0.2, color='yellow', visible=False)
+
+        # Format x-axis for time
+        self.load_ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+        self.load_figure.autofmt_xdate()
+
+        # Replace the placeholder with the canvas
+        # The placeholder is inside loadPlotFrame which has a layout
+        layout = self.loadPlotFrame.layout()
+        if layout is not None:
+            # Remove the placeholder
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                if item and item.widget() == self.loadPlotPlaceholder:
+                    layout.removeWidget(self.loadPlotPlaceholder)
+                    self.loadPlotPlaceholder.hide()
+                    self.loadPlotPlaceholder.deleteLater()
+                    break
+            # Add the canvas
+            layout.addWidget(self.load_canvas)
+        else:
+            # Create a layout if none exists
+            layout = QVBoxLayout(self.loadPlotFrame)
+            layout.setContentsMargins(0, 0, 0, 0)
+            self.loadPlotPlaceholder.hide()
+            self.loadPlotPlaceholder.deleteLater()
+            layout.addWidget(self.load_canvas)
+
+        self.load_figure.tight_layout()
+
+    def _setup_range_slider(self):
+        """Setup the range slider for data cropping"""
+        # Create the range slider widget
+        self.cropRangeSlider = RangeSlider()
+        self.cropRangeSlider.setRange(0, 100)
+
+        # Replace the placeholder with the range slider
+        parent = self.rangeSliderPlaceholder.parent()
+        geometry = self.rangeSliderPlaceholder.geometry()
+
+        self.rangeSliderPlaceholder.hide()
+        self.rangeSliderPlaceholder.deleteLater()
+
+        self.cropRangeSlider.setParent(parent)
+        self.cropRangeSlider.setGeometry(geometry)
+        self.cropRangeSlider.show()
+
+        # Connect the range changed signal
+        self.cropRangeSlider.rangeChanged.connect(self._on_crop_range_changed)
+
+    def _update_load_plot(self):
+        """Update the load plot (called by timer at 5 Hz)"""
+        if not self.load_plot_needs_update:
+            return
+
+        self.load_plot_needs_update = False
+
+        n_points = len(self.load_plot_times)
+        if n_points == 0:
+            return
+
+        # Downsample for display if we have too many points
+        if n_points > self.LOAD_PLOT_DOWNSAMPLE_THRESHOLD:
+            # Calculate step size to get approximately DISPLAY_POINTS
+            step = max(1, n_points // self.LOAD_PLOT_DISPLAY_POINTS)
+            times = self.load_plot_times[::step]
+            forces = self.load_plot_forces[::step]
+            # Always include the last point for real-time feel
+            if self.load_plot_times[-1] not in times:
+                times = times + [self.load_plot_times[-1]]
+                forces = forces + [self.load_plot_forces[-1]]
+        else:
+            times = list(self.load_plot_times)
+            forces = list(self.load_plot_forces)
+
+        # Update the line data
+        self.load_line.set_data(times, forces)
+
+        # Update markers if enabled (only show on downsampled data)
+        if hasattr(self, 'loadShowMarkersCheckBox') and self.loadShowMarkersCheckBox.isChecked():
+            self.load_markers.set_data(times, forces)
+            self.load_markers.set_visible(True)
+        else:
+            self.load_markers.set_visible(False)
+
+        # Auto-scale if enabled - use explicit axis limits for datetime x-axis
+        if hasattr(self, 'loadAutoScaleCheckBox') and self.loadAutoScaleCheckBox.isChecked():
+            # Set x-axis limits explicitly for datetime data (need at least 2 different times)
+            if len(times) > 1:
+                self.load_ax.set_xlim(times[0], times[-1])
+            # Recalculate y-axis limits
+            self.load_ax.relim()
+            self.load_ax.autoscale_view(scalex=False, scaley=True)
+
+        # Redraw the canvas
+        self.load_canvas.draw_idle()
+
     def connect_signals(self):
         """Connect UI signals to their respective slot functions"""
         # Console controls
@@ -185,6 +310,11 @@ class UTMApplication(QMainWindow):
         # Load Plot tab controls
         self.clearLoadPlotButton.clicked.connect(self.on_clear_load_plot)
         self.tareButton.clicked.connect(self.on_tare)
+        self.calibrateButton.clicked.connect(self.on_calibrate)
+        self.offsetSpinBox.valueChanged.connect(self.on_calibration_values_changed)
+        self.scaleSpinBox.valueChanged.connect(self.on_calibration_values_changed)
+        self.displayRateSpinBox.valueChanged.connect(self._update_display_rate)
+        self.cropDataButton.clicked.connect(self.on_crop_data)
 
         # Right panel - Connection controls
         self.scanPortsButton.clicked.connect(self.on_scan_ports)
@@ -236,13 +366,37 @@ class UTMApplication(QMainWindow):
 
         # Data storage
         self.current_load = 0.0
-        self.max_load = 0.0
+        self.max_load = 0.0  # Maximum load recorded during test
         self.cross_sectional_area = 80.0  # mm²
         self.gauge_length = 80.0  # mm
 
-        # Calibration values
-        self.force_scale = -0.0065
-        self.force_offset = -24.5185
+        # Load plot data - store ALL points for complete test visualization
+        self.load_plot_times = []  # All timestamps
+        self.load_plot_forces = []  # All force values (calibrated)
+        self.load_plot_raw_forces = []  # Raw ADC values for export
+        self.load_plot_needs_update = False  # Flag to trigger plot redraw
+
+        # Downsampling for display performance (plot every Nth point when > threshold)
+        self.LOAD_PLOT_DOWNSAMPLE_THRESHOLD = 1000  # Start downsampling after this many points
+        self.LOAD_PLOT_DISPLAY_POINTS = 500  # Target points to display when downsampling
+
+        # Initialize the load plot and range slider
+        self._setup_load_plot()
+        self._setup_range_slider()
+
+        # Calibration values (synced with UI spinboxes)
+        self.force_scale = self.scaleSpinBox.value()
+        self.force_offset = self.offsetSpinBox.value()
+
+        # Calibration workflow state
+        self.calibration_active = False
+        self.calibration_step = 0  # 0=idle, 1=collecting force0, 2=collecting force1
+        self.calibration_raw_buffer = []  # Buffer for raw force values during calibration
+        self.calibration_timer = None  # Timer for data collection countdown
+        self.calibration_weight_kg = 0.0  # Weight in kg for calibration
+        self.calibration_force0 = 0.0  # Mean raw force with no weight
+        self.calibration_force1 = 0.0  # Mean raw force with known weight
+        self.calibration_progress = None  # Progress dialog
 
         # Motor position tracking (from encoder)
         # Note: This is motor/encoder-based displacement. DIC strain will be separate.
@@ -287,6 +441,12 @@ class UTMApplication(QMainWindow):
         self.incremental_grace_timer.setSingleShot(True)
         self.incremental_grace_timer.setInterval(1000)  # 1 second grace period
         self.incremental_grace_timer.timeout.connect(self._end_incremental_grace_period)
+
+        # Timer for load plot updates (rate controlled by displayRateSpinBox)
+        self.load_plot_timer = QTimer()
+        self._update_display_rate()  # Set initial interval from spinbox
+        self.load_plot_timer.timeout.connect(self._update_load_plot)
+        self.load_plot_timer.start()  # Always running, but only redraws when needed
 
         # Console initialization
         self.append_to_console("UTM Control Application Started")
@@ -401,23 +561,327 @@ class UTMApplication(QMainWindow):
     # ========== Load Plot Functions ==========
 
     def on_clear_load_plot(self):
-        """Clear the load plot"""
-        # TODO: Implement when matplotlib canvas is added
+        """Clear the load plot data"""
+        # Clear all stored data
+        self.load_plot_times.clear()
+        self.load_plot_forces.clear()
+        self.load_plot_raw_forces.clear()
+
+        # Reset max load
         self.max_load = 0.0
-        self.update_load_display()
+        self.maxLoadValue.setText("0.00")
+
+        # Reset current points count
+        self.currentPointsValue.setText("0")
+
+        # Reset the range slider to full range
+        self.cropRangeSlider.blockSignals(True)
+        self.cropRangeSlider.setRange(0, 100)
+        self.cropRangeSlider.blockSignals(False)
+
+        # Hide crop markers
+        self.crop_line_low.set_visible(False)
+        self.crop_line_high.set_visible(False)
+        self.crop_span.set_visible(False)
+
+        # Clear the plot display
+        self.load_line.set_data([], [])
+        self.load_markers.set_data([], [])
+        self.load_ax.relim()
+        self.load_ax.autoscale_view()
+        self.load_canvas.draw_idle()
+
         self.append_to_console("Load plot cleared")
-        pass
+
+    def _update_display_rate(self):
+        """Update the load plot timer interval from the display rate spinbox"""
+        rate_seconds = self.displayRateSpinBox.value()
+        interval_ms = int(rate_seconds * 1000)
+        self.load_plot_timer.setInterval(interval_ms)
+
+    def _on_crop_range_changed(self, low, high):
+        """Handle range slider value changes - update crop markers on plot"""
+        n_points = len(self.load_plot_times)
+        if n_points == 0:
+            # No data - hide markers
+            self.crop_line_low.set_visible(False)
+            self.crop_line_high.set_visible(False)
+            self.crop_span.set_visible(False)
+            self.load_canvas.draw_idle()
+            return
+
+        # If at full range (0-100), hide markers
+        if low == 0 and high == 100:
+            self.crop_line_low.set_visible(False)
+            self.crop_line_high.set_visible(False)
+            self.crop_span.set_visible(False)
+            self.load_canvas.draw_idle()
+            return
+
+        # Calculate indices from percentages
+        low_idx = int((low / 100.0) * (n_points - 1))
+        high_idx = int((high / 100.0) * (n_points - 1))
+
+        # Get x positions (time values) for the markers
+        low_time = mdates.date2num(self.load_plot_times[low_idx])
+        high_time = mdates.date2num(self.load_plot_times[high_idx])
+
+        # Update vertical line positions
+        self.crop_line_low.set_xdata([low_time, low_time])
+        self.crop_line_high.set_xdata([high_time, high_time])
+
+        # Update the span (shaded region)
+        # Need to remove old span and create new one since axvspan doesn't have set_xy
+        self.crop_span.remove()
+        self.crop_span = self.load_ax.axvspan(low_time, high_time, alpha=0.2, color='yellow', visible=True)
+
+        # Show the markers
+        self.crop_line_low.set_visible(True)
+        self.crop_line_high.set_visible(True)
+
+        self.load_canvas.draw_idle()
+
+    def on_crop_data(self):
+        """Crop the data to the selected range"""
+        n_points = len(self.load_plot_times)
+        if n_points == 0:
+            self.append_to_console("No data to crop")
+            return
+
+        low = self.cropRangeSlider.low()
+        high = self.cropRangeSlider.high()
+
+        # If at full range, nothing to crop
+        if low == 0 and high == 100:
+            self.append_to_console("No cropping needed (full range selected)")
+            return
+
+        # Calculate indices
+        low_idx = int((low / 100.0) * (n_points - 1))
+        high_idx = int((high / 100.0) * (n_points - 1))
+
+        # Crop the data
+        self.load_plot_times = self.load_plot_times[low_idx:high_idx + 1]
+        self.load_plot_forces = self.load_plot_forces[low_idx:high_idx + 1]
+        self.load_plot_raw_forces = self.load_plot_raw_forces[low_idx:high_idx + 1]
+
+        # Recalculate max load from cropped data (by absolute value, preserving sign)
+        if self.load_plot_forces:
+            self.max_load = max(self.load_plot_forces, key=abs)
+            self.maxLoadValue.setText(f"{self.max_load:.2f}")
+        else:
+            self.max_load = 0.0
+            self.maxLoadValue.setText("0.00")
+
+        # Update current points count
+        self.currentPointsValue.setText(str(len(self.load_plot_forces)))
+
+        # Reset the range slider to full range
+        self.cropRangeSlider.blockSignals(True)
+        self.cropRangeSlider.setRange(0, 100)
+        self.cropRangeSlider.blockSignals(False)
+
+        # Hide the crop markers
+        self.crop_line_low.set_visible(False)
+        self.crop_line_high.set_visible(False)
+        self.crop_span.set_visible(False)
+
+        # Force plot update
+        self.load_plot_needs_update = True
+        self._update_load_plot()
+
+        self.append_to_console(f"Data cropped: {n_points} -> {len(self.load_plot_times)} points")
 
     def on_tare(self):
-        """Zero the load cell (tare function)"""
-        # TODO: Implement when serial communication is added
-        self.append_to_console("Tare command sent (not yet implemented)")
-        pass
+        """Zero the load cell (tare function) - adjusts offset based on recent readings"""
+        # TODO: Implement with data storage - average last 50 force readings
+        self.append_to_console("Tare: Adjusting force offset...")
+        # For now, just use current load as offset adjustment
+        self.force_offset = self.force_offset + self.current_load
+        self.offsetSpinBox.blockSignals(True)
+        self.offsetSpinBox.setValue(self.force_offset)
+        self.offsetSpinBox.blockSignals(False)
+        self.append_to_console(f"Force offset adjusted to {self.force_offset:.4f}")
+
+    def on_calibration_values_changed(self):
+        """Handle manual changes to offset/scale spinboxes"""
+        self.force_offset = self.offsetSpinBox.value()
+        self.force_scale = self.scaleSpinBox.value()
+
+    def on_calibrate(self):
+        """Start the two-point calibration workflow"""
+        if not self.connected:
+            QMessageBox.warning(self, "Not Connected",
+                "Please connect to the UTM before calibrating.")
+            return
+
+        if not self.loadCellSwitch.isChecked():
+            QMessageBox.warning(self, "Load Cell Off",
+                "Please turn on the Load Cell data stream before calibrating.")
+            return
+
+        # Get the weight value
+        weight = self.weightSpinBox.value()
+        if weight <= 0:
+            QMessageBox.warning(self, "Invalid Weight",
+                "Please enter a valid calibration weight (in kg).")
+            return
+
+        self.calibration_weight_kg = weight
+
+        # Step 1: Confirm and instruct user to remove weight
+        reply = QMessageBox.information(self, "Calibration - Step 1",
+            f"Calibration will use a {weight:.3f} kg weight.\n\n"
+            "STEP 1: Remove any weight from the load cell.\n\n"
+            "Press OK when ready to collect zero-load data (10 seconds).",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+
+        if reply == QMessageBox.StandardButton.Cancel:
+            self.append_to_console("Calibration cancelled")
+            return
+
+        # Start collecting force0 data
+        self._start_calibration_data_collection(1)
+
+    def _start_calibration_data_collection(self, step):
+        """Start collecting calibration data for the specified step"""
+        self.calibration_step = step
+        self.calibration_active = True
+        self.calibration_raw_buffer = []
+
+        step_name = "zero-load" if step == 1 else "loaded"
+        self.append_to_console(f"Collecting {step_name} data for 10 seconds...")
+
+        # Create progress dialog
+        self.calibration_progress = QProgressDialog(
+            f"Collecting {step_name} data...", "Cancel", 0, 100, self)
+        self.calibration_progress.setWindowTitle("Calibration")
+        self.calibration_progress.setMinimumDuration(0)
+        self.calibration_progress.setValue(0)
+        self.calibration_progress.canceled.connect(self._cancel_calibration)
+        self.calibration_progress.show()
+
+        # Start timer for 10-second countdown (update every 100ms)
+        self.calibration_elapsed = 0
+        self.calibration_timer = QTimer()
+        self.calibration_timer.setInterval(100)  # 100ms updates
+        self.calibration_timer.timeout.connect(self._calibration_timer_tick)
+        self.calibration_timer.start()
+
+    def _calibration_timer_tick(self):
+        """Timer tick during calibration data collection"""
+        self.calibration_elapsed += 100
+        progress = int((self.calibration_elapsed / 10000) * 100)  # 10 seconds = 10000ms
+
+        if self.calibration_progress:
+            self.calibration_progress.setValue(progress)
+
+        if self.calibration_elapsed >= 10000:
+            # 10 seconds elapsed - stop collection
+            self.calibration_timer.stop()
+            self._finish_calibration_step()
+
+    def _finish_calibration_step(self):
+        """Finish current calibration step and calculate mean"""
+        if self.calibration_progress:
+            self.calibration_progress.close()
+            self.calibration_progress = None
+
+        if not self.calibration_raw_buffer:
+            QMessageBox.warning(self, "Calibration Error",
+                "No data collected. Make sure Load Cell is streaming data.")
+            self._cancel_calibration()
+            return
+
+        # Calculate mean of collected raw values
+        mean_value = sum(self.calibration_raw_buffer) / len(self.calibration_raw_buffer)
+        n_samples = len(self.calibration_raw_buffer)
+
+        if self.calibration_step == 1:
+            # Step 1 complete - store force0
+            self.calibration_force0 = mean_value
+            self.append_to_console(f"Zero-load mean: {mean_value:.2f} ({n_samples} samples)")
+
+            # Prompt for step 2
+            reply = QMessageBox.information(self, "Calibration - Step 2",
+                f"Zero-load data collected: {mean_value:.2f}\n\n"
+                f"STEP 2: Place the {self.calibration_weight_kg:.3f} kg weight on the load cell.\n\n"
+                "Press OK when ready to collect loaded data (10 seconds).",
+                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+
+            if reply == QMessageBox.StandardButton.Cancel:
+                self._cancel_calibration()
+                return
+
+            # Start collecting force1 data
+            self._start_calibration_data_collection(2)
+
+        elif self.calibration_step == 2:
+            # Step 2 complete - store force1 and calculate calibration
+            self.calibration_force1 = mean_value
+            self.append_to_console(f"Loaded mean: {mean_value:.2f} ({n_samples} samples)")
+
+            # Calculate calibration values
+            self._calculate_calibration()
+
+    def _calculate_calibration(self):
+        """Calculate and apply calibration values from collected data"""
+        force0 = self.calibration_force0
+        force1 = self.calibration_force1
+        weight_kg = self.calibration_weight_kg
+
+        delta_force = force1 - force0
+
+        if abs(delta_force) < 1:
+            QMessageBox.warning(self, "Calibration Error",
+                f"Delta force too small ({delta_force:.2f}).\n"
+                "Check that the weight was properly placed on the load cell.")
+            self._cancel_calibration()
+            return
+
+        # Calculate scale and offset
+        # Formula: scale = (weight_kg * g) / deltaForce
+        # offset = force0 * scale
+        new_scale = (weight_kg * 9.82) / delta_force
+        new_offset = force0 * new_scale
+
+        self.append_to_console(f"Calibration complete:")
+        self.append_to_console(f"  Force0 (no weight): {force0:.2f}")
+        self.append_to_console(f"  Force1 (with weight): {force1:.2f}")
+        self.append_to_console(f"  Delta: {delta_force:.2f}")
+        self.append_to_console(f"  New Scale: {new_scale:.6f}")
+        self.append_to_console(f"  New Offset: {new_offset:.4f}")
+
+        # Update spinboxes (this will trigger on_calibration_values_changed)
+        self.scaleSpinBox.setValue(new_scale)
+        self.offsetSpinBox.setValue(new_offset)
+
+        # Reset calibration state
+        self.calibration_active = False
+        self.calibration_step = 0
+
+        self.set_status("Load cell calibrated successfully")
+        QMessageBox.information(self, "Calibration Complete",
+            f"Load cell calibration complete!\n\n"
+            f"Scale: {new_scale:.6f}\n"
+            f"Offset: {new_offset:.4f}")
+
+    def _cancel_calibration(self):
+        """Cancel the calibration process"""
+        if self.calibration_timer:
+            self.calibration_timer.stop()
+            self.calibration_timer = None
+        if self.calibration_progress:
+            self.calibration_progress.close()
+            self.calibration_progress = None
+        self.calibration_active = False
+        self.calibration_step = 0
+        self.calibration_raw_buffer = []
+        self.append_to_console("Calibration cancelled")
 
     def update_load_display(self):
-        """Update the load value displays"""
+        """Update the load value display"""
         self.currentLoadValue.setText(f"{self.current_load:.2f}")
-        self.maxLoadValue.setText(f"{self.max_load:.2f}")
 
     # ========== Connection Functions ==========
 
@@ -965,15 +1429,39 @@ class UTMApplication(QMainWindow):
 
     def on_load_cell_data(self, raw_value):
         """Handle parsed load cell data"""
+        # If calibration is active, collect raw values
+        if self.calibration_active:
+            self.calibration_raw_buffer.append(raw_value)
+
         # Calculate calibrated force: F = -(raw * scale) - offset
         force = -(raw_value * self.force_scale) - self.force_offset
-        
+
         self.current_load = force
-        if force > self.max_load:
-            self.max_load = force
-        
         self.update_load_display()
-        # TODO: Add to data storage and update plots
+
+        # Add to plot data if:
+        # 1. Load cell data stream is enabled (loadCellSwitch)
+        # 2. Plot checkbox is checked (loadTogglePlotCheckBox)
+        load_cell_on = hasattr(self, 'loadCellSwitch') and self.loadCellSwitch.isChecked()
+        plot_enabled = hasattr(self, 'loadTogglePlotCheckBox') and self.loadTogglePlotCheckBox.isChecked()
+
+        if load_cell_on and plot_enabled:
+            now = datetime.now()
+            # Store all data points
+            self.load_plot_times.append(now)
+            self.load_plot_forces.append(force)
+            self.load_plot_raw_forces.append(raw_value)
+
+            # Update max load if this is a new maximum (by absolute value, preserving sign)
+            if abs(force) > abs(self.max_load):
+                self.max_load = force
+                self.maxLoadValue.setText(f"{self.max_load:.2f}")
+
+            # Update current points count
+            self.currentPointsValue.setText(str(len(self.load_plot_forces)))
+
+            # Flag for plot update
+            self.load_plot_needs_update = True
 
     def on_motor_position_data(self, raw_angle):
         """Handle parsed motor position data from encoder"""
