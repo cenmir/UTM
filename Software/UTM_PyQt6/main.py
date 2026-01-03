@@ -410,7 +410,7 @@ class UTMApplication(QMainWindow):
 
         # Auto-scale if enabled
         if hasattr(self, 'ssAutoScaleCheckBox') and self.ssAutoScaleCheckBox.isChecked():
-            if len(strains) > 1:
+            if len(strains) > 1 and min(strains) != max(strains):
                 self.ss_ax.set_xlim(min(strains), max(strains))
             # Recalculate y-axis limits
             self.ss_ax.relim()
@@ -431,7 +431,7 @@ class UTMApplication(QMainWindow):
         self.areaSpinBox.valueChanged.connect(self.on_specimen_dimensions_changed)
         self.gaugeLengthSpinBox.valueChanged.connect(self.on_specimen_dimensions_changed)
         self.ssCropDataButton.clicked.connect(self.on_crop_data)  # Shared crop
-        self.ssCropRangeSlider.rangeChanged.connect(self._on_ss_crop_range_changed)
+        # Note: ssCropRangeSlider.rangeChanged is connected in _setup_ss_range_slider()
 
         # Stress/Strain plot toggle sync with Load Plot toggle
         self.ssTogglePlotCheckBox.stateChanged.connect(self._sync_plot_toggles)
@@ -443,8 +443,13 @@ class UTMApplication(QMainWindow):
         self.calibrateButton.clicked.connect(self.on_calibrate)
         self.offsetSpinBox.valueChanged.connect(self.on_calibration_values_changed)
         self.scaleSpinBox.valueChanged.connect(self.on_calibration_values_changed)
-        self.displayRateSpinBox.valueChanged.connect(self._update_display_rate)
+        self.displayRateSpinBox.valueChanged.connect(self._on_display_rate_changed)
         self.cropDataButton.clicked.connect(self.on_crop_data)
+
+        # Stress/Strain tab duplicates - connect to same handlers and sync values
+        self.tareButton_2.clicked.connect(self.on_tare)
+        self.displayRateSpinBox_2.valueChanged.connect(self._on_display_rate_2_changed)
+        self.cropDataButton_2.clicked.connect(self.on_crop_data)
 
         # Right panel - Connection controls
         self.scanPortsButton.clicked.connect(self.on_scan_ports)
@@ -485,6 +490,7 @@ class UTMApplication(QMainWindow):
         # Serial communication
         self.serial_manager = SerialManager()
         self.connected = False
+        self.firmware_version = "Unknown"
 
         # Connect serial manager signals
         self.serial_manager.connection_changed.connect(self.on_connection_state_changed)
@@ -786,10 +792,26 @@ class UTMApplication(QMainWindow):
         self.append_to_console("Plots cleared")
 
     def _update_display_rate(self):
-        """Update the load plot timer interval from the display rate spinbox"""
+        """Update the load plot timer interval from the current display rate"""
         rate_seconds = self.displayRateSpinBox.value()
         interval_ms = int(rate_seconds * 1000)
         self.load_plot_timer.setInterval(interval_ms)
+
+    def _on_display_rate_changed(self):
+        """Handle display rate change from Load Plot tab - sync to Stress/Strain tab"""
+        value = self.displayRateSpinBox.value()
+        self.displayRateSpinBox_2.blockSignals(True)
+        self.displayRateSpinBox_2.setValue(value)
+        self.displayRateSpinBox_2.blockSignals(False)
+        self._update_display_rate()
+
+    def _on_display_rate_2_changed(self):
+        """Handle display rate change from Stress/Strain tab - sync to Load Plot tab"""
+        value = self.displayRateSpinBox_2.value()
+        self.displayRateSpinBox.blockSignals(True)
+        self.displayRateSpinBox.setValue(value)
+        self.displayRateSpinBox.blockSignals(False)
+        self._update_display_rate()
 
     def _on_crop_range_changed(self, low, high):
         """Handle range slider value changes - update crop markers on plot"""
@@ -1375,7 +1397,7 @@ class UTMApplication(QMainWindow):
         self.setSpeedSpinBox.setMaximum(self.MAX_MM_PER_S)  # Limited by MAX_RPM
         self.setSpeedSpinBox.setDecimals(3)
         self.setSpeedSpinBox.setSingleStep(0.1)
-        self.setSpeedSpinBox.setValue(0.5)  # Default 0.5 mm/s (~120 RPM)
+        self.setSpeedSpinBox.setValue(0.1)  # Default 0.1 mm/s (~24 RPM)
 
         # Initialize speed display to 0 (no measured speed yet)
         self.speedDisplayLabel.setText("Speed: 0.00 mm/s")
@@ -1590,6 +1612,13 @@ class UTMApplication(QMainWindow):
 
     # ========== Position & Incremental Move Functions ==========
 
+    def _auto_tare_on_connect(self):
+        """Auto-tare position and load cell after connection (called with delay)"""
+        if self.connected:
+            self.on_tare_location()
+            self.on_tare()
+            self.append_to_console("Auto-tare complete")
+
     def on_tare_location(self):
         """Tare the motor position (zero the displacement)"""
         # Calculate current absolute position from raw encoder value
@@ -1662,9 +1691,13 @@ class UTMApplication(QMainWindow):
             QMessageBox.warning(self, "No Data", "No data to save. Record some data first.")
             return
 
-        # Generate default filename with timestamp
+        # Generate default filename with timestamp and optional File ID prefix
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        default_filename = f"UTM_Test_{timestamp_str}.csv"
+        file_id = self.fileIdLineEdit.text().strip()
+        if file_id:
+            default_filename = f"{file_id}_UTM_Test_{timestamp_str}.csv"
+        else:
+            default_filename = f"UTM_Test_{timestamp_str}.csv"
 
         # Open file dialog
         file_path, _ = QFileDialog.getSaveFileName(
@@ -1705,9 +1738,11 @@ class UTMApplication(QMainWindow):
         if hasattr(self, 'commentLineEdit'):
             comment = self.commentLineEdit.text()
 
-        with open(file_path, 'w', newline='') as f:
+        with open(file_path, 'w', newline='', encoding='utf-8') as f:
             # Write metadata header
             f.write("# UTM Test Data Export\n")
+            f.write("# https://github.com/cenmir/UTM\n")
+            f.write("#\n")
             f.write(f"# Test Date: {first_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"# Duration: {duration_s:.1f} s\n")
             f.write(f"# Data Points: {n_points}\n")
@@ -1722,6 +1757,7 @@ class UTMApplication(QMainWindow):
             f.write(f"# Max Strain: {max_strain:.6f}\n")
             f.write("#\n")
             f.write(f"# App Version: {__version__}\n")
+            f.write(f"# Firmware Version: {self.firmware_version}\n")
             f.write("#\n")
 
             # Write data header
@@ -1769,6 +1805,8 @@ class UTMApplication(QMainWindow):
         self.load_plot_raw_forces.clear()
         self.load_plot_positions.clear()
         self.load_plot_speeds.clear()
+        self.stress_strain_strains.clear()
+        self.stress_strain_stresses.clear()
 
         # Metadata to extract
         comment = ""
@@ -1777,14 +1815,17 @@ class UTMApplication(QMainWindow):
         specimen_area = None
         gauge_length = None
 
-        with open(file_path, 'r') as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
-        # Parse metadata from header comments
+        # Parse metadata from header comments and output to console
+        self.append_to_console("--- Loading CSV file ---")
         data_start_line = 0
         for i, line in enumerate(lines):
             line = line.strip()
             if line.startswith('#'):
+                # Output preamble to console
+                self.append_to_console(line)
                 # Parse metadata
                 if '# Comment:' in line:
                     comment = line.replace('# Comment:', '').strip()
@@ -1825,9 +1866,9 @@ class UTMApplication(QMainWindow):
             self.force_offset = calibration_offset
 
         if specimen_area is not None:
-            self.crossSectionSpinBox.blockSignals(True)
-            self.crossSectionSpinBox.setValue(specimen_area)
-            self.crossSectionSpinBox.blockSignals(False)
+            self.areaSpinBox.blockSignals(True)
+            self.areaSpinBox.setValue(specimen_area)
+            self.areaSpinBox.blockSignals(False)
             self.cross_sectional_area = specimen_area
 
         if gauge_length is not None:
@@ -1856,6 +1897,8 @@ class UTMApplication(QMainWindow):
                     force = float(parts[2]) if len(parts) > 2 else 0
                     position = float(parts[3]) if len(parts) > 3 else 0
                     speed = float(parts[4]) if len(parts) > 4 else 0
+                    strain = float(parts[5]) if len(parts) > 5 else 0
+                    stress = float(parts[6]) if len(parts) > 6 else 0
 
                     # Create timestamp from elapsed time
                     from datetime import timedelta
@@ -1866,6 +1909,8 @@ class UTMApplication(QMainWindow):
                     self.load_plot_forces.append(force)
                     self.load_plot_positions.append(position)
                     self.load_plot_speeds.append(speed)
+                    self.stress_strain_strains.append(strain)
+                    self.stress_strain_stresses.append(stress)
                 except ValueError:
                     continue  # Skip malformed rows
 
@@ -1877,21 +1922,42 @@ class UTMApplication(QMainWindow):
             self.max_load = 0.0
             self.maxLoadValue.setText("0.00")
 
+        # Recalculate max stress/strain
+        if self.stress_strain_stresses:
+            self.max_stress = max(self.stress_strain_stresses, key=abs)
+            self.ssMaxStressValue.setText(f"{self.max_stress:.4f}")
+        else:
+            self.max_stress = 0.0
+            self.ssMaxStressValue.setText("0.0000")
+
+        if self.stress_strain_strains:
+            self.max_strain = max(self.stress_strain_strains, key=abs)
+            self.ssMaxStrainValue.setText(f"{self.max_strain:.6f}")
+        else:
+            self.max_strain = 0.0
+            self.ssMaxStrainValue.setText("0.000000")
+
         # Update current points count
         self.currentPointsValue.setText(str(len(self.load_plot_forces)))
+        self.ssCurrentPointsValue.setText(str(len(self.stress_strain_stresses)))
 
         # Mark data as not unsaved (just loaded)
         self.data_unsaved = False
         self._update_plot_title()
 
-        # Reset the range slider
+        # Reset the range sliders
         self.cropRangeSlider.blockSignals(True)
         self.cropRangeSlider.setRange(0, 100)
         self.cropRangeSlider.blockSignals(False)
 
-        # Force plot update
+        self.ssCropRangeSlider.blockSignals(True)
+        self.ssCropRangeSlider.setRange(0, 100)
+        self.ssCropRangeSlider.blockSignals(False)
+
+        # Force plot updates
         self.load_plot_needs_update = True
         self._update_load_plot()
+        self._update_stress_strain_plot()
 
     # ========== Serial Communication Signal Handlers ==========
 
@@ -1910,6 +1976,9 @@ class UTMApplication(QMainWindow):
                 self.connectionSwitch.blockSignals(False)
             # Start motor position polling
             self._start_motor_polling()
+            # Auto-tare position and load cell after a short delay to allow data to arrive
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(500, self._auto_tare_on_connect)
         else:
             self.update_status_lamp(False)
             # Only show "Disconnected" if we were previously connected
@@ -2021,8 +2090,8 @@ class UTMApplication(QMainWindow):
         screw_rotations = rotations / 20.0  # 20:1 gear ratio
         position_mm = screw_rotations * 5.0  # 5mm pitch
 
-        # Calculate displacement relative to tare point
-        self.motor_displacement_mm = position_mm - self.motor_position_zero
+        # Calculate displacement relative to tare point (positive going down)
+        self.motor_displacement_mm = -(position_mm - self.motor_position_zero)
 
         # Update displacement label
         self.displacementLabel.setText(f"δ = {self.motor_displacement_mm:.4f} mm")
@@ -2107,6 +2176,7 @@ class UTMApplication(QMainWindow):
     
     def on_firmware_version(self, version):
         """Handle firmware version received from ESP32"""
+        self.firmware_version = version
         self.append_to_console(f"✓ ESP32 Firmware v{version}")
         self.append_to_console(f"✓ Application v{__version__}")
         

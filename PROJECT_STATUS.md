@@ -36,12 +36,14 @@
 - All 7 phases implemented
 - Used for teaching at Jönköping University
 
-**PyQt6 GUI (Software/UTM_PyQt6/):** 🚧 ~55% Complete (v0.3.0)
-- Phase 1 (Foundation): 95% - GUI + serial communication implemented
-- Phase 2 (Data Acquisition): 80% - Load plot, calibration, data cropping complete
-- Phase 3 (Advanced Control): 60% - Speed control with limits, SpeedGauge widget
-- Phase 4 (Stress-Strain): 0% - pending
-- Phase 5 (Calibration & Export): 50% - calibration done, export pending
+**PyQt6 GUI (Software/UTM_PyQt6/):** 🚧 ~75% Complete (v0.5.0)
+- Phase 1 (Foundation): 100% - GUI + serial communication implemented
+- Phase 2 (Data Acquisition): 100% - Load plot, calibration, data cropping complete
+- Phase 3 (Advanced Control): 100% - Speed control with limits, SpeedGauge widget
+- Phase 4 (Stress-Strain): 100% - Real-time stress-strain plot with synchronization
+- Phase 5 (Calibration & Export): 100% - CSV export/import with metadata
+- Phase 6 (Polish): 20% - Custom widgets done, keyboard shortcuts pending
+- Phase 7 (Camera/DIC): 0% - Optional, not started
 
 ---
 
@@ -715,6 +717,75 @@ gauge.setUnit("RPM")    # Or "mm/s"
    - **Option A**: Implement data export (.mat, .csv)
    - **Option B**: Implement Stress-Strain plot
    - **Option C**: Add tare averaging (use last 50 readings)
+
+### Session: 2026-01-03 - CSV DATA EXPORT/IMPORT IMPLEMENTED! ✅
+
+**What We Did:**
+1. ✅ **Implemented CSV data export with metadata**
+   - Comprehensive metadata header (test date, calibration, specimen dimensions)
+   - Data columns: Time_s, RawADC, Force_N, Position_mm, Speed_mm_s, Strain, Stress_MPa
+   - Default filename format: UTM_Test_YYYYMMDD_HHMMSS.csv
+
+2. ✅ **Implemented CSV data import**
+   - Load existing CSV files for viewing and cropping
+   - Parse metadata to restore calibration and specimen settings
+   - Populate plot with imported data
+
+3. ✅ **UI additions**
+   - Comment text field for test description
+   - Open Data button alongside Save Data button
+   - Unsaved data indicator (asterisk "*" in plot title)
+
+4. ✅ **Data storage improvements**
+   - Track crosshead position and speed alongside force data
+   - All arrays properly cleared on plot clear
+   - All arrays properly cropped on data crop
+
+**Version:** 0.4.0 (pre-release, data export milestone)
+
+### Session: 2026-01-03 - STRESS-STRAIN TAB IMPLEMENTED! ✅
+
+**What We Did:**
+1. ✅ **Implemented Stress-Strain plot tab**
+   - Real-time Stress (MPa) vs Strain (mm/mm) plot
+   - Synchronized with Load Plot tab (single timer updates both)
+   - Downsampling for performance
+
+2. ✅ **Stress/Strain Data panel**
+   - Max stress, max strain, and point count labels
+   - Plot Controls: Show Markers, Auto Scale, Start/Stop toggle
+   - Data Cropping: Range slider and Crop Data button
+
+3. ✅ **Synchronization features**
+   - Single timer updates both plots
+   - Plot toggles stay in sync
+   - Clear button clears both plots
+   - Crop operation affects both plots simultaneously
+   - Range sliders stay in sync between tabs
+
+4. ✅ **Stress/Strain calculations**
+   - strain = displacement_mm / gauge_length
+   - stress = force_N / cross_sectional_area (MPa)
+
+**Version:** 0.5.0 (pre-release, stress-strain milestone)
+
+**Current State:**
+- **GUI Structure**: 100% complete
+- **Load Plot**: 100% complete
+- **Stress-Strain Plot**: 100% complete
+- **Data Export/Import**: 100% complete
+- **Calibration**: 100% complete
+- **Custom Widgets**: SpeedGauge, RangeSlider, FluentSwitch done
+- **Keyboard Shortcuts**: 0% (pending)
+- **Camera/DIC**: 0% (optional, not started)
+
+**Next Session Should Start With:**
+1. Read PROJECT_STATUS.md (this file)
+2. Choose next implementation direction:
+   - **Option A**: Add keyboard shortcuts (E-stop, motor control)
+   - **Option B**: Hardware testing and bug fixes
+   - **Option C**: Camera/DIC integration (optional)
+   - **Option D**: Polish and documentation
 
 ---
 
