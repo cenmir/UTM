@@ -146,8 +146,8 @@ class UTMApplication(QMainWindow):
 
     def _setup_speed_gauge(self):
         """Replace the speed gauge placeholder with actual SpeedGauge widget"""
-        # Get the layout containing the placeholder
-        layout = self.verticalLayout_speed
+        # The placeholder is now inside horizontalLayout_speedGaugeCenter (for centering)
+        layout = self.horizontalLayout_speedGaugeCenter
 
         # Find and replace the placeholder
         for i in range(layout.count()):
@@ -520,7 +520,6 @@ class UTMApplication(QMainWindow):
         self.emergencyStopButton.setEnabled(connected)
 
         # Position group - enabled only when connected
-        self.positionGaugePlaceholder.setEnabled(connected)
         self.displacementLabel.setEnabled(connected)
         self.tareLocationButton.setEnabled(connected)
 

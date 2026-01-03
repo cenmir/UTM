@@ -507,33 +507,76 @@
          </property>
          <layout class="QVBoxLayout" name="verticalLayout_speed">
           <item>
-           <widget class="QLabel" name="speedGaugePlaceholder">
-            <property name="minimumSize">
-             <size>
-              <width>150</width>
-              <height>150</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>150</width>
-              <height>150</height>
-             </size>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">QLabel { background-color: #e0e0e0; border: 1px solid #999; border-radius: 75px; }</string>
-            </property>
-            <property name="text">
-             <string>Speed Gauge
+           <layout class="QHBoxLayout" name="horizontalLayout_speedGaugeCenter">
+            <item>
+             <spacer name="speedGaugeSpacerLeft">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QLabel" name="speedGaugePlaceholder">
+              <property name="minimumSize">
+               <size>
+                <width>150</width>
+                <height>150</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>150</width>
+                <height>150</height>
+               </size>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QLabel { background-color: #e0e0e0; border: 1px solid #999; border-radius: 75px; }</string>
+              </property>
+              <property name="text">
+               <string>Speed Gauge
 (Circular)</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
-            </property>
-           </widget>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="speedGaugeSpacerRight">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
           </item>
           <item>
            <layout class="QHBoxLayout" name="horizontalLayout_speedUnit">
+            <item>
+             <spacer name="speedUnitSpacerLeft">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
             <item>
              <widget class="QLabel" name="label_2">
               <property name="text">
@@ -547,6 +590,19 @@
                <string>mm/s</string>
               </property>
              </widget>
+            </item>
+            <item>
+             <spacer name="speedUnitSpacerRight">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
             </item>
            </layout>
           </item>
@@ -563,6 +619,19 @@
           <item>
            <layout class="QHBoxLayout" name="horizontalLayout_setSpeed">
             <item>
+             <spacer name="setSpeedSpacerLeft">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
              <widget class="QLabel" name="label_3">
               <property name="text">
                <string>Set RPM:</string>
@@ -575,6 +644,19 @@
                <double>240.000000000000000</double>
               </property>
              </widget>
+            </item>
+            <item>
+             <spacer name="setSpeedSpacerRight">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
             </item>
            </layout>
           </item>
@@ -670,35 +752,9 @@ QPushButton:pressed { background-color: #990000; }</string>
        <item>
         <widget class="QGroupBox" name="positionGroup">
          <property name="title">
-          <string>Position</string>
+          <string>Crosshead position</string>
          </property>
          <layout class="QVBoxLayout" name="verticalLayout_position">
-          <item>
-           <widget class="QLabel" name="positionGaugePlaceholder">
-            <property name="minimumSize">
-             <size>
-              <width>60</width>
-              <height>120</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>60</width>
-              <height>120</height>
-             </size>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">QLabel { background-color: #e0e0e0; border: 1px solid #999; }</string>
-            </property>
-            <property name="text">
-             <string>Linear
-Gauge</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
-            </property>
-           </widget>
-          </item>
           <item>
            <widget class="QLabel" name="displacementLabel">
             <property name="text">

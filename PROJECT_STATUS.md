@@ -1,6 +1,6 @@
 # UTM Project Status & Session Log
 
-**Last Updated:** 2026-01-02
+**Last Updated:** 2026-01-03
 
 ---
 
@@ -36,9 +36,11 @@
 - All 7 phases implemented
 - Used for teaching at Jönköping University
 
-**PyQt6 GUI (Software/UTM_PyQt6/):** 🚧 ~25% Complete
-- Phase 1 (Foundation): 85% - GUI structure complete, serial pending
-- Phase 2-7: Structure ready, implementation pending
+**PyQt6 GUI (Software/UTM_PyQt6/):** 🚧 ~48% Complete (v0.2.6)
+- Phase 1 (Foundation): 95% - GUI + serial communication implemented
+- Phase 2 (Data Acquisition): 20% - parsing ready, motor polling active
+- Phase 3 (Advanced Control): 60% - Speed control with limits, SpeedGauge widget
+- Phase 4-7: Structure ready, implementation pending
 
 ---
 
@@ -266,6 +268,383 @@ None currently.
    - **Option B**: Replace gauge placeholders with custom QPainter widgets
    - **Option C**: Add matplotlib canvases to plot tabs
 
+### Session: 2026-01-02 (Night) - SERIAL COMMUNICATION IMPLEMENTED! ✅
+
+**What We Did:**
+1. ✅ **Implemented SerialManager class** (`serial_manager.py`)
+   - Uses PyQt6.QtSerialPort for Qt-native serial communication
+   - Signal-based architecture: connection_changed, data_received, load_cell_data, position_data, velocity_data, firmware_version, error_occurred
+   - Connection handshake with firmware version verification
+   - 2-second timeout for handshake failure detection
+   - Response parsing for all firmware data types
+
+2. ✅ **Added safety measures throughout**
+   - On connect: EStop → Disable → GetVersion (verify connection)
+   - On disconnect: Stop → Disable → close port
+   - On motors toggle OFF: Stop → Disable (prevents runaway on re-enable)
+   - Direction reset to STOP before enabling/disabling motors
+
+3. ✅ **Created custom toggle switch widget** (`widgets.py`)
+   - Initially tried qfluentwidgets library (had font warnings)
+   - Created pure PyQt6 FluentSwitch class with no external dependencies
+   - Windows Fluent Design styling (blue accent, animated toggle)
+   - Smooth animation using QPropertyAnimation
+   - Disabled state styling included
+
+4. ✅ **Replaced checkboxes with toggle switches**
+   - Connection checkbox → FluentSwitch
+   - Motors checkbox → FluentSwitch
+   - Runtime widget replacement in apply_styles()
+
+5. ✅ **Removed qfluentwidgets dependency completely**
+   - Removed from imports in main.py
+   - Changed promoted widgets in .ui file back to standard Qt classes
+   - Removed customwidgets section from utm_mainwindow.ui
+
+**Files Created/Modified:**
+- Created: `Software/UTM_PyQt6/serial_manager.py` (291 lines)
+- Created: `Software/UTM_PyQt6/widgets.py` (228 lines)
+- Modified: `Software/UTM_PyQt6/main.py` (version 0.2.0, FluentSwitch imports)
+- Modified: `Software/UTM_PyQt6/ui/utm_mainwindow.ui` (removed qfluentwidgets)
+- Modified: `Software/UTM_PyQt6/requirements.txt` (no changes needed - pure PyQt6)
+
+**Testing:**
+- ✅ Application starts without errors
+- ✅ Toggle switches animate smoothly
+- ✅ COM port scanning works
+- ✅ Serial connection with handshake timeout
+- ⏳ Hardware testing pending (need physical device)
+
+**Current State:**
+- **GUI Structure**: 100% complete
+- **Signal Wiring**: 100% complete
+- **Serial Communication**: 90% complete (parsing done, hardware test pending)
+- **Custom Widgets**: Toggle switches done, gauges still placeholders
+- **Matplotlib Integration**: 0%
+
+**Version:** 0.2.0 (pre-release, serial communication milestone)
+
+**Decisions Made:**
+- Version 0.x.x for development (not 1.x.x which implies production-ready)
+- Pure PyQt6 toggle switch instead of qfluentwidgets (no external UI dependencies)
+- Safety-first serial protocol (always EStop/Disable on connect)
+
+**Next Session Should Start With:**
+1. Read PROJECT_STATUS.md (this file)
+2. Test serial communication with physical hardware
+3. Choose next implementation direction:
+   - **Option A**: Implement data plotting (matplotlib or pyqtgraph)
+   - **Option B**: Replace gauge placeholders with custom QPainter widgets
+   - **Option C**: Add load cell calibration workflow
+
+### Session: 2026-01-02 (Late Night) - UI CONTROLS ENHANCED! ✅
+
+**What We Did:**
+1. ✅ **Replaced all remaining checkboxes with FluentSwitch toggles**
+   - Load Cell toggle → FluentSwitch
+   - Position toggle → FluentSwitch
+   - Velocity toggle → FluentSwitch
+   - Created helper `_replace_checkbox_with_switch()` for clean widget replacement
+
+2. ✅ **Implemented speed unit selection system**
+   - Replaced RPM checkbox with two radio buttons ("mm/s" and "RPM")
+   - Added "Speed unit:" label for clarity
+   - QButtonGroup ensures mutual exclusivity
+   - Default: mm/s (matches physical intuition)
+
+3. ✅ **Dynamic speed display and conversion**
+   - Speed label updates based on unit selection
+   - Automatic value conversion when switching units
+   - Conversion factor: `MM_PER_S_PER_RPM = 5.0 / 20.0 / 60.0` (~0.004167)
+   - Lead screw: 5mm pitch, 20:1 gear ratio
+   - Spinbox limits adjust: mm/s (0-10), RPM (0-240)
+
+4. ✅ **Motor control respects speed selector**
+   - Direction commands (Up/Down) now use SetSpeed from selector
+   - Firmware receives speed as RPM × 10 (e.g., 1200 = 120 RPM)
+
+5. ✅ **Incremental move respects speed selector**
+   - Move Up/Down buttons use speed from selector
+   - Direction indicator updates to show movement direction
+   - Used `blockSignals()` to prevent sending redundant commands
+
+6. ✅ **Fixed direction indicator behavior**
+   - When using incremental move, direction radio button updates visually
+   - Prevents confusion when direction shows "Stop" during movement
+
+**Code Patterns Used:**
+```python
+# Speed conversion
+rpm = mm_per_s / MM_PER_S_PER_RPM
+mm_per_s = rpm * MM_PER_S_PER_RPM
+
+# Firmware speed command
+firmware_speed = int(speed_rpm * 10)
+serial_manager.send_command(f"SetSpeed {firmware_speed}")
+
+# Update radio without triggering signal
+self.upRadioButton.blockSignals(True)
+self.upRadioButton.setChecked(True)
+self.upRadioButton.blockSignals(False)
+```
+
+**Files Modified:**
+- Modified: `Software/UTM_PyQt6/main.py`
+  - Added `_replace_checkbox_with_switch()` helper
+  - Added `_setup_speed_unit_controls()` for radio buttons
+  - Added `_init_speed_controls()`, `on_speed_unit_changed()`, `on_speed_value_changed()`
+  - Added `_update_speed_display()`, `get_speed_rpm()`, `get_firmware_speed()`
+  - Updated `on_direction_changed()` to use speed selector
+  - Updated `on_move_up()`, `on_move_down()` with speed and direction indicator
+
+**Testing:**
+- ✅ Application imports without errors
+- ✅ Python syntax validation passed
+- ⏳ Full UI testing pending (requires PyQt6 environment)
+- ⏳ Hardware testing pending
+
+**Current State:**
+- **GUI Structure**: 100% complete
+- **Signal Wiring**: 100% complete
+- **Toggle Switches**: 100% complete (all checkboxes replaced)
+- **Speed Control**: 100% complete (unit selection, conversion, motor integration)
+- **Serial Communication**: 90% complete (hardware test pending)
+- **Custom Gauges**: Placeholders only (0%)
+- **Matplotlib Integration**: 0%
+
+**Version:** 0.2.0 (pre-release)
+
+**Next Session Should Start With:**
+1. Read PROJECT_STATUS.md (this file)
+2. Test UI changes with physical hardware
+3. Choose next implementation direction:
+   - **Option A**: Implement data plotting (matplotlib or pyqtgraph)
+   - **Option B**: Replace gauge placeholders with custom QPainter widgets
+   - **Option C**: Add load cell calibration workflow
+
+### Session: 2026-01-03 (Early Morning) - DATA STREAM ARCHITECTURE REDESIGNED! ✅
+
+**What We Did:**
+1. ✅ **Removed Position and Velocity switches from UI**
+   - These switches were redundant - motor data should be automatic
+   - Removed `positionSwitch` and `velocitySwitch` from Data Streams group
+   - Added `_remove_data_stream_row()` helper to cleanly remove UI elements
+   - Data Streams group now only contains Load Cell toggle
+
+2. ✅ **Renamed position variables to motor terminology**
+   - `position_zero` → `motor_position_zero`
+   - `current_position_mm` → `motor_displacement_mm`
+   - `current_velocity_rpm` → `motor_velocity_rpm`
+   - Added `motor_position_raw` for raw encoder value
+   - Added `motor_velocity_avg_rpm` for averaged velocity
+   - Clear separation: motor/encoder data vs. future DIC strain data
+
+3. ✅ **Implemented automatic motor data polling**
+   - `motor_position_timer` (10 Hz) - always runs when connected
+   - `motor_velocity_timer` (5 Hz) - runs when motors are enabled
+   - Position polling starts on connect, stops on disconnect
+   - Velocity polling starts on motor enable, stops on disable
+
+4. ✅ **Added motor stall detection safety feature**
+   - Monitors velocity when motors should be moving (direction ≠ STOP)
+   - Detects stall when velocity < 0.5 RPM for 3 consecutive readings
+   - Triggers emergency stop and disables motors on stall
+   - Displays warning message in console
+   - Configurable: `stall_velocity_threshold`, `stall_count_threshold`
+
+**Design Decision: Motor vs DIC Strain**
+- **Motor Position**: Encoder-based displacement from lead screw movement
+  - Always available when connected
+  - Polled automatically at 10 Hz
+  - Used for basic displacement measurement
+- **DIC Strain** (future): Camera-based strain measurement
+  - Will have its own toggle in Stress/Strain tab
+  - Optical measurement independent of motor
+  - For more accurate strain measurement on specimen
+
+**Files Modified:**
+- Modified: `Software/UTM_PyQt6/main.py`
+  - Removed position/velocity switches
+  - Added `_remove_data_stream_row()` helper
+  - Renamed all position variables to motor terminology
+  - Added polling timers in `init_state()`
+  - Added `_start_motor_polling()`, `_stop_motor_polling()`
+  - Added `_start_velocity_polling()`, `_stop_velocity_polling()`
+  - Added `_poll_motor_position()`, `_poll_motor_velocity()`
+  - Renamed `on_position_data()` → `on_motor_position_data()`
+  - Renamed `on_velocity_data()` → `on_motor_velocity_data()`
+  - Added stall detection in `on_motor_velocity_data()`
+  - Added `_handle_motor_stall()` for safety response
+
+**Testing:**
+- ✅ Python syntax validation passed
+- ⏳ Hardware testing pending
+
+**Current State:**
+- **GUI Structure**: 100% complete
+- **Signal Wiring**: 100% complete
+- **Motor Data Polling**: 100% complete (auto-polling with stall detection)
+- **Serial Communication**: 90% complete (hardware test pending)
+- **Stall Detection**: 100% complete
+- **Custom Gauges**: Placeholders only (0%)
+- **Matplotlib Integration**: 0%
+- **DIC Integration**: 0% (future feature)
+
+**Version:** 0.2.1 (pre-release, motor data architecture milestone)
+
+**Next Session Should Start With:**
+1. Read PROJECT_STATUS.md (this file)
+2. Test motor polling and stall detection with hardware
+3. Choose next implementation direction:
+   - **Option A**: Implement data plotting (matplotlib or pyqtgraph)
+   - **Option B**: Replace gauge placeholders with custom QPainter widgets
+   - **Option C**: Add DIC toggle to Stress/Strain tab
+
+### Session: 2026-01-03 (Morning) - SPEED CONTROL & GAUGE IMPLEMENTED! ✅
+
+**What We Did:**
+1. ✅ **Added software speed limits (MAX_RPM = 450)**
+   - `MAX_RPM = 450` constant in main.py
+   - `MAX_MM_PER_S = MAX_RPM * MM_PER_S_PER_RPM` (~1.875 mm/s)
+   - Spinbox limits automatically adjust based on unit selection
+   - `get_firmware_speed()` clamps speed to MAX_RPM with warning
+
+2. ✅ **Fixed firmware MoveUp/MoveDown speed limits**
+   - MoveUp() and MoveDown() now use `MAX_SPEED_RPM10` constant
+   - Previously had hardcoded 5000 (500 RPM) which exceeded safety limit
+   - Firmware version updated to 1.3.1
+
+3. ✅ **Changed speed spinbox behavior**
+   - Changed from `valueChanged` to `editingFinished` signal
+   - Speed only updates when Enter is pressed or focus is lost
+   - Prevents sending commands while user is typing
+
+4. ✅ **Implemented SpeedGauge custom widget**
+   - Created circular gauge in `widgets.py` using QPainter
+   - Features:
+     - Symmetric range: -max to +max with 0 at 12 o'clock
+     - Needle indicator pointing to current value
+     - Color gradient based on absolute speed (green→yellow→red)
+     - Tick marks at major divisions
+     - Labels showing -max, 0, +max values
+     - Digital readout in center
+   - Supports both RPM and mm/s units
+   - Updates in real-time with motor velocity data
+
+5. ✅ **Position/Velocity console display toggles**
+   - Re-added position and velocity switches to Data Streams group
+   - These control whether data is printed to console (not polling)
+   - Polling is automatic - switches only affect display
+
+6. ✅ **Movement start grace period**
+   - 1-second grace period after starting movement
+   - Allows motor to accelerate before stall detection activates
+   - Prevents false stall alarms on startup
+
+**Files Modified:**
+- `D32_Firmware/src/main.cpp` - MoveUp/MoveDown speed limits, v1.3.1
+- `Software/UTM_PyQt6/main.py` - Speed limits, gauge integration, v0.2.4
+- `Software/UTM_PyQt6/widgets.py` - SpeedGauge class with symmetric range
+
+**SpeedGauge Widget Details:**
+```python
+# Gauge layout (arc spans 270°):
+#     -450 ←──── 0 ────→ +450
+#       ╲        │        ╱
+#        ╲       │       ╱
+#         ╲      │      ╱
+#          ╲     │     ╱
+#           ╲    │    ╱
+# 7 o'clock  ╲   │   ╱  5 o'clock
+#             ╲  │  ╱
+#              ╲ │ ╱
+#               ╲│╱
+#                ● (center cap)
+#              [value]
+#               RPM
+
+# Key methods:
+gauge.setValue(120.0)   # Positive or negative
+gauge.setMaxValue(450)  # Range becomes -450 to +450
+gauge.setUnit("RPM")    # Or "mm/s"
+```
+
+**Current State:**
+- **GUI Structure**: 100% complete
+- **Signal Wiring**: 100% complete
+- **Motor Data Polling**: 100% complete (with grace period)
+- **Stall Detection**: 100% complete
+- **Speed Control**: 100% complete (limits + conversion)
+- **SpeedGauge Widget**: 100% complete (symmetric, animated)
+- **Custom Linear Gauge**: Placeholder only (0%)
+- **Matplotlib Integration**: 0%
+
+**Version:** 0.2.4 (pre-release, speed control milestone)
+
+**Next Session Should Start With:**
+1. Read PROJECT_STATUS.md (this file)
+2. Test speed gauge and motor controls with hardware
+3. Choose next implementation direction:
+   - **Option A**: Implement data plotting (matplotlib or pyqtgraph)
+   - **Option B**: Implement linear position gauge widget
+   - **Option C**: Add load cell calibration workflow
+
+### Session: 2026-01-03 (Afternoon) - UI CLEANUP & CENTERING ✅
+
+**What We Did:**
+1. ✅ **Bumped version from 0.2.5 to 0.2.6**
+   - Updated `__version__` in main.py
+   - Committed status bar and incremental move grace period changes
+
+2. ✅ **Removed linear gauge from Position group**
+   - User decision: don't want to use the linear gauge
+   - Removed `positionGaugePlaceholder` widget from utm_mainwindow.ui
+   - Removed reference to it in `update_controls_enabled_state()`
+   - Renamed group from "Position" to "Crosshead position" (standard UTM terminology)
+
+3. ✅ **Centered Speed Control contents horizontally**
+   - Initial attempt using `alignment="Qt::AlignHCenter"` on items failed
+   - Error: `addLayout: too many arguments` - Qt doesn't support alignment on layout items
+   - **Solution**: Used spacer-based centering approach
+   - Wrapped speedGaugePlaceholder in `horizontalLayout_speedGaugeCenter` with left/right spacers
+   - Added spacers to `horizontalLayout_speedUnit` and `horizontalLayout_setSpeed`
+   - Updated `_setup_speed_gauge()` to find placeholder in new nested layout
+
+**Design Decision: Crosshead vs Gripper**
+- "Crosshead" = standard term for the moving part of a UTM
+- "Gripper" = the clamps that hold the specimen
+- User agreed with recommendation to use "Crosshead position"
+
+**Files Modified:**
+- `Software/UTM_PyQt6/main.py`
+  - Version 0.2.6
+  - Removed `positionGaugePlaceholder` reference
+  - Updated `_setup_speed_gauge()` to use `horizontalLayout_speedGaugeCenter`
+- `Software/UTM_PyQt6/ui/utm_mainwindow.ui`
+  - Renamed Position group to "Crosshead position"
+  - Removed linear gauge placeholder
+  - Added centering spacers to Speed Control group
+
+**Current State:**
+- **GUI Structure**: 100% complete
+- **Signal Wiring**: 100% complete
+- **Motor Data Polling**: 100% complete
+- **Stall Detection**: 100% complete
+- **Speed Control**: 100% complete (limits + conversion + centered UI)
+- **SpeedGauge Widget**: 100% complete
+- **Linear Position Gauge**: Removed (user decision)
+- **Matplotlib Integration**: 0%
+
+**Version:** 0.2.6 (pre-release, UI cleanup milestone)
+
+**Next Session Should Start With:**
+1. Read PROJECT_STATUS.md (this file)
+2. Test centered Speed Control UI with application
+3. Choose next implementation direction:
+   - **Option A**: Implement data plotting (matplotlib or pyqtgraph)
+   - **Option B**: Add load cell calibration workflow
+   - **Option C**: Implement crosshead position display improvements
+
 ---
 
 ## Technical Decisions Log
@@ -278,6 +657,15 @@ None currently.
 | QtSerialPort over pyserial | Better Qt integration, signal-based | 2026-01-02 |
 | pandas DataFrame for data storage | Easy export, manipulation, memory efficiency | 2026-01-02 |
 | matplotlib (may switch to pyqtgraph) | Standard choice, may need performance upgrade | 2026-01-02 |
+| Motor vs DIC terminology | Motor = encoder-based, DIC = camera-based strain | 2026-01-03 |
+| Auto-poll motor data | No switches needed - always poll when connected/enabled | 2026-01-03 |
+| Stall detection | Safety feature - stop motors if velocity near zero | 2026-01-03 |
+| MAX_RPM = 450 | Hardware safety limit, enforced in software and firmware | 2026-01-03 |
+| Symmetric gauge range | -max to +max with 0 at top - shows direction of rotation | 2026-01-03 |
+| editingFinished signal | Speed only updates on Enter/focus-lost, not while typing | 2026-01-03 |
+| Crosshead position (not Gripper) | Standard UTM terminology for moving part | 2026-01-03 |
+| Removed linear gauge | User preference - displacement shown as text only | 2026-01-03 |
+| Spacer-based centering | Qt item alignment doesn't work for nested layouts | 2026-01-03 |
 
 ### Design Patterns
 
