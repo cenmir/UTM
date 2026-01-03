@@ -5,8 +5,40 @@ Handles all serial communication with the Arduino/ESP32 firmware using PyQt6.QtS
 Provides signals for asynchronous communication and thread-safe data handling.
 """
 
-from PyQt6.QtCore import QObject, pyqtSignal, QIODevice, QTimer
+from PyQt6.QtCore import QObject, pyqtSignal, QIODevice, QTimer, QThread
 from PyQt6.QtSerialPort import QSerialPort, QSerialPortInfo
+import serial
+import serial.tools.list_ports
+
+
+class PortOpenWorker(QThread):
+    """Worker thread to open serial port without blocking the UI"""
+    finished = pyqtSignal(bool, str)  # success, error_message
+
+    def __init__(self, port_name, baud_rate):
+        super().__init__()
+        self.port_name = port_name
+        self.baud_rate = baud_rate
+        self._serial = None
+
+    def run(self):
+        """Try to open the port in a background thread"""
+        try:
+            # Use pyserial for the blocking open operation
+            self._serial = serial.Serial(
+                port=self.port_name,
+                baudrate=self.baud_rate,
+                timeout=1,
+                write_timeout=1
+            )
+            # Port opened successfully - close it so QSerialPort can use it
+            self._serial.close()
+            self._serial = None
+            self.finished.emit(True, "")
+        except serial.SerialException as e:
+            self.finished.emit(False, str(e))
+        except Exception as e:
+            self.finished.emit(False, str(e))
 
 
 class SerialManager(QObject):
@@ -37,6 +69,17 @@ class SerialManager(QObject):
         self.handshake_timer = QTimer()
         self.handshake_timer.setSingleShot(True)
         self.handshake_timer.timeout.connect(self._on_handshake_timeout)
+
+        # Connection sequence timer (for non-blocking delays during connection)
+        self._connect_step = 0
+        self._connect_timer = QTimer()
+        self._connect_timer.setSingleShot(True)
+        self._connect_timer.timeout.connect(self._connection_sequence_step)
+
+        # Worker thread for non-blocking port open
+        self._open_worker = None
+        self._pending_port = None
+        self._pending_baud = None
         
     @staticmethod
     def scan_ports():
@@ -52,39 +95,74 @@ class SerialManager(QObject):
     
     def connect(self, port_name, baud_rate=9600):
         """
-        Connect to a serial port
-        
+        Connect to a serial port (non-blocking)
+
         Args:
             port_name (str): Name of the port to connect to (e.g., 'COM3')
             baud_rate (int): Baud rate (default: 9600)
-            
+
         Returns:
-            bool: True if connection successful, False otherwise
+            bool: Always returns True (connection attempt started in background)
         """
         if self.connected:
             self.disconnect()
-        
-        self.serial_port.setPortName(port_name)
-        self.serial_port.setBaudRate(baud_rate)
+
+        # Cancel any existing connection attempt
+        if self._open_worker is not None and self._open_worker.isRunning():
+            self._open_worker.terminate()
+            self._open_worker.wait()
+
+        # Store port settings for after worker completes
+        self._pending_port = port_name
+        self._pending_baud = baud_rate
+
+        # Start worker thread to test port open (non-blocking)
+        self._open_worker = PortOpenWorker(port_name, baud_rate)
+        self._open_worker.finished.connect(self._on_port_open_result)
+        self._open_worker.start()
+
+        return True
+
+    def _on_port_open_result(self, success, error_msg):
+        """Called when the port open worker completes"""
+        if not success:
+            self.error_occurred.emit(f"Failed to open {self._pending_port}: {error_msg}")
+            self.connection_changed.emit(False)
+            return
+
+        # Port can be opened - now open it with QSerialPort
+        self.serial_port.setPortName(self._pending_port)
+        self.serial_port.setBaudRate(self._pending_baud)
         self.serial_port.setDataBits(QSerialPort.DataBits.Data8)
         self.serial_port.setParity(QSerialPort.Parity.NoParity)
         self.serial_port.setStopBits(QSerialPort.StopBits.OneStop)
         self.serial_port.setFlowControl(QSerialPort.FlowControl.NoFlowControl)
-        
+
         if self.serial_port.open(QIODevice.OpenModeFlag.ReadWrite):
-            # Import QThread for delay
-            from PyQt6.QtCore import QThread
+            # Port opened - start non-blocking connection sequence
+            self.port_open = True
+            self.awaiting_handshake = True
+            self._connect_step = 0
 
-            # Wait a bit for port to stabilize
-            QThread.msleep(100)
+            # Start the connection sequence with a small delay for port stabilization
+            self._connect_timer.start(100)
+        else:
+            error_msg = f"Failed to open {self._pending_port}: {self.serial_port.errorString()}"
+            self.error_occurred.emit(error_msg)
+            self.connection_changed.emit(False)
 
-            # Read any buffered data (e.g., welcome message from Arduino startup)
-            # before clearing buffers
+    def _connection_sequence_step(self):
+        """Execute steps of the connection sequence (non-blocking)"""
+        if not self.serial_port.isOpen():
+            # Port was closed during sequence
+            return
+
+        if self._connect_step == 0:
+            # Step 0: Read any buffered data after port stabilization
             if self.serial_port.bytesAvailable() > 0:
                 buffered_data = self.serial_port.readAll()
                 try:
                     text = buffered_data.data().decode('utf-8', errors='ignore')
-                    # Process buffered messages
                     for line in text.split('\n'):
                         line = line.strip()
                         if line:
@@ -92,36 +170,40 @@ class SerialManager(QObject):
                 except:
                     pass
 
-            # Now clear any remaining stale data
+            # Clear any remaining stale data
             self.serial_port.clear(QSerialPort.Direction.AllDirections)
             self.buffer = ""
 
-            # Port is open but not yet confirmed by firmware response
-            self.port_open = True
-            self.awaiting_handshake = True
-
-            # SAFETY FIRST: Send emergency stop and disable
+            # Send EStop for safety
             self._send_raw("EStop")
-            QThread.msleep(50)
+            self._connect_step = 1
+            self._connect_timer.start(50)
 
+        elif self._connect_step == 1:
+            # Step 1: Send Disable
             self._send_raw("Disable")
-            QThread.msleep(50)
+            self._connect_step = 2
+            self._connect_timer.start(50)
 
-            # Query firmware version to verify bidirectional communication
-            # Connection will be confirmed when we receive the version response
+        elif self._connect_step == 2:
+            # Step 2: Query firmware version to verify bidirectional communication
             self._send_raw("GetVersion")
 
             # Start handshake timeout (2 seconds to receive firmware version)
             self.handshake_timer.start(2000)
-
-            return True
-        else:
-            error_msg = f"Failed to open {port_name}: {self.serial_port.errorString()}"
-            self.error_occurred.emit(error_msg)
-            return False
+            # Sequence complete - waiting for firmware response
     
     def disconnect(self):
         """Disconnect from the serial port"""
+        # Cancel any pending port open worker
+        if self._open_worker is not None and self._open_worker.isRunning():
+            self._open_worker.terminate()
+            self._open_worker.wait()
+
+        # Cancel any pending connection sequence
+        self._connect_timer.stop()
+        self._connect_step = 0
+
         # Cancel any pending handshake
         self.handshake_timer.stop()
         self.awaiting_handshake = False

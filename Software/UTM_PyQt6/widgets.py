@@ -432,35 +432,6 @@ class SpeedGauge(QWidget):
 
         painter.restore()
 
-        # Draw labels for -max, 0, +max
-        self._draw_tick_labels(painter)
-
-    def _draw_tick_labels(self, painter):
-        """Draw labels for key tick positions"""
-        font = QFont("Arial", 8)
-        painter.setFont(font)
-        painter.setPen(QColor(160, 160, 160))
-
-        # Label positions (radius from center)
-        label_radius = 40
-
-        # -max label (7 o'clock position, 225°)
-        angle_neg = math.radians(225 - 90)  # Convert to radians, adjust for coordinate system
-        x_neg = label_radius * math.cos(angle_neg)
-        y_neg = -label_radius * math.sin(angle_neg)
-        neg_label = f"-{int(self._max_value)}"
-        painter.drawText(QRectF(x_neg - 20, y_neg - 8, 40, 16), Qt.AlignmentFlag.AlignCenter, neg_label)
-
-        # 0 label (12 o'clock position, 90°)
-        painter.drawText(QRectF(-10, -45, 20, 16), Qt.AlignmentFlag.AlignCenter, "0")
-
-        # +max label (5 o'clock position, -45° or 315°)
-        angle_pos = math.radians(-45 - 90)  # Convert to radians
-        x_pos = label_radius * math.cos(angle_pos)
-        y_pos = -label_radius * math.sin(angle_pos)
-        pos_label = f"+{int(self._max_value)}"
-        painter.drawText(QRectF(x_pos - 20, y_pos - 8, 40, 16), Qt.AlignmentFlag.AlignCenter, pos_label)
-
     def _draw_needle(self, painter):
         """Draw the needle indicator"""
         painter.save()

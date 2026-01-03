@@ -9,7 +9,7 @@ APPLICATION VERSION - UPDATE ON EVERY COMMIT!
 ============================================
 """
 
-__version__ = "0.2.6"
+__version__ = "0.2.7"
 
 
 import sys
@@ -78,9 +78,9 @@ class UTMApplication(QMainWindow):
 
         # Replace Data Stream checkboxes with FluentSwitch toggles
         # These control whether data is displayed to console (polling is automatic)
-        self._replace_checkbox_with_switch('loadCellCheckBox', 'loadCellSwitch', 'formLayout_dataStreams', 0)
-        self._replace_checkbox_with_switch('positionCheckBox', 'positionSwitch', 'formLayout_dataStreams', 1)
-        self._replace_checkbox_with_switch('velocityCheckBox', 'velocitySwitch', 'formLayout_dataStreams', 2)
+        self._replace_checkbox_with_switch_horizontal('loadCellCheckBox', 'loadCellSwitch', 'horizontalLayout_dataStreams')
+        self._replace_checkbox_with_switch_horizontal('positionCheckBox', 'positionSwitch', 'horizontalLayout_dataStreams')
+        self._replace_checkbox_with_switch_horizontal('velocityCheckBox', 'velocitySwitch', 'horizontalLayout_dataStreams')
 
         # Replace speed unit checkbox with radio buttons
         self._setup_speed_unit_controls()
@@ -88,8 +88,8 @@ class UTMApplication(QMainWindow):
         # Replace speed gauge placeholder with actual SpeedGauge widget
         self._setup_speed_gauge()
 
-    def _replace_checkbox_with_switch(self, checkbox_name, switch_name, layout_name, row):
-        """Helper to replace a checkbox with FluentSwitch in a form layout"""
+    def _replace_checkbox_with_switch_horizontal(self, checkbox_name, switch_name, layout_name):
+        """Helper to replace a checkbox with FluentSwitch in a horizontal layout"""
         checkbox = getattr(self, checkbox_name, None)
         layout = getattr(self, layout_name, None)
 
@@ -98,11 +98,15 @@ class UTMApplication(QMainWindow):
             switch.setFixedSize(44, 22)
             setattr(self, switch_name, switch)
 
-            # Remove old checkbox and add switch
-            layout.removeWidget(checkbox)
-            checkbox.hide()
-            checkbox.deleteLater()
-            layout.setWidget(row, layout.ItemRole.FieldRole, switch)
+            # Find the checkbox in the layout and replace it
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                if item and item.widget() == checkbox:
+                    layout.removeWidget(checkbox)
+                    checkbox.hide()
+                    checkbox.deleteLater()
+                    layout.insertWidget(i, switch)
+                    break
 
     def _setup_speed_unit_controls(self):
         """Replace speed unit checkbox with radio buttons and reorganize speed controls"""
@@ -446,6 +450,7 @@ class UTMApplication(QMainWindow):
             baud_rate = 9600
 
             self.append_to_console(f"Connecting to {port} at {baud_rate} baud...")
+            self.set_status(f"Connecting to {port}...")
 
             # SAFETY: Block signals during connection to prevent accidental motor commands
             self.upRadioButton.blockSignals(True)
@@ -457,23 +462,16 @@ class UTMApplication(QMainWindow):
             self.stopRadioButton.setChecked(True)
             self.motorsSwitch.setChecked(False)
 
-            success = self.serial_manager.connect(port, baud_rate)
-
             # Restore signals
             self.upRadioButton.blockSignals(False)
             self.downRadioButton.blockSignals(False)
             self.stopRadioButton.blockSignals(False)
             self.motorsSwitch.blockSignals(False)
 
-            if not success:
-                self.append_to_console(f"Failed to connect to {port}")
-                # Reset switch without triggering signal
-                self.connectionSwitch.blockSignals(True)
-                self.connectionSwitch.setChecked(False)
-                self.connectionSwitch.blockSignals(False)
-            else:
-                # Port opened - waiting for handshake (status lamp will turn on when firmware responds)
-                self.append_to_console("Waiting for firmware response...")
+            # Start connection attempt (non-blocking - result comes via signals)
+            self.serial_manager.connect(port, baud_rate)
+            # Note: Switch stays on during connection attempt
+            # It will be reset by on_connection_state_changed if connection fails
         else:
             # Only disconnect if we're actually connected or port is open
             if self.connected or self.serial_manager.port_open:
@@ -828,8 +826,16 @@ class UTMApplication(QMainWindow):
         self.set_status("⚠ EMERGENCY STOP - Motors halted", is_warning=True)
         if self.connected:
             self.serial_manager.send_command("EStop")
+
+        # Reset direction to STOP
+        self.stopRadioButton.blockSignals(True)
         self.stopRadioButton.setChecked(True)
+        self.stopRadioButton.blockSignals(False)
+
+        # Turn off motors switch and trigger the full cleanup
+        # (stop velocity polling, update controls, reset speed display)
         self.motorsSwitch.setChecked(False)
+        self.on_motors_toggle(False)
 
     # ========== Position & Incremental Move Functions ==========
 
@@ -923,7 +929,13 @@ class UTMApplication(QMainWindow):
             self._start_motor_polling()
         else:
             self.update_status_lamp(False)
-            self.set_status("Disconnected")
+            # Only show "Disconnected" if we were previously connected
+            # Otherwise the error message is more informative
+            if self.connectionSwitch.isChecked():
+                self.set_status("Connection failed")
+                self.append_to_console("Connection failed")
+            else:
+                self.set_status("Disconnected")
             # Update switch state - block signals to prevent triggering disconnect again
             if self.connectionSwitch.isChecked():
                 self.connectionSwitch.blockSignals(True)
@@ -1046,23 +1058,17 @@ class UTMApplication(QMainWindow):
         if self.connected:
             self.serial_manager.send_command("EStop")
 
-        # Reset UI state
+        # Reset stall counter
+        self.stall_count = 0
+
+        # Reset direction to STOP
         self.stopRadioButton.blockSignals(True)
         self.stopRadioButton.setChecked(True)
         self.stopRadioButton.blockSignals(False)
 
-        self.motorsSwitch.blockSignals(True)
+        # Turn off motors switch and trigger the full cleanup
         self.motorsSwitch.setChecked(False)
-        self.motorsSwitch.blockSignals(False)
-
-        # Stop velocity polling
-        self._stop_velocity_polling()
-
-        # Reset stall counter
-        self.stall_count = 0
-
-        # Update controls
-        self.update_controls_enabled_state()
+        self.on_motors_toggle(False)
     
     def on_firmware_version(self, version):
         """Handle firmware version received from ESP32"""
