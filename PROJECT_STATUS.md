@@ -833,7 +833,7 @@ gauge.setUnit("RPM")    # Or "mm/s"
 - `Software/UTM_PyQt6/main.py` - Added marker checkbox signal connections
 - `README.md` - Added BOM tables
 
-**Version:** 0.5.2 (bug fix)
+**Version:** 0.5.3 (bug fix)
 
 **Next Session Should Start With:**
 1. Read PROJECT_STATUS.md (this file)

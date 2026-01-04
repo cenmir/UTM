@@ -14,7 +14,7 @@ Additionally on each motor shaft end a magnet is attached and its rotational pos
 
 ## Software
 
-The software is written for Matlab currently.
+The software is written in python using the PyQt6 framework for the GUI.
 
 ![](graphics/GUI.png)
 
