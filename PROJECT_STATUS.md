@@ -1,6 +1,6 @@
 # UTM Project Status & Session Log
 
-**Last Updated:** 2026-01-03
+**Last Updated:** 2026-01-04
 
 ---
 
@@ -815,6 +815,32 @@ gauge.setUnit("RPM")    # Or "mm/s"
    - **Option B**: Add keyboard shortcuts (E-stop, motor control)
    - **Option C**: Camera/DIC integration (optional)
    - **Option D**: More hardware testing
+
+### Session: 2026-01-04 - BUG FIX & DOCUMENTATION ✅
+
+**What We Did:**
+1. ✅ **Fixed Show Markers checkbox bug**
+   - Both `ssShowMarkersCheckBox` and `loadShowMarkersCheckBox` weren't triggering plot updates
+   - Added signal connections to `_update_stress_strain_plot()` and `_update_load_plot()`
+   - Now toggling markers immediately redraws the plot
+
+2. ✅ **Added Bill of Materials to README.md**
+   - Mechanics BOM: Aluminium profiles, gearboxes, lead screws, bearings
+   - Electronics BOM: Motors, drivers, ESP32, HX711, load cell, encoders
+   - Camera System: Basler camera, Azure lens, LED lights
+
+**Files Modified:**
+- `Software/UTM_PyQt6/main.py` - Added marker checkbox signal connections
+- `README.md` - Added BOM tables
+
+**Version:** 0.5.2 (bug fix)
+
+**Next Session Should Start With:**
+1. Read PROJECT_STATUS.md (this file)
+2. Choose next implementation direction:
+   - **Option A**: Create first GitHub release
+   - **Option B**: Add keyboard shortcuts (E-stop, motor control)
+   - **Option C**: Camera/DIC integration (optional)
 
 ---
 

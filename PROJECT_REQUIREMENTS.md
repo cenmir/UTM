@@ -5,10 +5,16 @@ This document outlines the hardware and software requirements for the Python-bas
 ## Hardware
 
 *   **Universal Testing Machine (UTM):** The existing custom-built machine with:
-    *   Nema 23 stepper motors
-    *   HX711 load cell
-    *   AS5600 magnetic encoders
-    *   Arduino-based microcontroller
+    *   2x Nema 23 stepper motors (AMP57TH76-4280) (1.85 Nm stall torque)
+    *   2x MKS TMC2160 Nema23 driver board2
+    *   1x HX711 load cell amplifier
+    *   1x Anyload 101BH-3t load cell (3 ton capacity)
+    *   2x AS5600 magnetic encoders
+    *   1x ESP32 LolinD32 Board
+    *   [Aluminium extrusions](https://www.alucon.se/product/aluminiumprofil-80x80-basic-t-spar-8-1-mm)
+    *   2x EPL-Q64 i20
+    *   2x Tr 22x5  TH22 Trapezoidal lead screws
+    *   4x SKF-6005-2z Deep groove ball bearings
 *   **Camera:**
     *   **Model:** Basler acA2440-35um
     *   **Interface:** USB 3.0
@@ -18,6 +24,9 @@ This document outlines the hardware and software requirements for the Python-bas
     *   **Max Resolution:** 5MP
     *   **Sensor Format:** 2/3"
 *   **Lighting:** LED lights for illuminating the test specimen.
+
+![](graphics/UTM-schematic.png)
+![](graphics/UTM-Dimensions.png)
 
 ## Software
 

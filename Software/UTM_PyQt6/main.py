@@ -9,7 +9,7 @@ APPLICATION VERSION - UPDATE ON EVERY COMMIT!
 ============================================
 """
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 
 import sys
@@ -439,6 +439,10 @@ class UTMApplication(QMainWindow):
         # Stress/Strain plot toggle sync with Load Plot toggle
         self.ssTogglePlotCheckBox.stateChanged.connect(self._sync_plot_toggles)
         self.loadTogglePlotCheckBox.stateChanged.connect(self._sync_plot_toggles)
+
+        # Show Markers checkboxes - trigger plot redraw when toggled
+        self.ssShowMarkersCheckBox.stateChanged.connect(self._update_stress_strain_plot)
+        self.loadShowMarkersCheckBox.stateChanged.connect(self._update_load_plot)
 
         # Load Plot tab controls
         self.clearLoadPlotButton.clicked.connect(self.on_clear_load_plot)

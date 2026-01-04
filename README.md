@@ -22,7 +22,31 @@ The software is written for Matlab currently.
 
 ### Mechanics BOM
 
+| Qty | Component | Description |
+|-----|-----------|-------------|
+| 1 | [Aluminium Profile 80x80](https://www.alucon.se/product/aluminiumprofil-80x80-basic-t-spar-8-1-mm) | Frame extrusions |
+| 2 | EPL-Q64 i20 | Planetary gearboxes (20:1 reduction) |
+| 2 | Tr 22x5 TH22 | Trapezoidal lead screws (5mm pitch) |
+| 4 | SKF-6005-2Z | Deep groove ball bearings |
+
 ### Electronics BOM
+
+| Qty | Component | Description |
+|-----|-----------|-------------|
+| 2 | Nema 23 AMP57TH76-4280 | Stepper motors (1.85 Nm stall torque) |
+| 2 | MKS TMC2160_57 | Stepper driver boards |
+| 1 | ESP32 Lolin D32 | Microcontroller |
+| 1 | HX711 | Load cell amplifier |
+| 1 | Anyload 101BH-3t | Load cell (3 ton capacity) |
+| 2 | AS5600 | Magnetic rotary encoders |
+
+### Camera System (for DIC)
+
+| Qty | Component | Specification |
+|-----|-----------|---------------|
+| 1 | Basler acA2440-35um | USB 3.0 camera |
+| 1 | Azure-2514M | 25mm lens, 5MP, 2/3" sensor |
+| - | LED lights | Specimen illumination |
 
 ## Digital Image Correlation
 
