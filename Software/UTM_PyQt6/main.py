@@ -2097,8 +2097,8 @@ class UTMApplication(QMainWindow):
         screw_rotations = rotations / 20.0  # 20:1 gear ratio
         position_mm = screw_rotations * 5.0  # 5mm pitch
 
-        # Calculate displacement relative to tare point (positive going down)
-        self.motor_displacement_mm = -(position_mm - self.motor_position_zero)
+        # Calculate displacement relative to tare point
+        self.motor_displacement_mm = position_mm - self.motor_position_zero
 
         # Update displacement label
         self.displacementLabel.setText(f"δ = {self.motor_displacement_mm:.4f} mm")
