@@ -29,3 +29,7 @@ Software/UTM_PyQt6/DEPLOYMENT.md
 PROJECT_STATUS.md
 
 Software/testData/
+Software/data*
+
+# Large binaries / installers
+*.exe
