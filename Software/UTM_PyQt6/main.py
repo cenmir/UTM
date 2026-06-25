@@ -770,6 +770,9 @@ class UTMApplication(QMainWindow):
         # Setup camera display AFTER stress-strain plot is ready
         self._setup_camera_display()
 
+        # Auto-preload controls (target-force jog) in the Motor Control group
+        self._setup_preload_controls()
+
         # Replace HBoxLayout between tabs and right panel with a draggable splitter
         self._setup_main_splitter()
 
@@ -834,6 +837,16 @@ class UTMApplication(QMainWindow):
         self.incremental_move_active = False  # True during MoveSteps command
         self.incremental_move_grace_period = False  # True briefly after starting incremental move
         self.movement_start_grace_period = False  # True briefly after starting movement
+
+        # Auto-preload: move in tension until the load reaches a target, then stop
+        self.preload_active = False
+        self.preload_target = 0.0
+        self._preload_last_speed = 0.0   # last commanded approach speed (mm/s) for throttling
+        self._preload_last_speed_t = 0.0
+        self.preload_timeout_timer = QTimer()
+        self.preload_timeout_timer.setSingleShot(True)
+        self.preload_timeout_timer.setInterval(int(self.PRELOAD_TIMEOUT_S * 1000))
+        self.preload_timeout_timer.timeout.connect(self._on_preload_timeout)
 
         # Polling timers for motor data
         # Timer for position polling (always when connected)
@@ -1663,6 +1676,9 @@ class UTMApplication(QMainWindow):
         self.upRadioButton.setEnabled(direction_enabled)
         self.stopRadioButton.setEnabled(direction_enabled)
         self.downRadioButton.setEnabled(direction_enabled)
+        if getattr(self, 'preloadButton', None) is not None:
+            self.preloadButton.setEnabled(direction_enabled)
+            self.preloadTargetSpinBox.setEnabled(direction_enabled and not self.preload_active)
 
         # Emergency stop - always enabled when connected (safety!)
         self.emergencyStopButton.setEnabled(connected)
@@ -1767,6 +1783,15 @@ class UTMApplication(QMainWindow):
     # Safety limits
     MAX_RPM = 450  # Maximum allowed RPM (hardware limit)
     MAX_MM_PER_S = MAX_RPM * MM_PER_S_PER_RPM  # ~1.875 mm/s
+    # auto-preload speed ramp knots: (load fraction of target, speed mm/s), interpolated for a
+    # smooth slow-down — hold 0.2 to 10 %, ramp to 0.1 by 15 %, hold to 50 %, then a long gentle
+    # deceleration to a 0.02 mm/s creep by 90 % so it eases onto the target with minimal overshoot.
+    PRELOAD_SPEED_KNOTS = [(0.0, 0.20), (0.10, 0.20), (0.15, 0.10),
+                           (0.50, 0.10), (0.90, 0.02), (1.0, 0.02)]
+    PRELOAD_TARGET_FACTOR = 1.03  # stop at this x target: offsets PLA stress relaxation (held load
+                                  # decays ~2 % after the motor stops) so the held load lands >= target
+    PRELOAD_OVERSHOOT_CAP = 1.25  # hard safety: force-halt if load exceeds this multiple of target
+    PRELOAD_TIMEOUT_S = 180       # runaway safety: abort auto-preload after this long without reaching target
 
     def _init_speed_controls(self):
         """Initialize speed controls with mm/s defaults"""
@@ -1896,6 +1921,10 @@ class UTMApplication(QMainWindow):
         if not checked:
             return
 
+        # a manual direction change cancels an in-progress auto-preload
+        if self.preload_active:
+            self._reset_preload_ui()
+
         if not self.connected:
             return
 
@@ -1958,6 +1987,7 @@ class UTMApplication(QMainWindow):
             self.stopRadioButton.blockSignals(False)
 
             self.append_to_console("Motors DISABLED (stopped)")
+            self._reset_preload_ui()
             self.set_status("Motors disabled")
             if self.connected:
                 self.serial_manager.send_command("Stop")
@@ -1972,9 +2002,159 @@ class UTMApplication(QMainWindow):
         # Update direction and incremental move controls based on motor state
         self.update_controls_enabled_state()
 
+    # ========== Auto-preload (move in tension until load reaches a target) ==========
+
+    def _setup_preload_controls(self):
+        """Add a target-force input + Preload button to the Motor Control group (right panel)."""
+        from PyQt6.QtWidgets import QHBoxLayout, QLabel, QDoubleSpinBox, QPushButton
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Preload to:"))
+        self.preloadTargetSpinBox = QDoubleSpinBox()
+        self.preloadTargetSpinBox.setRange(0, 2000)
+        self.preloadTargetSpinBox.setDecimals(0)
+        self.preloadTargetSpinBox.setSingleStep(10)
+        self.preloadTargetSpinBox.setValue(470)
+        self.preloadTargetSpinBox.setSuffix(" N")
+        self.preloadTargetSpinBox.setToolTip(
+            "Target load. The gripper moves in tension until the load cell reaches this value, then stops.")
+        self.preloadButton = QPushButton("Preload tension")
+        self.preloadButton.setToolTip(
+            "Auto-move the gripper in tension until Current Load reaches the target, then stop. Click again to cancel.")
+        row.addWidget(self.preloadTargetSpinBox)
+        row.addWidget(self.preloadButton)
+        lay = self.motorControlGroup.layout()
+        idx = lay.indexOf(self.emergencyStopButton)
+        if idx >= 0:
+            lay.insertLayout(idx, row)
+        else:
+            lay.addLayout(row)
+        self.preloadButton.clicked.connect(self.on_preload_start)
+        self.preloadButton.setEnabled(False)
+        self.preloadTargetSpinBox.setEnabled(False)
+
+    def on_preload_start(self):
+        """Start (or, if already running, cancel) an automatic preload to the target force."""
+        if self.preload_active:
+            self._stop_preload("cancelled by user")
+            return
+        target = self.preloadTargetSpinBox.value()
+        if not self.connected:
+            self.append_to_console("[Preload] Not connected — cannot move."); return
+        if not self.motorsSwitch.isChecked():
+            self.append_to_console("[Preload] Enable motors first."); return
+        if target <= 0:
+            self.append_to_console("[Preload] Set a positive target load."); return
+        if self.current_load >= target:
+            self.append_to_console(
+                f"[Preload] Load is already {self.current_load:.1f} N >= target {target:.0f} N."); return
+        # gentle tension approach
+        self.preload_target = float(target)
+        self._preload_last_speed = self.PRELOAD_SPEED_KNOTS[0][1]
+        self._preload_last_speed_t = 0.0
+        self.preload_active = True
+        # show "Up" (tension) selected without re-triggering the direction handler
+        self.upRadioButton.blockSignals(True)
+        self.upRadioButton.setChecked(True)
+        self.upRadioButton.blockSignals(False)
+        self.serial_manager.send_command(f"SetSpeed {self._fw_speed(self.PRELOAD_SPEED_KNOTS[0][1])}")
+        self.serial_manager.send_command("Down")   # firmware "Down" = physical tension
+        self._start_movement_grace_period()
+        self.preload_timeout_timer.start()
+        self.preloadButton.setText("Cancel preload")
+        self.preloadTargetSpinBox.setEnabled(False)
+        self.append_to_console(
+            f"[Preload] Approaching {target:.0f} N (tension) — speed ramps 0.20 → 0.10 → 0.05 mm/s "
+            f"(smooth, around 10 % / 75 %)...")
+        self.set_status(f"Preloading to {target:.0f} N ...")
+
+    def _fw_speed(self, mm_s):
+        """Convert mm/s to the firmware SetSpeed value (RPM x 10), clamped to MAX_RPM."""
+        rpm = min(mm_s / self.MM_PER_S_PER_RPM, self.MAX_RPM)
+        return int(rpm * 10)
+
+    def _preload_check(self):
+        """Smooth-ramped approach; stop when the live load reaches the target.
+        The approach speed is interpolated vs load fraction (no abrupt drops), and there is
+        NO early anticipation — it stops AT the target, landing within +5 % (never short)."""
+        # HARD safety net: force-halt if the load ever runs well past the target.
+        if self.current_load >= self.PRELOAD_OVERSHOOT_CAP * self.preload_target:
+            if self.connected:
+                self.serial_manager.send_command("Stop")
+                self.serial_manager.send_command("EStop")
+            self._reset_preload_ui()
+            self.stopRadioButton.blockSignals(True)
+            self.stopRadioButton.setChecked(True)
+            self.stopRadioButton.blockSignals(False)
+            self.append_to_console(
+                f"[Preload] OVERSHOOT SAFETY — halted at {self.current_load:.1f} N "
+                f"(target {self.preload_target:.0f} N)")
+            self.set_status("⚠ Preload overshoot — motor halted", is_warning=True)
+            return
+        # smooth speed ramp: interpolate the approach speed vs load fraction, then throttle the
+        # SetSpeed sends (by value + time) so the slow-down is smooth without spamming the firmware.
+        # LIVE SetSpeed only — re-issuing "Down" mid-move re-latches motion and fights the stop.
+        import time
+        now = time.monotonic()
+        target = self.preload_target
+        frac = self.current_load / target if target > 0 else 1.0
+        spd = self._preload_speed(frac)
+        if (abs(spd - self._preload_last_speed) >= 0.01
+                and now - self._preload_last_speed_t >= 0.15):
+            self._preload_last_speed = spd
+            self._preload_last_speed_t = now
+            self.serial_manager.send_command(f"SetSpeed {self._fw_speed(spd)}")
+        # throttled progress log
+        if now - getattr(self, '_preload_last_log', 0.0) >= 1.0:
+            self._preload_last_log = now
+            self.append_to_console(
+                f"[Preload] current {self.current_load:.1f} N  ({frac*100:.0f} %, {spd:.3f} mm/s)  /  "
+                f"target {target:.0f} N")
+        # stop at factor x target so the HELD load lands >= target after PLA stress relaxation
+        if self.current_load >= self.PRELOAD_TARGET_FACTOR * target:
+            self._stop_preload(
+                f"reached {self.current_load:.1f} N "
+                f"(target {target:.0f} N x{self.PRELOAD_TARGET_FACTOR:.2f}, offsets relaxation)")
+
+    def _preload_speed(self, frac):
+        """Interpolated approach speed (mm/s) for a load fraction — smooth ramps between knots."""
+        knots = self.PRELOAD_SPEED_KNOTS
+        if frac <= knots[0][0]:
+            return knots[0][1]
+        for (f0, s0), (f1, s1) in zip(knots, knots[1:]):
+            if frac <= f1:
+                return s0 + (s1 - s0) * (frac - f0) / (f1 - f0) if f1 > f0 else s1
+        return knots[-1][1]
+
+    def _stop_preload(self, message, warn=False):
+        """Stop the motor and end the auto-preload, with a console/status message."""
+        self._reset_preload_ui()
+        self.stopRadioButton.blockSignals(True)
+        self.stopRadioButton.setChecked(True)
+        self.stopRadioButton.blockSignals(False)
+        self.movement_start_grace_period = False
+        self.grace_period_timer.stop()
+        if self.connected:
+            self.serial_manager.send_command("Stop")
+        self.append_to_console(f"[Preload] {message}")
+        self.set_status(f"Preload: {message}", is_warning=warn)
+
+    def _on_preload_timeout(self):
+        self._stop_preload("timed out — target not reached", warn=True)
+
+    def _reset_preload_ui(self):
+        """Clear auto-preload state and restore the button/input (does NOT command the motor)."""
+        self.preload_active = False
+        if getattr(self, 'preload_timeout_timer', None) is not None:
+            self.preload_timeout_timer.stop()
+        if getattr(self, 'preloadButton', None) is not None:
+            self.preloadButton.setText("Preload tension")
+        if getattr(self, 'preloadTargetSpinBox', None) is not None:
+            self.preloadTargetSpinBox.setEnabled(True)
+
     def on_emergency_stop(self):
         """Emergency stop button pressed"""
         self.append_to_console("EMERGENCY STOP activated!")
+        self._reset_preload_ui()
         self.set_status("⚠ EMERGENCY STOP - Motors halted", is_warning=True)
         if self.connected:
             self.serial_manager.send_command("EStop")
@@ -2504,6 +2684,10 @@ class UTMApplication(QMainWindow):
         self.current_load = force
         self.update_load_display()
 
+        # Auto-preload: stop the motor once the target load is reached (or a safety limit trips)
+        if self.preload_active:
+            self._preload_check()
+
         # Add to plot data if:
         # 1. Load cell data stream is enabled (loadCellSwitch)
         # 2. Plot checkbox is checked (loadTogglePlotCheckBox)
@@ -2626,7 +2810,8 @@ class UTMApplication(QMainWindow):
         # Stall detection: check if motors should be moving but aren't
         # Only applies to continuous movement (Up/Down direction), not incremental moves
         # Skip during grace period (motor is still accelerating)
-        if self.stall_detection_enabled and self.motorsSwitch.isChecked() and not self.movement_start_grace_period:
+        if (self.stall_detection_enabled and self.motorsSwitch.isChecked()
+                and not self.movement_start_grace_period and not self.preload_active):
             # Check if direction is not STOP (motors should be moving)
             motors_should_move = not self.stopRadioButton.isChecked()
 
@@ -2648,6 +2833,7 @@ class UTMApplication(QMainWindow):
     def _handle_motor_stall(self):
         """Handle detected motor stall - emergency stop and warn user"""
         self.append_to_console("⚠ WARNING: MOTOR STALL DETECTED!")
+        self._reset_preload_ui()
         self.append_to_console("⚠ Motors stopped for safety!")
         self.set_status("⚠ MOTOR STALL DETECTED - Motors stopped for safety!", is_warning=True)
 

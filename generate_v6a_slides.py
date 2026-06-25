@@ -141,6 +141,21 @@ def footer(slide, text):
     tb(slide, 0.6, 7.0, 12.1, 0.4, text, fs=12, italic=True, colour=GREY_TEXT)
 
 
+def linkbox(slide, x, y, w, text, url, *, fs=11):
+    box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(0.3))
+    tf = box.text_frame; tf.word_wrap = True
+    p = tf.paragraphs[0]
+    r = p.add_run(); r.text = text
+    r.font.size = Pt(fs); r.font.name = "Calibri"
+    r.font.color.rgb = RGBColor(0x1A, 0x5F, 0xB4); r.font.underline = True
+    r.hyperlink.address = url
+    return box
+
+
+ADDNORTH_TDS = "https://storage.googleapis.com/addnorth-com.appspot.com/imgix/assets/production/epla_tds_rev21_XTkw2P.pdf"
+ADDNORTH_PROD = "https://addnorth.com/product/PLA%20Economy/PLA%20Economy%20-%201.75mm%20-%201000g%20-%20Light%20Grey"
+
+
 def pic_slide(t, img, n, foot, *, x=1.67, y=1.55, w=10.0):
     s = prs.slides.add_slide(BLANK); ju(s); title(s, t)
     s.shapes.add_picture(img, Inches(x), Inches(y), width=Inches(w))
@@ -226,8 +241,8 @@ pic_slide("PHASE 8.6.20 V6a: GAUGE STRAIN vs DISPLACEMENT", "V6a_strain_position
 
 # ===== SLIDE 8 — Verdict =====
 s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "PHASE 8.6.20 V6a: VERDICT — OFFSET ≈ 1 AT 100 %")
-header(s, 0.5, 1.35, 7.7, "V6a measured vs Chacón range  (and offset k = Chacón_min / measured)")
+title(s, "PHASE 8.6.20 V6a: VALIDATION — JOURNAL REFERENCE")
+header(s, 0.5, 1.35, 7.7, "Chacón (2017) journal — measured vs range, offset k = Chacón_min / measured")
 off = [
     ["Property", "V5 k", "V6a k", "V6a measured", "Chacón range"],
     ["E", "×1.95", "×1.25", "2.41 GPa", "3.0–5.5 GPa"],
@@ -254,6 +269,8 @@ banner(s, 0.5, 5.3, 12.4, 0.65,
 banner(s, 0.5, 6.1, 12.4, 0.65,
        "DIC validated under LED lighting (99.9 % tracking, clean baseline) — lighting is precision-only, as predicted.",
        fill=LIGHT_BLUE, fg=DARK_GREEN, fs=12)
+footer(s, "Journal reference (Chacón 2017). Also validated against the add:north E-PLA datasheet — see the "
+          "'add:north PLA reference' slide (p. 156).")
 pageno(s, 148)
 
 # ===== SLIDE 9 — Recommendations =====
@@ -333,5 +350,72 @@ tb(s, 9.1, 1.75, 3.95, 4.5,
 banner(s, 9.1, 6.3, 3.95, 0.6, "≈ 2.2× strength, k: 1.45 → 1.0", fill=GREEN_PASS, fg=DARK_GREEN, fs=13)
 pageno(s, 154)
 
+# ===== SLIDE 15 — Single common offset factor for V6a =====
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "V6a: A SINGLE COMMON OFFSET FACTOR?")
+s.shapes.add_picture("V6a_offset_window.png", Inches(0.35), Inches(1.65), width=Inches(7.5))
+header(s, 8.0, 1.38, 5.0, "Same interval method as V5")
+win = [
+    ["Property", "feasible k window"],
+    ["E", "[1.24, 2.28]"],
+    ["σ_y", "[0.63, 1.05]"],
+    ["UTS", "[0.67, 1.25]"],
+    ["ALL three", "∅  empty"],
+    ["Strength σ_y + UTS", "[0.67, 1.05]"],
+]
+ovw = {(4, 0): {'bg': RED_FAIL, 'bold': True}, (4, 1): {'bg': RED_FAIL, 'bold': True},
+       (5, 0): {'bg': GREEN_PASS, 'bold': True}, (5, 1): {'bg': GREEN_PASS, 'bold': True}}
+table(s, 8.0, 1.8, 5.0, 2.25, win, cw=[1.7, 1.5], hf=11, bf=11.5, ov=ovw)
+tb(s, 8.0, 4.25, 5.0, 1.1,
+   "k window per property = [Chacón_lo / measured, Chacón_hi / measured]; a single uniform "
+   "k must lie in the intersection of all three.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+banner(s, 0.5, 5.55, 12.4, 0.6,
+       "STRENGTH: a single uniform factor works — k ∈ [0.67, 1.05] and k = 1 sits inside it ⇒ apply "
+       "k = 1.0 (no knock-down) to σ_y and UTS at 100 % infill.")
+banner(s, 0.5, 6.3, 12.4, 0.62,
+       "No single ALL-property k: E reads low (needs ≥1.24 — rig-compliance-limited) while in-range σ_y caps "
+       "k ≤ 1.05 → they pull opposite ways. Treat E separately.   (Contrast V5: a common k ≈ 2.4 existed.)",
+       fill=YELLOW_WARN, fg=BLACK, fs=12)
+pageno(s, 155)
+
+# ===== SLIDE 16 — Validation: add:north PLA reference =====
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "PHASE 8.6.20 V6a: VALIDATION — add:north PLA REFERENCE")
+header(s, 0.4, 1.3, 7.6, "add:north E-PLA datasheet (ISO 527 / 178) vs measured — k = spec / measured")
+dat = [
+    ["Property", "ISO", "E-PLA spec", "V6a 100 %", "k", "retain"],
+    ["Yield strength σ_y", "527", "58 MPa †", "47.8 MPa", "1.21", "82 %"],
+    ["Tensile strength (UTS)", "527", "58 MPa", "47.8 MPa", "1.21", "82 %"],
+    ["Tensile modulus E", "527", "2.87 GPa", "2.41 GPa", "1.19", "84 %"],
+    ["Elongation @ break", "527", "8 %", "3.0 %", "2.68", "37 %"],
+    ["Flexural strength", "178", "120 MPa", "not tested", "—", "—"],
+    ["Density / HDT", "527/75", "1.24 / 55 °C", "—", "—", "—"],
+]
+ovd = {}
+for r in (1, 2, 3):
+    for c in range(6):
+        ovd[(r, c)] = {'bg': GREEN_PASS, 'bold': c in (0, 4)}
+for c in range(6):
+    ovd[(4, c)] = {'bg': YELLOW_WARN, 'bold': c in (0, 4)}
+table(s, 0.4, 1.72, 7.6, 2.45, dat, cw=[1.95, 0.55, 1.25, 1.2, 0.55, 0.65], hf=10, bf=10, ov=ovd)
+
+s.shapes.add_picture("V6a_epla_offset.png", Inches(8.05), Inches(1.4), width=Inches(5.05))
+linkbox(s, 8.05, 5.0, 5.05, "Spec sheet — add:north E-PLA TDS (PDF, ISO 527 / 178)", ADDNORTH_TDS)
+linkbox(s, 8.05, 5.32, 5.05, "add:north PLA Economy — product page", ADDNORTH_PROD)
+
+tb(s, 0.4, 4.3, 7.6, 1.55,
+   "Validated against TWO references:\n"
+   "• Journal (Chacón 2017): V6a σ_y & UTS land INSIDE the range (pass); modulus just below floor.\n"
+   "• add:north E-PLA datasheet: σ_y, UTS and E share ONE factor k ≈ 1.20 → printed 100 % ≈ 83 % "
+   "of solid-rated. Coherent and actionable.",
+   fs=11.5, colour=BLACK)
+banner(s, 0.4, 6.0, 12.7, 0.6,
+       "Closest match = add:north E-PLA datasheet: one coherent FFF knock-down k ≈ 1.2 on strength & "
+       "stiffness. Predict printed strength ≈ spec ÷ 1.2.")
+footer(s, "† E-PLA reports one tensile strength (at break); PLA σ_y ≈ UTS, so both are compared to 58 MPa. "
+          "E-PLA = closest published add:north PLA (no PLA Economy TDS); ISO 527 moulded vs printed 80 mm² bar.")
+pageno(s, 156)
+
 prs.save("V6a_8_6_20_slides.pptx")
-print("Saved: V6a_8_6_20_slides.pptx (14 slides, pages 141-154)")
+print("Saved: V6a_8_6_20_slides.pptx (16 slides, pages 141-156)")
