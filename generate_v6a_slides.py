@@ -11,6 +11,7 @@ Output: V6a_8_6_20_slides.pptx
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
+from PIL import Image
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
 from pptx.oxml.ns import qn
@@ -164,7 +165,7 @@ def pic_slide(t, img, n, foot, *, x=1.67, y=1.55, w=10.0):
 
 # ===== SLIDE 1 — Overview + timeline =====
 s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "PHASE 8.6.20 V6a: TENSILE TO FAILURE — 100 % INFILL")
+title(s, "PHASE 8.6.20 V6a: TENSILE TO FAILURE — 100 % INFILL (PILOT)")
 header(s, 0.5, 1.4, 5.6, "Test setup")
 setup = [
     ["Parameter", "Value"],
@@ -199,6 +200,8 @@ for i, (txt, bd, fg) in enumerate(steps):
     flow(s, FX, yy, FW, FH, txt, border=bd, fs=12, bold=(i in (3, 5)))
     if i < len(steps)-1:
         arrow(s, FX+FW/2, yy+FH, FX+FW/2, yy+gap, colour=bd)
+footer(s, "V6a (S7) = the PILOT (first) 100 % specimen, shown here in detail. It is the batch's strength / modulus "
+          "EDGE point — representative n = 5 result on pp. 157–160; the V5 comparison uses V6d (≈ mean).")
 pageno(s, 141)
 
 # ===== SLIDE 2 — Predicted results =====
@@ -269,8 +272,8 @@ banner(s, 0.5, 5.3, 12.4, 0.65,
 banner(s, 0.5, 6.1, 12.4, 0.65,
        "DIC validated under LED lighting (99.9 % tracking, clean baseline) — lighting is precision-only, as predicted.",
        fill=LIGHT_BLUE, fg=DARK_GREEN, fs=12)
-footer(s, "Journal reference (Chacón 2017). Also validated against the add:north E-PLA datasheet — see the "
-          "'add:north PLA reference' slide (p. 156).")
+footer(s, "Pilot V6a values (batch strength/modulus edge). Representative n = 5 validation on pp. 158 & 160. "
+          "Journal ref Chacón (2017); add:north datasheet on p. 156.")
 pageno(s, 148)
 
 # ===== SLIDE 9 — Recommendations =====
@@ -295,59 +298,59 @@ for i, t in enumerate(recs, 1):
 footer(s, "Next bench step: V6b/V6c (100 % repeats). Campaign goals G1 (50 % repeatable), G2/G3 (100 %≈literature) met.")
 pageno(s, 149)
 
-# ===== SLIDES 10-13 — V6a vs V5 comparison =====
-pic_slide("V6a vs V5: LOAD vs TIME", "V6a_v5_load_time.png", 150,
-          "Both at 0.1 mm/s (rate-matched). 100 % infill carries 2.17× the peak force (3826 vs 1767 N) and "
-          "sustains a longer pull to fracture.")
-pic_slide("V6a vs V5: STRESS vs STRAIN", "V6a_v5_stress_strain.png", 151,
-          "Same nominal 80 mm². 100 % infill is ~2.2× stiffer and stronger (UTS 47.8 vs 22.1 MPa) with a similar "
-          "failure strain — the difference is load-bearing cross-section, i.e. the infill knock-down.")
-pic_slide("V6a vs V5: STRESS vs DISPLACEMENT", "V6a_v5_stress_disp.png", 152,
-          "V6a needs more travel (7.3 vs 3.8 mm) to fracture: higher force ⇒ more rig/grip take-up, so the gauge "
-          "share of travel drops to 33 % (vs 52 % at 50 %).")
-pic_slide("V6a vs V5: GAUGE STRAIN vs DISPLACEMENT", "V6a_v5_strain_disp.png", 153,
-          "Both curves sit below the ideal ‘all-travel-to-gauge’ line (rig compliance). V6a's shallower slope = a "
-          "smaller share of travel reaches the gauge (stiffer specimen, higher force, more machine take-up).")
+# ===== SLIDES 10-13 — V6 (100% infill) vs V5 (50% infill) comparison — representative specimen V6d =====
+pic_slide("V6 (100 % INFILL) vs V5 (50 % INFILL): LOAD vs TIME", "V6a_v5_load_time.png", 150,
+          "Both at 0.1 mm/s (rate-matched). 100 % infill carries ≈2.1× the peak force (batch mean 3697 vs 1767 N) "
+          "and sustains a longer pull. Uses representative specimen V6d (≈ n = 5 mean), not the pilot V6a.")
+pic_slide("V6 (100 % INFILL) vs V5 (50 % INFILL): STRESS vs STRAIN", "V6a_v5_stress_strain.png", 151,
+          "Same nominal 80 mm². 100 % infill is ~2× stronger (UTS 46.1 vs 22.1 MPa) and ~1.7× stiffer; the 100 % "
+          "batch is also more extensible (ε_f 3–7 % vs ~2.5 %) — the difference is the infill load-bearing knock-down.")
+pic_slide("V6 (100 % INFILL) vs V5 (50 % INFILL): STRESS vs DISPLACEMENT", "V6a_v5_stress_disp.png", 152,
+          "100 % infill needs ~2× the travel (7.3 vs 3.8 mm) to fracture — higher force and ~2× the gauge stretch — "
+          "but reaches a SIMILAR gauge share (55 % vs 52 %). (The pilot V6a's low 33 % was its own outlier.)")
+pic_slide("V6 (100 % INFILL) vs V5 (50 % INFILL): GAUGE STRAIN vs DISPLACEMENT", "V6a_v5_strain_disp.png", 153,
+          "Both curves sit below the ideal ‘all-travel-to-gauge’ line (rig compliance) with SIMILAR slopes — about "
+          "half the travel reaches the gauge in both; 100 % just travels further (stronger and more extensible).")
 
 # ===== SLIDE 14 — Full 50 % vs 100 % numerical comparison =====
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "50 % vs 100 % INFILL — FULL COMPARISON")
-header(s, 0.4, 1.32, 8.5, "All measured values, ratio (100 % / 50 %) and % change")
+header(s, 0.4, 1.32, 8.5, "All measured values — V6 = representative V6d (≈ n=5 mean); ratio (100 %/50 %), % change")
 cmp = [
-    ["Parameter", "V5 50 %", "V6a 100 %", "ratio", "Δ %"],
-    ["Peak force (N)", "1767", "3826", "2.17×", "+117"],
-    ["UTS (MPa)", "22.09", "47.82", "2.17×", "+117"],
-    ["Yield σ_y 0.2 % (MPa)", "19.04", "47.80", "2.51×", "+151"],
-    ["Elastic modulus E (GPa)", "1.54", "2.41", "1.57×", "+57"],
-    ["Fracture stress (MPa)", "21.75", "44.48", "2.05×", "+104"],
-    ["Failure strain ε_f", "0.0247", "0.0298", "1.21×", "+21"],
-    ["Toughness (kJ/m³)", "462", "1310", "2.83×", "+184"],
-    ["Post-UTS softening (%)", "1.5", "7.0", "4.7×", "+367"],
-    ["Crosshead travel (mm)", "3.81", "7.33", "1.92×", "+92"],
-    ["Gauge stretch DIC (mm)", "1.97", "2.39", "1.21×", "+21"],
-    ["Rig take-up (mm)", "1.84", "4.94", "2.69×", "+169"],
-    ["Gauge share of travel (%)", "51.8", "32.6", "0.63×", "−37"],
-    ["Rig stiffness (N/mm)", "961", "774", "0.81×", "−19"],
-    ["Pull duration (s)", "38.4", "73.4", "1.91×", "+91"],
-    ["DIC tracking (%)", "99.8", "99.9", "1.00×", "≈0"],
+    ["Parameter", "V5 50 % infill", "V6 100 % infill", "ratio", "Δ %"],
+    ["Peak force (N)", "1767", "3688", "2.09×", "+109"],
+    ["UTS (MPa)", "22.09", "46.10", "2.09×", "+109"],
+    ["Yield σ_y 0.2 % (MPa)", "19.04", "44.73", "2.35×", "+135"],
+    ["Elastic modulus E (GPa)", "1.54", "2.63", "1.71×", "+71"],
+    ["Fracture stress (MPa)", "21.75", "42.55", "1.96×", "+96"],
+    ["Failure strain ε_f", "0.0247", "0.0500", "2.02×", "+102"],
+    ["Toughness (kJ/m³)", "462", "2131", "4.61×", "+361"],
+    ["Post-UTS softening (%)", "1.5", "7.7", "5.1×", "+413"],
+    ["Crosshead travel (mm)", "3.81", "7.32", "1.92×", "+92"],
+    ["Gauge stretch DIC (mm)", "1.97", "4.00", "2.03×", "+103"],
+    ["Rig take-up (mm)", "1.84", "3.32", "1.80×", "+80"],
+    ["Gauge share of travel (%)", "51.8", "54.7", "1.06×", "+6"],
+    ["Rig stiffness (N/mm)", "961", "1111", "1.16×", "+16"],
+    ["Pull duration (s)", "38.4", "73.3", "1.91×", "+91"],
+    ["DIC tracking (%)", "99.8", "99", "0.99×", "≈0"],
 ]
 ovc = {}
 for c in range(5):                                   # strength rows: highlight
     ovc[(1, c)] = {'bg': GREEN_PASS, 'bold': c in (0, 3)}   # peak force
     ovc[(2, c)] = {'bg': GREEN_PASS, 'bold': c in (0, 3)}   # UTS
-table(s, 0.4, 1.7, 8.5, 5.2, cmp, cw=[2.7, 0.95, 1.0, 0.85, 0.9], hf=10.5, bf=10, ov=ovc)
+table(s, 0.4, 1.7, 8.5, 5.2, cmp, cw=[2.7, 1.0, 1.05, 0.85, 0.9], hf=10.5, bf=10, ov=ovc)
 
 header(s, 9.1, 1.32, 3.9, "What it means")
 tb(s, 9.1, 1.75, 3.95, 4.5,
-   "Strength scales ~2.2× — MORE than 2× for a 2× infill jump. The 50 % knock-down is "
+   "Strength scales ~2.1× — MORE than 2× for a 2× infill jump. The 50 % knock-down is "
    "NONLINEAR: 50 % infill bears < 50 % of the solid load path.\n\n"
-   "• σ_y rises the most (2.5×) — 100 % yields right at its UTS.\n\n"
-   "• ε_f similar (1.2×): both fracture at ~0.025–0.030 strain.\n\n"
-   "• Toughness 2.8× — stronger AND slightly more extensible.\n\n"
-   "• Higher force ⇒ rig take-up 2.7× → gauge share falls 52 → 33 % (strain still from DIC).\n\n"
+   "• σ_y rises the most (2.35×) — 100 % yields near its UTS.\n\n"
+   "• 100 % is also ~2× MORE extensible (ε_f 0.050 vs 0.025) — tougher (4.6×), not only stronger.\n\n"
+   "• Gauge share ≈ the same (55 % vs 52 %) — 100 % just travels ~2× further (more force + more stretch).\n\n"
    "• Rate, area, markers, preload all matched — the only variable is infill.",
    fs=11.5, colour=BLACK)
-banner(s, 9.1, 6.3, 3.95, 0.6, "≈ 2.2× strength, k: 1.45 → 1.0", fill=GREEN_PASS, fg=DARK_GREEN, fs=13)
+banner(s, 9.1, 6.05, 3.95, 0.85, "≈ 2.1× strength, k: 1.45 → 1.0\n(V6 = representative V6d)",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
 pageno(s, 154)
 
 # ===== SLIDE 15 — Single common offset factor for V6a =====
@@ -413,9 +416,176 @@ tb(s, 0.4, 4.3, 7.6, 1.55,
 banner(s, 0.4, 6.0, 12.7, 0.6,
        "Closest match = add:north E-PLA datasheet: one coherent FFF knock-down k ≈ 1.2 on strength & "
        "stiffness. Predict printed strength ≈ spec ÷ 1.2.")
-footer(s, "† E-PLA reports one tensile strength (at break); PLA σ_y ≈ UTS, so both are compared to 58 MPa. "
-          "E-PLA = closest published add:north PLA (no PLA Economy TDS); ISO 527 moulded vs printed 80 mm² bar.")
+footer(s, "Pilot V6a values (batch edge); representative n = 5 offset on p. 160. † E-PLA reports one tensile "
+          "strength (at break), PLA σ_y ≈ UTS → both vs 58 MPa. E-PLA = closest add:north PLA; ISO 527 moulded vs printed.")
 pageno(s, 156)
 
+# ===== SLIDE 17 — V6 repeatability study (n=5) =====
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "PHASE 8.6.20 V6: REPEATABILITY STUDY (n = 5, 100 % INFILL)")
+s.shapes.add_picture("V6_quintet_curves.png", Inches(0.32), Inches(1.6), width=Inches(6.5))
+header(s, 7.0, 1.32, 6.0, "Per-specimen values  (UTS/σ_y MPa · E GPa · ε_f –)")
+rep = [
+    ["Specimen", "UTS", "σ_y", "E", "ε_f"],
+    ["V6a · S7", "47.82", "47.80", "2.41", "0.030"],
+    ["V6b · S8", "44.83", "43.24", "2.63", "0.052"],
+    ["V6c · S10", "46.82", "45.09", "2.72", "0.073"],
+    ["V6d · S11", "46.10", "44.73", "2.63", "0.050"],
+    ["V6e · S9", "45.47", "44.03", "2.59", "0.074"],
+    ["mean", "46.2", "45.0", "2.60", "0.056"],
+    ["CV %", "2.5", "3.8", "4.4", "33"],
+]
+ovr = {}
+for c in range(5):
+    ovr[(6, c)] = {'bg': LIGHT_BLUE, 'bold': True}
+    ovr[(7, c)] = {'bg': LIGHT_BLUE, 'bold': True}
+table(s, 7.0, 1.72, 6.0, 2.55, rep, cw=[1.25, 0.9, 0.9, 0.8, 0.9], hf=10.5, bf=10, ov=ovr)
+kpi(s, 7.0, 4.4, 1.42, "UTS CV", "2.5 %", fill=GREEN_PASS, h=0.8, vfs=16)
+kpi(s, 8.52, 4.4, 1.42, "σ_y CV", "3.8 %", fill=GREEN_PASS, h=0.8, vfs=16)
+kpi(s, 10.04, 4.4, 1.42, "E CV", "4.4 %", fill=GREEN_PASS, h=0.8, vfs=16)
+kpi(s, 11.56, 4.4, 1.42, "ε_f CV", "33 %", fill=YELLOW_WARN, h=0.8, vfs=16)
+flow(s, 7.0, 5.3, 6.0, 1.05,
+     "⚠ V6a (S7) = pilot, run 8 days before the b–e batch → the strength/modulus EDGE point "
+     "(σ_y +4.3σ, E −4.2σ, most brittle). Matched b–e batch alone: UTS 1.9 % · σ_y 1.8 % · E 2.1 % CV. "
+     "Kept in n = 5 (conservative) — verdict unchanged.",
+     fill=YELLOW_WARN, border=RGBColor(0xE0, 0xA8, 0x14), fs=9.5)
+banner(s, 0.32, 6.5, 12.7, 0.45,
+       "Strength REPEATABLE — UTS/σ_y/E all CV ≤ 4.4 % (n = 5; matched b–e batch < 2.1 %). "
+       "Ductility ε_f scatters 33 % → report as a range.")
+pageno(s, 157)
+
+# ===== SLIDE 18 — Strength validation =====
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "PHASE 8.6.20 V6: STRENGTH — REPEATABLE & IN LITERATURE")
+s.shapes.add_picture("V6_strength_repeat.png", Inches(0.32), Inches(1.6), width=Inches(6.7))
+header(s, 7.2, 1.32, 5.9, "Strength vs both references")
+strg = [
+    ["Quantity", "V6 (n=5)", "vs Chacón", "vs E-PLA"],
+    ["UTS", "46.2 ± 1.2 MPa", "inside 32–60 ✓", "80 % (k 1.26)"],
+    ["σ_y (0.2 %)", "45.0 MPa", "inside 30–50 ✓", "78 %"],
+    ["E", "2.60 GPa", "13 % below 3.0 ⚠", "91 % (k 1.11)"],
+]
+ovs = {(1, 2): {'bg': GREEN_PASS, 'bold': True}, (2, 2): {'bg': GREEN_PASS, 'bold': True},
+       (3, 2): {'bg': YELLOW_WARN, 'bold': True}, (1, 3): {'bg': GREEN_PASS}, (3, 3): {'bg': GREEN_PASS}}
+table(s, 7.2, 1.78, 5.9, 1.7, strg, cw=[1.3, 1.6, 1.7, 1.4], hf=11, bf=11, ov=ovs)
+tb(s, 7.2, 3.65, 5.9, 1.7,
+   "• UTS = 46.2 ± 1.2 MPa (CV 2.5 %, 95 % CI ±1.4) — converged as n grew.\n"
+   "• All 5 land INSIDE the Chacón range → k ≈ 1 (no knock-down), confirming the 50 % offset (k≈2.4) was "
+   "purely the infill effect.\n"
+   "• vs add:north E-PLA datasheet: 80 % of rated strength, 91 % of stiffness — coherent FFF knock-down.",
+   fs=12)
+banner(s, 7.2, 5.55, 5.9, 1.0,
+       "STRENGTH PASS — repeatable (CV 2.5 %), inside the journal range, and a sensible ~80–90 % of the "
+       "manufacturer's rated solid material.", fill=GREEN_PASS, fg=DARK_GREEN, fs=12.5)
+pageno(s, 158)
+
+# ===== SLIDE 19 — Ductility =====
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "PHASE 8.6.20 V6: DUCTILITY — REPORT AS A RANGE")
+s.shapes.add_picture("V6_ductility.png", Inches(0.32), Inches(1.6), width=Inches(6.7))
+header(s, 7.2, 1.32, 5.9, "Failure strain & toughness")
+kpi(s, 7.2, 1.78, 1.9, "ε_f range", "3.0–7.4 %", fill=YELLOW_WARN, h=1.0, vfs=18)
+kpi(s, 9.25, 1.78, 1.9, "ε_f CV", "33 %", fill=YELLOW_WARN, h=1.0, vfs=18)
+kpi(s, 11.3, 1.78, 1.8, "toughness", "2315 kJ/m³", h=1.0, vfs=14)
+tb(s, 7.2, 3.0, 5.9, 2.3,
+   "Failure strain is NOT reproducible (CV 33 %) and looks bimodal:\n"
+   "• tough-skin cluster A/B/D ≈ 3.0–5.2 %\n"
+   "• ductile cluster C/E ≈ 7.3–7.4 % (nearly the 8 % datasheet value)\n\n"
+   "FDM crack-initiation lottery — a void / weak layer decides where the crack starts, so elongation "
+   "varies far more than strength. Toughness follows ε_f (1310–3053 kJ/m³).",
+   fs=12)
+banner(s, 7.2, 5.5, 5.9, 1.05,
+       "Quote ductility as a RANGE (ε_f = 3–7 %), never a single number. Strength is the reproducible "
+       "engineering value; ductility is specimen-dependent.", fill=YELLOW_WARN, fg=BLACK, fs=12.5)
+pageno(s, 159)
+
+# ===== SLIDE 20 — Validation summary vs references =====
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "PHASE 8.6.20 V6: VALIDATION SUMMARY — JOURNAL & MANUFACTURER")
+header(s, 0.4, 1.3, 8.0, "Pass / fail vs both references  (n = 5, 100 % infill)")
+ver = [
+    ["Property", "V6 mean", "Chacón range", "vs journal", "E-PLA spec", "vs datasheet"],
+    ["UTS", "46.2 MPa", "32–60 MPa", "✓ PASS", "58 MPa", "80 % (k1.26)"],
+    ["σ_y", "45.0 MPa", "30–50 MPa", "✓ PASS", "58 MPa †", "78 %"],
+    ["E", "2.60 GPa", "3.0–5.5 GPa", "⚠ 13 % low", "2.87 GPa", "91 % (k1.11)"],
+    ["ε_f", "3.0–7.4 %", "—", "—", "8 %", "37–93 % range"],
+]
+ovv = {}
+for c in range(6):
+    ovv[(1, c)] = {'bg': GREEN_PASS, 'bold': c in (0, 3)}
+    ovv[(2, c)] = {'bg': GREEN_PASS, 'bold': c in (0, 3)}
+    ovv[(3, c)] = {'bg': YELLOW_WARN, 'bold': c in (0, 3)}
+table(s, 0.4, 1.75, 8.0, 2.35, ver, cw=[0.8, 1.1, 1.3, 1.2, 1.1, 1.4], hf=10.5, bf=11, ov=ovv)
+s.shapes.add_picture("V6_offset_k.png", Inches(8.6), Inches(1.5), width=Inches(4.4))
+banner(s, 0.4, 4.4, 8.0, 1.0,
+       "PASS — strength lands inside the journal (k ≈ 1) AND sits at a coherent k ≈ 1.2 vs the add:north "
+       "E-PLA datasheet (80 % strength / 91 % stiffness), repeatable at CV 2.5 % across 5 specimens.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=12.5)
+banner(s, 0.4, 5.55, 8.0, 0.85,
+       "Caveat: elastic modulus is ~13 % below the journal floor (but meets the datasheet at 91 %); ε_f is "
+       "reported as a 3–7 % range, not a single value.", fill=YELLOW_WARN, fg=BLACK, fs=12)
+linkbox(s, 8.6, 6.1, 4.4, "add:north E-PLA TDS (ISO 527 / 178)", ADDNORTH_TDS)
+footer(s, "Writeup: 100 % PLA validated vs literature for strength (k≈1 vs Chacón); characterised at k≈1.2 vs "
+          "add:north E-PLA datasheet; modulus meets datasheet, marginally below journal; ε_f = 3–7 % range.")
+pageno(s, 160)
+
+# ===== SLIDE 21 — Fractography: individually-placed, editable specimen photos =====
+def frac_tile(sl, path, x, y, w, at, cb, name, metric, band, tag):
+    """Place ONE specimen photo as a separate, croppable PowerPoint picture (not a flattened
+    montage). The crop only trims the grip tab so the gauge + fracture faces show; the full image
+    stays embedded, so the crop can be reset / the picture moved, resized or replaced in PPT."""
+    with Image.open(path) as im:
+        wpx, hpx = im.size
+    aspect = hpx / wpx
+    ct = max(0.0, 1.0 - at / aspect - cb)          # keep bottom (fracture); frame aspect == cropped aspect (no distortion)
+    h = w * at
+    pic = sl.shapes.add_picture(path, Inches(x), Inches(y), Inches(w), Inches(h))
+    pic.crop_top = ct; pic.crop_bottom = cb
+    pic.line.color.rgb = band; pic.line.width = Pt(1.25)
+    tb(sl, x - 0.3, y + h + 0.01, w + 0.6, 0.2, name + (f"  ({tag})" if tag else ""),
+       fs=10.5, bold=True, colour=band, align=PP_ALIGN.CENTER)
+    tb(sl, x - 0.3, y + h + 0.21, w + 0.6, 0.2, metric, fs=9.5, colour=BLACK, align=PP_ALIGN.CENTER)
+
+
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "PHASE 8.6.20: FRACTURE PATTERNS — 50 % vs 100 % INFILL (V5 & V6)")
+FROOT = r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure"
+C50 = RGBColor(0x1F, 0x5F, 0xA0); C100 = RGBColor(0xC0, 0x00, 0x00)
+FR50 = [
+    ("V5 · S4",  "22.1 MPa · ε_f 2.5 %", FROOT + r"\Specimen_S4_V1_Spray\S4.jpg",       ""),
+    ("V5b · S3", "22.0 MPa · ε_f 2.6 %", FROOT + r"\Specimen_S3_V1_Spray\S3(1).jpg",    ""),
+    ("V5c · S2", "22.0 MPa · ε_f 3.1 %", FROOT + r"\Specimen_S2_V1_Spray\S2_2 (1).jpg", ""),
+]
+FR100 = [
+    ("V6a · S7",  "47.8 MPa · ε_f 3.0 %", FROOT + r"\Specimen_S7_V2_Spray\S7(1).jpg",    "pilot"),
+    ("V6b · S8",  "44.8 MPa · ε_f 5.2 %", FROOT + r"\Specimen_S8_V2_Spray\S8 (1).jpg",   ""),
+    ("V6c · S10", "46.8 MPa · ε_f 7.3 %", FROOT + r"\Specimen_S10_V2_Spray\S10 (1).jpg", "ductile"),
+    ("V6d · S11", "46.1 MPa · ε_f 5.0 %", FROOT + r"\Specimen_S11_V2_Spray\S11 (1).jpg", ""),
+    ("V6e · S9",  "45.5 MPa · ε_f 7.4 %", FROOT + r"\Specimen_S9_V2_Spray\S9 (1).jpg",   "ductile"),
+]
+W, AT, CB, STEP = 1.8, 1.05, 0.02, 2.22
+xb = [1.326 + STEP * i for i in range(5)]           # bottom row (100 %): 5 tiles
+xt = xb[1:4]                                        # top row (50 %): 3 tiles, centred under the middle
+# key finding / legend in the empty space beside the centred 50 % row
+tb(s, 0.45, 1.58, 2.9, 0.32, "FRACTURE — KEY FINDING", fs=12, bold=True, colour=DARK_GREEN)
+tb(s, 0.45, 1.98, 2.9, 1.7,
+   "All 8 specimens failed the SAME way — a flat, transverse break at the lower gauge–fillet (a stress "
+   "concentration), with no necking = brittle FDM failure.\n\nInfill sets STRENGTH & stiffness, NOT the failure mode.",
+   fs=11, colour=BLACK)
+tb(s, 9.95, 1.58, 3.0, 0.32, "HOW TO READ", fs=12, bold=True, colour=DARK_GREEN)
+tb(s, 9.95, 1.98, 3.0, 1.7,
+   "• 50 % faces expose the sparse infill ribs; 100 % faces are fully dense.\n\n"
+   "• V6a = pilot (batch edge). V6c / V6e = ductile cluster (ε_f ≈ 7 %); the others ≈ 3–5 %.",
+   fs=11, colour=BLACK)
+tb(s, xt[0], 1.55, 6.0, 0.3, "50 % INFILL — V5 group (LED off)", fs=14, bold=True, colour=C50)
+for (nm, mt, pth, tag), x in zip(FR50, xt):
+    frac_tile(s, pth, x, 1.85, W, AT, CB, nm, mt, C50, tag)
+tb(s, 1.0, 4.20, 8.0, 0.3, "100 % INFILL — V6 quintet (LED on)", fs=14, bold=True, colour=C100)
+for (nm, mt, pth, tag), x in zip(FR100, xb):
+    frac_tile(s, pth, x, 4.52, W, AT, CB, nm, mt, C100, tag)
+footer(s, "Each specimen photo is an individually placed, croppable picture (…/8.6.20 - Tensile test to Failure/"
+          "Specimen_S*/). Labels = measured UTS · ε_f. Reset crop in PowerPoint to see the full specimen.")
+pageno(s, 161)
+
 prs.save("V6a_8_6_20_slides.pptx")
-print("Saved: V6a_8_6_20_slides.pptx (16 slides, pages 141-156)")
+print("Saved: V6a_8_6_20_slides.pptx (21 slides, pages 141-161)")

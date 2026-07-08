@@ -13,7 +13,8 @@ import matplotlib.pyplot as plt
 AREA = 80.0; GAUGE = 80.0
 ROOT = r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure"
 F_V5 = ROOT + r"\Specimen_S4_V1_Spray\UTM_Test_20260612_172333_V5_TensionFailure.csv"
-F_V6 = ROOT + r"\Specimen_S7_V2_Spray\UTM_Test_20260617_165405_V6a_TensionFailure.csv"
+F_V6 = ROOT + r"\Specimen_S7_V2_Spray\UTM_Test_20260617_165405_V6a_TensionFailure.csv"      # pilot (batch edge)
+F_V6D = ROOT + r"\Specimen_S11_V2_Spray\UTM_Test_20260625_154219_V6d_TensionFailure.csv"    # representative (≈ n=5 mean)
 BLUE = "#1f77b4"; RED = "#d62728"; PUR = "#6a1b9a"; ORANGE = "#e08214"; GREEN = "#2e7d32"
 
 
@@ -83,8 +84,9 @@ def analyze(path):
             "uts_ts": uts["t"]-t0}
 
 
-A = analyze(F_V6)          # V6a
+A = analyze(F_V6)          # V6a (pilot) — used for the single-specimen deep-dive plots
 B = analyze(F_V5)          # V5
+A6 = analyze(F_V6D)        # V6d — representative 100% (≈ n=5 mean) for the V6-vs-V5 comparison
 test, uts, last, sy, pl = A["test"], A["uts"], A["last"], A["sy"], A["pl"]
 E, c1 = A["E"], A["c1"]
 plt.rcParams.update({"font.size": 13})
@@ -181,59 +183,58 @@ def ep(d): return [x["travel"] for x in d["test"]], [x["ecz"] for x in d["test"]
 
 # C1: load vs time
 fig, ax = plt.subplots(figsize=(12, 6.3))
-ax.plot(B["lt_t"], B["lt_F"], "-", color=BLUE, lw=2.3, label=f"V5 (50 %): peak {B['uts']['Ftrue']:.0f} N")
-ax.plot(A["lt_t"], A["lt_F"], "-", color=RED, lw=2.3, label=f"V6a (100 %): peak {A['uts']['Ftrue']:.0f} N")
+ax.plot(B["lt_t"], B["lt_F"], "-", color=BLUE, lw=2.3, label=f"V5 (50 % infill): peak {B['uts']['Ftrue']:.0f} N")
+ax.plot(A6["lt_t"], A6["lt_F"], "-", color=RED, lw=2.3, label=f"V6 (100 % infill): peak {A6['uts']['Ftrue']:.0f} N")
 ax.plot(B["uts_ts"], B["uts"]["Ftrue"], "v", color=BLUE, ms=11, mec="black", mew=0.6)
-ax.plot(A["uts_ts"], A["uts"]["Ftrue"], "v", color=RED, ms=11, mec="black", mew=0.6)
+ax.plot(A6["uts_ts"], A6["uts"]["Ftrue"], "v", color=RED, ms=11, mec="black", mew=0.6)
 ax.set_xlabel("Time from ramp start (s)"); ax.set_ylabel("True force (N)")
-ax.set_title("V6a vs V5 — load vs time (both 0.1 mm/s)", fontweight="bold")
+ax.set_title("V6 (100 % infill) vs V5 (50 % infill) — load vs time (both 0.1 mm/s)", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="center right", fontsize=12)
-ax.text(3, 3200, "100 % infill carries 2.17× the peak force\n(3826 vs 1767 N) and sustains a longer pull.",
+ax.text(3, 3200, "100 % infill carries ≈2.1× the peak force\n(batch mean 3697 vs 1767 N) and sustains a longer pull.",
         fontsize=11, color="#444", bbox=dict(facecolor="#fdecea", edgecolor="none", boxstyle="round,pad=0.4"))
+ax.text(3, 2720, "V6 = representative specimen V6d  (≈ n = 5 mean)", fontsize=9.5, color="#777", style="italic")
 plt.tight_layout(); plt.savefig("V6a_v5_load_time.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # C2: stress-strain
 fig, ax = plt.subplots(figsize=(12, 6.5))
-x5, y5 = ss(B); x6, y6 = ss(A)
-ax.plot(x5, y5, "-", color=BLUE, lw=2.4, label="V5 (50 %): UTS 22.1 MPa")
-ax.plot(x6, y6, "-", color=RED, lw=2.4, label="V6a (100 %): UTS 47.8 MPa")
+x5, y5 = ss(B); x6, y6 = ss(A6)
+ax.plot(x5, y5, "-", color=BLUE, lw=2.4, label="V5 (50 % infill): UTS 22.1 MPa")
+ax.plot(x6, y6, "-", color=RED, lw=2.4, label=f"V6 (100 % infill): UTS {A6['uts']['sig']:.1f} MPa")
 ax.plot(B["uts"]["ecz"], B["uts"]["sig"], "v", color=BLUE, ms=11, mec="black", mew=0.6)
-ax.plot(A["uts"]["ecz"], A["uts"]["sig"], "v", color=RED, ms=11, mec="black", mew=0.6)
+ax.plot(A6["uts"]["ecz"], A6["uts"]["sig"], "v", color=RED, ms=11, mec="black", mew=0.6)
 ax.plot(B["last"]["ecz"], B["last"]["sig"], "x", color=BLUE, ms=12, mew=2.6)
-ax.plot(A["last"]["ecz"], A["last"]["sig"], "x", color=RED, ms=12, mew=2.6)
+ax.plot(A6["last"]["ecz"], A6["last"]["sig"], "x", color=RED, ms=12, mew=2.6)
 ax.set_xlabel("DIC Cauchy strain ε_c"); ax.set_ylabel("True stress (MPa, nominal 80 mm²)")
-ax.set_title("V6a vs V5 — stress–strain", fontweight="bold")
+ax.set_title("V6 (100 % infill) vs V5 (50 % infill) — stress–strain", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="center right", fontsize=12)
-ax.text(0.013, 12, "Same nominal area (80 mm²). 100 % infill is\n~2.2× stiffer & stronger; similar failure strain.",
+ax.text(0.006, 12, "Same nominal area (80 mm²). 100 % infill is ~2× stronger\n& ~1.7× stiffer; the 100 % batch is also more extensible (ε_f 3–7 %).",
         fontsize=11, color="#444", bbox=dict(facecolor="#fdecea", edgecolor="none", boxstyle="round,pad=0.4"))
-ax.set_xlim(-0.001, 0.033); ax.set_ylim(0, 52)
+ax.set_xlim(-0.001, 0.056); ax.set_ylim(0, 52)
 plt.tight_layout(); plt.savefig("V6a_v5_stress_strain.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # C3: stress vs displacement
 fig, ax = plt.subplots(figsize=(12, 6.3))
-x5, y5 = sp(B); x6, y6 = sp(A)
-ax.plot(x5, y5, "-", color=BLUE, lw=2.4, label=f"V5 (50 %): gauge share {B['gshare']:.0f} %")
-ax.plot(x6, y6, "-", color=RED, lw=2.4, label=f"V6a (100 %): gauge share {A['gshare']:.0f} %")
+x5, y5 = sp(B); x6, y6 = sp(A6)
+ax.plot(x5, y5, "-", color=BLUE, lw=2.4, label=f"V5 (50 % infill): gauge share {B['gshare']:.0f} %")
+ax.plot(x6, y6, "-", color=RED, lw=2.4, label=f"V6 (100 % infill): gauge share {A6['gshare']:.0f} %")
 ax.set_xlabel("Crosshead displacement / travel (mm)"); ax.set_ylabel("True stress (MPa)")
-ax.set_title("V6a vs V5 — stress vs crosshead displacement", fontweight="bold")
+ax.set_title("V6 (100 % infill) vs V5 (50 % infill) — stress vs crosshead displacement", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="center right", fontsize=12)
-ax.text(0.2, 30, "V6a needs more travel (7.3 vs 3.8 mm) to fracture:\nhigher force ⇒ more rig take-up "
-        "(gauge share 33 % vs 52 %).", fontsize=11, color="#444",
+ax.text(0.2, 30, "100 % infill needs ~2× the travel (7.3 vs 3.8 mm) to fracture —\nhigher force AND ~2× the gauge stretch — but reaches a\nSIMILAR gauge share (55 % vs 52 %).", fontsize=11, color="#444",
         bbox=dict(facecolor="#fdecea", edgecolor="none", boxstyle="round,pad=0.4"))
 plt.tight_layout(); plt.savefig("V6a_v5_stress_disp.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # C4: Cauchy strain vs displacement
 fig, ax = plt.subplots(figsize=(12, 6.3))
-x5, y5 = ep(B); x6, y6 = ep(A)
-ax.plot(x5, y5, "-", color=BLUE, lw=2.4, label="V5 (50 %)")
-ax.plot(x6, y6, "-", color=RED, lw=2.4, label="V6a (100 %)")
-mt = max(B["last"]["travel"], A["last"]["travel"])*1.02
+x5, y5 = ep(B); x6, y6 = ep(A6)
+ax.plot(x5, y5, "-", color=BLUE, lw=2.4, label="V5 (50 % infill)")
+ax.plot(x6, y6, "-", color=RED, lw=2.4, label="V6 (100 % infill)")
+mt = max(B["last"]["travel"], A6["last"]["travel"])*1.02
 ax.plot([0, mt], [0, mt/GAUGE], ":", color="#555", lw=1.4, label="ideal: all travel → gauge")
 ax.set_xlabel("Crosshead displacement / travel (mm)"); ax.set_ylabel("DIC Cauchy strain ε_c")
-ax.set_title("V6a vs V5 — gauge strain vs crosshead displacement", fontweight="bold")
+ax.set_title("V6 (100 % infill) vs V5 (50 % infill) — gauge strain vs crosshead displacement", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="upper left", fontsize=12)
-ax.text(3.0, 0.004, "Both below the ideal line (rig compliance). V6a's shallower\nslope = a smaller share of travel "
-        "reaches the gauge (stiffer specimen,\nhigher force, more machine take-up).", fontsize=10.5, color="#444",
+ax.text(2.8, 0.004, "Both sit below the ideal line (rig compliance) with SIMILAR slopes —\n~half the travel reaches the gauge in both (gauge share 55 % vs 52 %).\n100 % just travels further (stronger + more extensible).", fontsize=10.5, color="#444",
         bbox=dict(facecolor="#fdecea", edgecolor="none", boxstyle="round,pad=0.4"))
 plt.tight_layout(); plt.savefig("V6a_v5_strain_disp.png", dpi=150, bbox_inches="tight"); plt.close()
 
