@@ -1,0 +1,181 @@
+"""Shared tensile-test analysis for the UTM DIC rig — the SINGLE source of truth for
+fracture detection, force-anchor self-calibration, and engineering properties
+(E, sigma_y, UTS, failure strain, toughness).
+
+Used offline by the analysis/deck scripts and (later) live by the app, so the fracture
+detector and property maths exist in exactly ONE place. Extracted from v6_compare.py,
+folding in the V5-S4 unphysical-strain-jump guard from v6_fracture_montage.py.
+
+No app / matplotlib / hardware dependencies — pure functions on a list of sample dicts.
+"""
+from statistics import mean, median
+
+DEFAULT_AREA = 80.0      # mm^2  (nominal cross-section)
+DEFAULT_GAUGE = 80.0     # mm    (DIC gauge length)
+
+
+def read_csv(path):
+    """Read a UTM test CSV (skips '#' comment/metadata lines, name-indexes columns).
+    Returns a list of dict rows with float t, F, pos, ec, et, lpx. Rows that fail to
+    parse are skipped; missing DIC_True / L_px default to 0.0."""
+    rows = [l.strip() for l in open(path, newline="") if not l.startswith("#") and l.strip()]
+    idx = {h: i for i, h in enumerate(rows[0].split(","))}
+    out = []
+    for row in rows[1:]:
+        p = row.split(",")
+        try:
+            out.append({
+                "t": float(p[idx["Time_s"]]),
+                "F": float(p[idx["Force_N"]]),
+                "pos": float(p[idx["Position_mm"]]),
+                "ec": float(p[idx["DIC_Cauchy"]]),
+                "et": float(p[idx["DIC_True"]]) if "DIC_True" in idx else 0.0,
+                "lpx": float(p[idx["L_px"]]) if "L_px" in idx else 0.0,
+            })
+        except (ValueError, IndexError, KeyError):
+            continue
+    return out
+
+
+def linfit(xs, ys):
+    """Least-squares line fit. Returns (slope, intercept, r2)."""
+    n = len(xs); sx, sy = sum(xs), sum(ys)
+    sxx = sum(x * x for x in xs); sxy = sum(x * y for x, y in zip(xs, ys))
+    sl = (n * sxy - sx * sy) / (n * sxx - sx * sx); ic = (sy - sl * sx) / n
+    ym = sy / n
+    ss_tot = sum((y - ym) ** 2 for y in ys)
+    r2 = 1 - sum((y - (sl * x + ic)) ** 2 for x, y in zip(xs, ys)) / ss_tot if ss_tot else 0.0
+    return sl, ic, r2
+
+
+def find_fracture(data, mv_i):
+    """Fracture index = the EARLIEST of two signatures, so it is robust across brittle
+    AND ductile pulls:
+
+      (a) LOAD COLLAPSE — force drops below half the post-motion peak. The primary,
+          reliable signature for the energetic 100 % fractures.
+      (b) DIC STRAIN-JUMP GUARD — an unphysical one-frame Cauchy-strain jump (> 3 %)
+          while both markers are still tracked = the markers flying apart. This catches
+          the V5-S4 case where the raw force does NOT drop below half-peak at fracture
+          (so load-collapse lands late, on a post-fracture DIC glitch of ec ~ 0.19).
+
+    NOTE: the old marker-separation test (L_px > 1.06*L0) is deliberately NOT used — it
+    misfires on ductile specimens whose gauge strain crosses ~6 % during normal drawing.
+    """
+    pk = max(range(mv_i, len(data)), key=lambda i: data[i]["F"])
+    fr_load = next((i for i in range(pk, len(data)) if data[i]["F"] < 0.5 * data[pk]["F"]),
+                   len(data) - 1)
+    fr_glitch = next((i for i in range(mv_i + 1, len(data))
+                      if data[i - 1]["lpx"] > 100 and data[i]["lpx"] > 100
+                      and data[i]["ec"] - data[i - 1]["ec"] > 0.03), None)
+    return min([fr_load] + ([fr_glitch] if fr_glitch is not None else []))
+
+
+def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
+    """Full tensile analysis of one test. `source` is a CSV path OR an already-read list
+    of sample dicts. Returns a dict of engineering properties:
+
+        anchor    N     force-anchor self-calibration (= -mean post-fracture force)
+        E         GPa   elastic modulus (linfit over ec in [0.0005, 0.004])
+        E_R2      -     R^2 of the elastic fit
+        sy        MPa   0.2 %-offset yield stress
+        uts       MPa   ultimate tensile strength (true stress = (F+anchor)/area)
+        uts_F     N     true force at UTS
+        ef        -     failure strain (last tracked DIC Cauchy, baseline-rezeroed)
+        sigf      MPa   fracture stress
+        soft      %     post-UTS softening = (UTS - sigf)/UTS
+        tough     kJ/m3 toughness = integral sigma d(epsilon)
+        travel    mm    crosshead travel at fracture
+        gauge_share %   DIC gauge stretch / crosshead travel
+        dur       s     pull duration
+        rate      mm/s  mean crosshead rate during the pull
+        fr_i,mv_i -     fracture / motion-start sample indices
+    """
+    data = read_csv(source) if isinstance(source, str) else source
+    base_pos = sorted(d["pos"] for d in data[:30])[15]
+    mv_i = next(i for i, d in enumerate(data) if d["pos"] > base_pos + 0.005)
+    t0 = data[mv_i]["t"]
+    ec0_list = [d["ec"] for d in data[:mv_i] if d["lpx"] > 100]
+    ec0 = median(ec0_list) if ec0_list else 0.0
+
+    fr_i = find_fracture(data, mv_i)
+    t_fr = data[fr_i]["t"]
+    pre = data[:fr_i]
+    post = [d for d in data[fr_i + 1:] if d["t"] > t_fr + 2.0 and d["lpx"] > 100]
+    if not post:                                   # DIC dropped out post-fracture -> force only
+        post = [d for d in data[fr_i + 1:] if d["t"] > t_fr + 2.0]
+    anchor = -mean(d["F"] for d in post) if post else 0.0
+
+    for d in data:
+        d["sig"] = (d["F"] + anchor) / area
+        d["Ftrue"] = d["F"] + anchor
+        d["ecz"] = d["ec"] - ec0
+        d["etz"] = d["et"] - ec0
+        d["travel"] = d["pos"] - base_pos
+
+    test = [d for d in pre[mv_i:] if d["lpx"] > 100]
+    uts = max(test, key=lambda d: d["sig"])
+    last = max(test, key=lambda d: d["t"])
+    win = [d for d in test if 0.0005 <= d["ecz"] <= 0.004]
+    E, c1, r1 = linfit([d["ecz"] for d in win], [d["sig"] for d in win])
+    sy = next(d for d in test if E * (d["ecz"] - 0.002) + c1 >= d["sig"])
+    gauge_stretch = last["ecz"] * gauge
+    tough = 0.0; prev = None
+    for d in test:
+        if prev and d["ecz"] > prev["ecz"]:
+            tough += 0.5 * (d["sig"] + prev["sig"]) * (d["ecz"] - prev["ecz"])
+        prev = d
+
+    return {
+        "anchor": anchor, "E": E / 1000, "E_R2": r1, "sy": sy["sig"],
+        "uts": uts["sig"], "uts_F": uts["Ftrue"], "ef": last["ecz"],
+        "sigf": last["sig"], "soft": (uts["sig"] - last["sig"]) / uts["sig"] * 100,
+        "tough": tough * 1000, "travel": last["travel"],
+        "gauge_share": gauge_stretch / last["travel"] * 100 if last["travel"] else 0.0,
+        "dur": last["t"] - t0,
+        "rate": (data[fr_i]["pos"] - data[mv_i]["pos"]) / (t_fr - t0) if (t_fr - t0) else 0.0,
+        "fr_i": fr_i, "mv_i": mv_i,
+    }
+
+
+class LiveFractureDetector:
+    """Incremental, sample-by-sample version of find_fracture() for LIVE use in the app
+    (Phase A auto-halt). Feed each load sample as it arrives; returns True once fracture
+    is detected. Not wired into the app yet — provided so live and offline share one
+    detector.
+
+        det = LiveFractureDetector()
+        if det.update(force, ec=dic_cauchy, lpx=dic_L_px):
+            # fracture -> halt motor, start post-fracture anchor hold
+
+    - Arms only after the load has built past `arm_frac` of the running peak (so the
+      toe / grip-seating region cannot trigger it).
+    - Fires on load collapse below `collapse_frac` of the running peak, OR on an
+      unphysical one-frame DIC strain jump (> `ec_jump`) while both markers track.
+    """
+
+    def __init__(self, collapse_frac=0.5, arm_frac=0.3, ec_jump=0.03):
+        self.collapse_frac = collapse_frac
+        self.arm_frac = arm_frac
+        self.ec_jump = ec_jump
+        self.peak = 0.0
+        self.armed = False
+        self.fired = False
+        self._prev_ec = None
+        self._prev_lpx = None
+
+    def update(self, force, ec=None, lpx=None):
+        if self.fired:
+            return True
+        if force > self.peak:
+            self.peak = force
+        if self.peak > 0 and force >= self.arm_frac * self.peak:
+            self.armed = True
+        if (ec is not None and lpx is not None and self._prev_ec is not None
+                and self._prev_lpx is not None and lpx > 100 and self._prev_lpx > 100
+                and ec - self._prev_ec > self.ec_jump):
+            self.fired = True
+        if self.armed and self.peak > 0 and force < self.collapse_frac * self.peak:
+            self.fired = True
+        self._prev_ec, self._prev_lpx = ec, lpx
+        return self.fired
