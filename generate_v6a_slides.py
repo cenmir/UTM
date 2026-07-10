@@ -244,36 +244,36 @@ pic_slide("PHASE 8.6.20 V6a: GAUGE STRAIN vs DISPLACEMENT", "V6a_strain_position
 
 # ===== SLIDE 8 — Verdict =====
 s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "PHASE 8.6.20 V6a: VALIDATION — JOURNAL REFERENCE")
-header(s, 0.5, 1.35, 7.7, "Chacón (2017) journal — measured vs range, offset k = Chacón_min / measured")
+title(s, "PHASE 8.6.20 V6 (n = 5): VALIDATION — JOURNAL REFERENCE")
+header(s, 0.5, 1.35, 7.7, "Chacón (2017) journal — n = 5 mean vs range, offset k = Chacón_min / measured")
 off = [
-    ["Property", "V5 k", "V6a k", "V6a measured", "Chacón range"],
-    ["E", "×1.95", "×1.25", "2.41 GPa", "3.0–5.5 GPa"],
-    ["σ_y", "×1.58", "×0.63", "47.8 MPa", "30–50 MPa"],
-    ["UTS", "×1.45", "×0.67", "47.8 MPa", "32–60 MPa"],
+    ["Property", "V5 k", "V6 k", "V6 mean (n=5)", "Chacón range"],
+    ["E", "×1.95", "×1.15", "2.60 GPa", "3.0–5.5 GPa"],
+    ["σ_y", "×1.58", "×0.67", "45.0 MPa", "30–50 MPa"],
+    ["UTS", "×1.45", "×0.69", "46.2 MPa", "32–60 MPa"],
 ]
-ovo = {(r, 2): {'bold': True} for r in range(1, 4)}                 # V6a k bold
-ovo[(1, 3)] = {'bg': YELLOW_WARN, 'bold': True}                     # E 2.41 just below 3.0
-ovo[(2, 3)] = {'bg': GREEN_PASS, 'bold': True}                      # σ_y 47.8 inside 30–50 ✓
-ovo[(3, 3)] = {'bg': GREEN_PASS, 'bold': True}                      # UTS 47.8 inside 32–60 ✓
+ovo = {(r, 2): {'bold': True} for r in range(1, 4)}                 # V6 k bold
+ovo[(1, 3)] = {'bg': YELLOW_WARN, 'bold': True}                     # E 2.60 just below 3.0
+ovo[(2, 3)] = {'bg': GREEN_PASS, 'bold': True}                      # σ_y 45.0 inside 30–50 ✓
+ovo[(3, 3)] = {'bg': GREEN_PASS, 'bold': True}                      # UTS 46.2 inside 32–60 ✓
 table(s, 0.5, 1.78, 7.7, 1.55, off, cw=[0.85, 0.8, 0.8, 1.3, 1.5], hf=10.5, bf=11.5, ov=ovo)
 tb(s, 0.5, 3.45, 7.7, 1.7,
    "Green = measured value lands INSIDE the Chacón range; yellow = just below.\n\n"
-   "At 100 % infill the strength values land in literature directly: UTS 47.8 MPa and σ_y 47.8 MPa sit "
-   "mid-range (k = 0.63–0.67 < 1 ⇒ no knock-down needed). E (2.41 GPa, ×1.25) is just shy of the 3.0 GPa "
-   "floor — held down by the rig-compliance-limited apparent modulus. Common-factor window ≈ [1.05, 1.25] → k ≈ 1.",
+   "At 100 % infill the strength values land in literature directly: UTS 46.2 MPa and σ_y 45.0 MPa sit "
+   "mid-range (k = 0.67–0.69 < 1 ⇒ no knock-down needed). E (2.60 GPa, ×1.15) is ~13 % below the 3.0 GPa "
+   "floor — held down by the rig-compliance-limited apparent modulus. Strength common-factor window ≈ [0.69, 1.11] → k ≈ 1 (p. 155).",
    fs=12, colour=BLACK)
-kpi(s, 8.3, 1.7, 2.3, "UTS vs 50 %", "2.17×", fill=GREEN_PASS, h=1.1, vfs=22)
-kpi(s, 10.75, 1.7, 2.1, "toughness vs 50 %", "2.83×", h=1.1, vfs=22)
-kpi(s, 8.3, 3.0, 2.3, "DIC tracking (LED)", "99.9 %", fill=GREEN_PASS, h=1.1, vfs=22)
+kpi(s, 8.3, 1.7, 2.3, "UTS vs 50 %", "2.09×", fill=GREEN_PASS, h=1.1, vfs=22)
+kpi(s, 10.75, 1.7, 2.1, "toughness vs 50 %", "5.0×", h=1.1, vfs=22)
+kpi(s, 8.3, 3.0, 2.3, "DIC tracking (LED)", "≥99 %", fill=GREEN_PASS, h=1.1, vfs=22)
 kpi(s, 10.75, 3.0, 2.1, "peak / load-cell", "13 %", h=1.1, vfs=22)
 banner(s, 0.5, 5.3, 12.4, 0.65,
        "G2 ✓ 100 % infill reaches literature (k≈1).  G3 ✓ the 50 % offset (×1.45) was purely the infill knock-down.")
 banner(s, 0.5, 6.1, 12.4, 0.65,
-       "DIC validated under LED lighting (99.9 % tracking, clean baseline) — lighting is precision-only, as predicted.",
+       "DIC validated under LED lighting (clean ≥99 % tracking across all 5, stable baseline) — lighting is precision-only, as predicted.",
        fill=LIGHT_BLUE, fg=DARK_GREEN, fs=12)
-footer(s, "Pilot V6a values (batch strength/modulus edge). Representative n = 5 validation on pp. 158 & 160. "
-          "Journal ref Chacón (2017); add:north datasheet on p. 156.")
+footer(s, "n = 5 mean vs Chacón (2017); per-specimen repeatability on p. 157, add:north datasheet on p. 156. "
+          "Strength inside range (k ≈ 1); E ~13 % below the journal floor.")
 pageno(s, 148)
 
 # ===== SLIDE 9 — Recommendations =====
@@ -353,18 +353,18 @@ banner(s, 9.1, 6.05, 3.95, 0.85, "≈ 2.1× strength, k: 1.45 → 1.0\n(V6 = rep
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
 pageno(s, 154)
 
-# ===== SLIDE 15 — Single common offset factor for V6a =====
+# ===== SLIDE 15 — Single common offset factor for V6 (n=5 mean) =====
 s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "V6a: A SINGLE COMMON OFFSET FACTOR?")
+title(s, "V6 (n = 5): A SINGLE COMMON OFFSET FACTOR?")
 s.shapes.add_picture("V6a_offset_window.png", Inches(0.35), Inches(1.65), width=Inches(7.5))
-header(s, 8.0, 1.38, 5.0, "Same interval method as V5")
+header(s, 8.0, 1.38, 5.0, "Same interval method as V5 · from n = 5 mean")
 win = [
     ["Property", "feasible k window"],
-    ["E", "[1.24, 2.28]"],
-    ["σ_y", "[0.63, 1.05]"],
-    ["UTS", "[0.67, 1.25]"],
+    ["E", "[1.15, 2.12]"],
+    ["σ_y", "[0.67, 1.11]"],
+    ["UTS", "[0.69, 1.30]"],
     ["ALL three", "∅  empty"],
-    ["Strength σ_y + UTS", "[0.67, 1.05]"],
+    ["Strength σ_y + UTS", "[0.69, 1.11]"],
 ]
 ovw = {(4, 0): {'bg': RED_FAIL, 'bold': True}, (4, 1): {'bg': RED_FAIL, 'bold': True},
        (5, 0): {'bg': GREEN_PASS, 'bold': True}, (5, 1): {'bg': GREEN_PASS, 'bold': True}}
@@ -374,24 +374,24 @@ tb(s, 8.0, 4.25, 5.0, 1.1,
    "k must lie in the intersection of all three.",
    fs=11.5, italic=True, colour=GREY_TEXT)
 banner(s, 0.5, 5.55, 12.4, 0.6,
-       "STRENGTH: a single uniform factor works — k ∈ [0.67, 1.05] and k = 1 sits inside it ⇒ apply "
+       "STRENGTH: a single uniform factor works — k ∈ [0.69, 1.11] and k = 1 sits inside it ⇒ apply "
        "k = 1.0 (no knock-down) to σ_y and UTS at 100 % infill.")
 banner(s, 0.5, 6.3, 12.4, 0.62,
-       "No single ALL-property k: E reads low (needs ≥1.24 — rig-compliance-limited) while in-range σ_y caps "
-       "k ≤ 1.05 → they pull opposite ways. Treat E separately.   (Contrast V5: a common k ≈ 2.4 existed.)",
+       "No single ALL-property k: E reads ~13 % low (needs k ≥ 1.15) while in-range σ_y caps k ≤ 1.11 → they "
+       "pull opposite ways, but only by 0.04. Treat E separately.   (Contrast V5: a common k ≈ 2.4 existed.)",
        fill=YELLOW_WARN, fg=BLACK, fs=12)
 pageno(s, 155)
 
 # ===== SLIDE 16 — Validation: add:north PLA reference =====
 s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "PHASE 8.6.20 V6a: VALIDATION — add:north PLA REFERENCE")
-header(s, 0.4, 1.3, 7.6, "add:north E-PLA datasheet (ISO 527 / 178) vs measured — k = spec / measured")
+title(s, "PHASE 8.6.20 V6 (n = 5): VALIDATION — add:north PLA REFERENCE")
+header(s, 0.4, 1.3, 7.6, "add:north E-PLA datasheet (ISO 527 / 178) vs measured n = 5 mean — k = spec / measured")
 dat = [
-    ["Property", "ISO", "E-PLA spec", "V6a 100 %", "k", "retain"],
-    ["Yield strength σ_y", "527", "58 MPa †", "47.8 MPa", "1.21", "82 %"],
-    ["Tensile strength (UTS)", "527", "58 MPa", "47.8 MPa", "1.21", "82 %"],
-    ["Tensile modulus E", "527", "2.87 GPa", "2.41 GPa", "1.19", "84 %"],
-    ["Elongation @ break", "527", "8 %", "3.0 %", "2.68", "37 %"],
+    ["Property", "ISO", "E-PLA spec", "V6 (n=5)", "k", "retain"],
+    ["Yield strength σ_y", "527", "58 MPa †", "45.0 MPa", "1.29", "78 %"],
+    ["Tensile strength (UTS)", "527", "58 MPa", "46.2 MPa", "1.26", "80 %"],
+    ["Tensile modulus E", "527", "2.87 GPa", "2.60 GPa", "1.10", "91 %"],
+    ["Elongation @ break", "527", "8 %", "3–7 %", "1.1–2.7", "37–93 %"],
     ["Flexural strength", "178", "120 MPa", "not tested", "—", "—"],
     ["Density / HDT", "527/75", "1.24 / 55 °C", "—", "—", "—"],
 ]
@@ -409,15 +409,15 @@ linkbox(s, 8.05, 5.32, 5.05, "add:north PLA Economy — product page", ADDNORTH_
 
 tb(s, 0.4, 4.3, 7.6, 1.55,
    "Validated against TWO references:\n"
-   "• Journal (Chacón 2017): V6a σ_y & UTS land INSIDE the range (pass); modulus just below floor.\n"
-   "• add:north E-PLA datasheet: σ_y, UTS and E share ONE factor k ≈ 1.20 → printed 100 % ≈ 83 % "
-   "of solid-rated. Coherent and actionable.",
+   "• Journal (Chacón 2017): σ_y & UTS land INSIDE the range (pass); modulus just below floor.\n"
+   "• add:north E-PLA datasheet: strength ≈ 80 % of rated (k ≈ 1.26); stiffness ≈ 91 % (k ≈ 1.10, near spec) "
+   "— E is CLOSER to spec than strength, so NOT one common factor. Repeatable at CV 2.5 % (n = 5).",
    fs=11.5, colour=BLACK)
 banner(s, 0.4, 6.0, 12.7, 0.6,
-       "Closest match = add:north E-PLA datasheet: one coherent FFF knock-down k ≈ 1.2 on strength & "
-       "stiffness. Predict printed strength ≈ spec ÷ 1.2.")
-footer(s, "Pilot V6a values (batch edge); representative n = 5 offset on p. 160. † E-PLA reports one tensile "
-          "strength (at break), PLA σ_y ≈ UTS → both vs 58 MPa. E-PLA = closest add:north PLA; ISO 527 moulded vs printed.")
+       "Closest match = add:north E-PLA datasheet: strength k ≈ 1.26 (80 % of rated), stiffness k ≈ 1.10 "
+       "(91 %, near spec). Predict printed strength ≈ spec ÷ 1.25.")
+footer(s, "† E-PLA reports one tensile strength (at break), PLA σ_y ≈ UTS → both vs 58 MPa. E-PLA = closest "
+          "add:north PLA (no PLA Economy TDS); ISO 527 moulded vs printed 80 mm² bar; values = n = 5 mean.")
 pageno(s, 156)
 
 # ===== SLIDE 17 — V6 repeatability study (n=5) =====
@@ -587,5 +587,39 @@ footer(s, "Each specimen photo is an individually placed, croppable picture (…
           "Specimen_S*/). Labels = measured UTS · ε_f. Reset crop in PowerPoint to see the full specimen.")
 pageno(s, 161)
 
+# ===== SLIDE 22 — Software feature: automatic preload =====
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "UTM SOFTWARE: AUTOMATIC PRELOAD (‘PRELOAD TENSION’)")
+
+# --- recreated UI control (as it appears in the app toolbar) ---
+GREY_BORDER = RGBColor(0xA6, 0xA6, 0xA6); BTN_FILL = RGBColor(0xEC, 0xEC, 0xEC)
+tb(s, 0.5, 1.63, 1.2, 0.35, "Preload to:", fs=14)
+flow(s, 1.72, 1.58, 1.05, 0.42, "470 N", fill=WHITE, border=GREY_BORDER, fs=13)
+flow(s, 2.79, 1.58, 0.32, 0.42, "▴\n▾", fill=RGBColor(0xF2, 0xF2, 0xF2), border=GREY_BORDER, fs=8, fg=GREY_TEXT)
+flow(s, 3.27, 1.58, 1.75, 0.42, "Preload tension", fill=BTN_FILL, border=GREY_BORDER, fs=12, fg=RGBColor(0x55, 0x55, 0x55))
+tb(s, 0.5, 2.12, 5.0, 0.5,
+   "The operator control (screen recreation): type a target load, click once — the crosshead "
+   "auto-tensions to it, hands-off.", fs=10.5, italic=True, colour=GREY_TEXT)
+
+header(s, 0.5, 2.75, 6.0, "How it works — one click, hands-off")
+tb(s, 0.5, 3.15, 6.1, 3.0,
+   "1.  Enter the target preload (e.g. 470 N) and press Preload tension.\n\n"
+   "2.  The crosshead tensions at a LOAD-scheduled speed: 0.20 mm/s up to ~15 % of target, "
+   "0.10 mm/s to 50 %, then ramps to a gentle 0.02 mm/s as it nears the target.\n\n"
+   "3.  It stops at 1.03× the target — a deliberate ~3 % overshoot.\n\n"
+   "4.  PLA stress-relaxes ~2 % while held → the load settles AT / just above the target.",
+   fs=12, colour=BLACK)
+
+s.shapes.add_picture("preload_schedule.png", Inches(6.75), Inches(1.65), width=Inches(6.2))
+
+banner(s, 0.4, 6.25, 12.5, 0.72,
+       "Why: manual jogging is slow and overshoots, and PLA relaxes after you stop (you would undershoot). "
+       "Auto-preload lands consistently at target (+3 % set − ~2 % relaxation ≈ target). "
+       "Safety: hard cap 1.25× target, 180 s timeout, live speed-only control (no Stop→restart re-latch).",
+       fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
+footer(s, "Feature in Software/UTM_PyQt6/main.py — PRELOAD_SPEED_KNOTS · TARGET_FACTOR 1.03 · OVERSHOOT_CAP 1.25 · "
+          "TIMEOUT 180 s. Used to set the ~470 N preload before every V5 / V6 pull.")
+pageno(s, 162)
+
 prs.save("V6a_8_6_20_slides.pptx")
-print("Saved: V6a_8_6_20_slides.pptx (21 slides, pages 141-161)")
+print("Saved: V6a_8_6_20_slides.pptx (22 slides, pages 141-162)")
