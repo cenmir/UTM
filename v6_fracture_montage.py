@@ -2,15 +2,15 @@
 grouped 50 % infill (V5 group) over 100 % infill (V6 quintet). Each tile is labelled with the
 measured UTS and failure strain (load-collapse analyze, same as v6_compare). Saves one figure
 (V6_fracture_patterns.png) for the comparison slide."""
-import sys
+import sys, os
 sys.stdout.reconfigure(encoding="utf-8")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "Software", "UTM_PyQt6"))
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from PIL import Image
-from statistics import mean, median
+from utm_analysis import analyze
 
-AREA = 80.0
 ROOT = r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure"
 
 # (test, specimen, csv, image, tag)
@@ -28,34 +28,7 @@ SPECS_100 = [
 ]
 
 
-def analyze(path):
-    rows = [l.strip() for l in open(ROOT + path, newline="") if not l.startswith("#") and l.strip()]
-    idx = {h: i for i, h in enumerate(rows[0].split(","))}
-    d = []
-    for r in rows[1:]:
-        p = r.split(",")
-        try:
-            d.append({"t": float(p[idx["Time_s"]]), "F": float(p[idx["Force_N"]]),
-                      "pos": float(p[idx["Position_mm"]]), "ec": float(p[idx["DIC_Cauchy"]]),
-                      "lpx": float(p[idx["L_px"]])})
-        except (ValueError, IndexError):
-            continue
-    bp = sorted(x["pos"] for x in d[:30])[15]
-    mv = next(i for i, x in enumerate(d) if x["pos"] > bp + 0.005)
-    ec0 = median([x["ec"] for x in d[:mv] if x["lpx"] > 100] or [0.0])
-    pk = max(range(mv, len(d)), key=lambda i: d[i]["F"])
-    fr_load = next((i for i in range(pk, len(d)) if d[i]["F"] < 0.5 * d[pk]["F"]), len(d) - 1)
-    # trim at the fracture frame: an unphysical one-step strain jump (> 3 %) = markers flying apart
-    # (V5/S4 glitches to ec 0.19 while force is still up, so it beats load-collapse into the window).
-    fr_glitch = next((i for i in range(mv + 1, len(d))
-                      if d[i - 1]["lpx"] > 100 and d[i]["lpx"] > 100 and d[i]["ec"] - d[i - 1]["ec"] > 0.03), None)
-    fr = min([fr_load] + ([fr_glitch] if fr_glitch is not None else []))
-    post = [x for x in d[fr + 1:] if x["t"] > d[fr]["t"] + 2.0]
-    anc = -mean(x["F"] for x in post)
-    test = [x for x in d[mv:fr] if x["lpx"] > 100]
-    uts = max((x["F"] + anc) / AREA for x in test)
-    last = max(test, key=lambda x: x["t"])
-    return uts, last["ec"] - ec0
+# analyze() now comes from utm_analysis (shared library) — same load-collapse + strain-jump detector.
 
 
 def crop(path):
@@ -66,7 +39,8 @@ def crop(path):
 
 def tile(ax, spec, band):
     test, sp, csv, img, tag = spec
-    uts, ef = analyze(csv)
+    r = analyze(ROOT + csv)
+    uts, ef = r["uts"], r["ef"]
     ax.imshow(crop(img)); ax.axis("off")
     ttl = f"{test} · {sp}"
     if tag:

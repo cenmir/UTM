@@ -125,6 +125,7 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
         if prev and d["ecz"] > prev["ecz"]:
             tough += 0.5 * (d["sig"] + prev["sig"]) * (d["ecz"] - prev["ecz"])
         prev = d
+    curve = [(d["ecz"] * 100, d["sig"]) for d in test if d["ecz"] > -0.002]   # (strain %, stress) for plots
 
     return {
         "anchor": anchor, "E": E / 1000, "E_R2": r1, "sy": sy["sig"],
@@ -134,7 +135,7 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
         "gauge_share": gauge_stretch / last["travel"] * 100 if last["travel"] else 0.0,
         "dur": last["t"] - t0,
         "rate": (data[fr_i]["pos"] - data[mv_i]["pos"]) / (t_fr - t0) if (t_fr - t0) else 0.0,
-        "fr_i": fr_i, "mv_i": mv_i,
+        "uts_ec": uts["ecz"] * 100, "curve": curve, "fr_i": fr_i, "mv_i": mv_i,
     }
 
 

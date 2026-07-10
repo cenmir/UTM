@@ -1,14 +1,15 @@
 """Figures for the V6 100% quintet (n=5) validation slides: overlay stress-strain,
 strength repeatability vs references, ductility range, and offset-k vs datasheet.
 Reuses the v6_compare analyze() (load-collapse fracture, anchor, DIC baseline re-zero)."""
-import sys
+import sys, os
 sys.stdout.reconfigure(encoding="utf-8")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "Software", "UTM_PyQt6"))
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from statistics import mean, median, stdev
+from statistics import mean, stdev
+from utm_analysis import analyze
 
-AREA = 80.0; GAUGE = 80.0
 ROOT = r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure"
 FILES = {
     "V6a (S7)":  ROOT + r"\Specimen_S7_V2_Spray\UTM_Test_20260617_165405_V6a_TensionFailure.csv",
@@ -23,52 +24,8 @@ EPLA = {"E": 2.87, "uts": 58.0, "ef": 8.0}
 CHA = {"uts": (32, 60), "sy": (30, 50), "E": (3.0, 5.5)}
 
 
-def read_csv(path):
-    rows = [l.strip() for l in open(path, newline="") if not l.startswith("#") and l.strip()]
-    idx = {h: i for i, h in enumerate(rows[0].split(","))}
-    out = []
-    for row in rows[1:]:
-        p = row.split(",")
-        try:
-            out.append({"t": float(p[idx["Time_s"]]), "F": float(p[idx["Force_N"]]),
-                        "pos": float(p[idx["Position_mm"]]), "ec": float(p[idx["DIC_Cauchy"]]),
-                        "lpx": float(p[idx["L_px"]])})
-        except (ValueError, IndexError):
-            continue
-    return out
-
-
-def linfit(xs, ys):
-    n = len(xs); sx, sy = sum(xs), sum(ys)
-    sxx = sum(x*x for x in xs); sxy = sum(x*y for x, y in zip(xs, ys))
-    sl = (n*sxy - sx*sy)/(n*sxx - sx*sx); ic = (sy - sl*sx)/n
-    return sl, ic
-
-
-def analyze(path):
-    data = read_csv(path)
-    base_pos = sorted(d["pos"] for d in data[:30])[15]
-    mv_i = next(i for i, d in enumerate(data) if d["pos"] > base_pos + 0.005)
-    ec0 = median([d["ec"] for d in data[:mv_i] if d["lpx"] > 100] or [0.0])
-    pk = max(range(mv_i, len(data)), key=lambda i: data[i]["F"])
-    fr_i = next((i for i in range(pk, len(data)) if data[i]["F"] < 0.5*data[pk]["F"]), len(data)-1)
-    post = [d for d in data[fr_i+1:] if d["t"] > data[fr_i]["t"]+2.0]
-    anchor = -mean(d["F"] for d in post)
-    for d in data:
-        d["sig"] = (d["F"]+anchor)/AREA; d["ecz"] = d["ec"]-ec0
-    test = [d for d in data[mv_i:fr_i] if d["lpx"] > 100]
-    uts = max(test, key=lambda d: d["sig"]); last = max(test, key=lambda d: d["t"])
-    win = [d for d in test if 0.0005 <= d["ecz"] <= 0.004]
-    E, c1 = linfit([d["ecz"] for d in win], [d["sig"] for d in win])
-    sy = next(d for d in test if E*(d["ecz"]-0.002)+c1 >= d["sig"])
-    tough = 0.0; prev = None
-    for d in test:
-        if prev and d["ecz"] > prev["ecz"]:
-            tough += 0.5*(d["sig"]+prev["sig"])*(d["ecz"]-prev["ecz"])
-        prev = d
-    curve = [(d["ecz"]*100, d["sig"]) for d in test if d["ecz"] > -0.002]
-    return {"E": E/1000, "sy": sy["sig"], "uts": uts["sig"], "ef": last["ecz"],
-            "tough": tough*1000, "uts_ec": uts["ecz"]*100, "curve": curve}
+# read_csv / linfit / analyze now come from utm_analysis (shared library).
+# analyze() returns a superset dict incl. E, sy, uts, ef, tough, uts_ec, curve — used below.
 
 
 R = {k: analyze(v) for k, v in FILES.items()}
