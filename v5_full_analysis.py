@@ -16,7 +16,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-CSV = r"Software\UTM_PyQt6\8.6.20\Specimen_S4_V1_Spray\UTM_Test_20260612_172333_V5_TensionFailure.csv"
+CSV = r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure\Specimen_S4_V1_Spray\UTM_Test_20260612_172333_V5_TensionFailure.csv"
 AREA = 80.0          # nominal mm^2 (10 x 8, CAD-verified)
 GAUGE = 80.0         # mm
 INFILL = 0.50        # slicer infill fraction (user-confirmed)
