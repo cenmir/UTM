@@ -37,6 +37,37 @@ def read_csv(path):
     return out
 
 
+def read_meta(path):
+    """Recover test metadata from the CSV '#' header (area, gauge, comment, calibration,
+    date, duration, px_per_mm). Dependency-free — shared by the report and the registry."""
+    meta = {}
+    with open(path, encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            if not line.startswith("#"):
+                break
+            s = line[1:].strip()
+            low = s.lower()
+            try:
+                if low.startswith("test date:"):
+                    meta["date"] = s.split(":", 1)[1].strip()
+                elif low.startswith("duration:"):
+                    meta["duration"] = s.split(":", 1)[1].strip()
+                elif low.startswith("comment:"):
+                    meta["comment"] = s.split(":", 1)[1].strip()
+                elif "area:" in low:
+                    meta["area"] = float(s.split("Area:", 1)[1].split("mm")[0].strip())
+                    if "gauge length:" in low:
+                        meta["gauge"] = float(s.split("Gauge Length:", 1)[1].split("mm")[0].strip())
+                elif low.startswith("calibration"):
+                    meta["scale"] = s.split("Scale:", 1)[1].split(",")[0].strip()
+                    meta["offset"] = s.split("Offset:", 1)[1].strip()
+                elif "px_per_mm:" in low:
+                    meta["px_per_mm"] = s.split(":", 1)[1].strip()
+            except (ValueError, IndexError):
+                continue
+    return meta
+
+
 def linfit(xs, ys):
     """Least-squares line fit. Returns (slope, intercept, r2)."""
     n = len(xs); sx, sy = sum(xs), sum(ys)

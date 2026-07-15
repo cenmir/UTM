@@ -23,7 +23,7 @@ matplotlib.rcParams["pdf.fonttype"] = 42        # embed TrueType -> editable/sel
 matplotlib.rcParams["ps.fonttype"] = 42
 # OO API (Figure + FigureCanvasAgg) — no global backend switch, so build_report() is safe to call
 # from inside the running Qt app (which owns the interactive backend) as well as standalone.
-from utm_analysis import read_csv, analyze
+from utm_analysis import read_csv, analyze, read_meta
 
 CHACON = {"uts": (32, 60), "sy": (30, 50), "E": (3.0, 5.5)}     # Chacón (2017) ranges
 EPLA = {"uts": 58.0, "sy": 58.0, "E": 2.87, "ef": 8.0}          # add:north E-PLA datasheet
@@ -39,35 +39,7 @@ def _fmt(x):
         return str(x)
 
 
-def read_meta(path):
-    """Recover test metadata from the CSV '#' header (area, gauge, comment, calibration,
-    date, duration, px_per_mm). Used when run standalone (the app passes settings directly)."""
-    meta = {}
-    with open(path, encoding="utf-8", errors="ignore") as f:
-        for line in f:
-            if not line.startswith("#"):
-                break
-            s = line[1:].strip()
-            low = s.lower()
-            try:
-                if low.startswith("test date:"):
-                    meta["date"] = s.split(":", 1)[1].strip()
-                elif low.startswith("duration:"):
-                    meta["duration"] = s.split(":", 1)[1].strip()
-                elif low.startswith("comment:"):
-                    meta["comment"] = s.split(":", 1)[1].strip()
-                elif "area:" in low:
-                    meta["area"] = float(s.split("Area:", 1)[1].split("mm")[0].strip())
-                    if "gauge length:" in low:
-                        meta["gauge"] = float(s.split("Gauge Length:", 1)[1].split("mm")[0].strip())
-                elif low.startswith("calibration"):
-                    meta["scale"] = s.split("Scale:", 1)[1].split(",")[0].strip()
-                    meta["offset"] = s.split("Offset:", 1)[1].strip()
-                elif "px_per_mm:" in low:
-                    meta["px_per_mm"] = s.split(":", 1)[1].strip()
-            except (ValueError, IndexError):
-                continue
-    return meta
+# read_meta() is imported from utm_analysis (shared, dependency-free).
 
 
 # ---------- individual plot builders (reused for the one-pager AND the standalone graphs) ----------
