@@ -197,7 +197,7 @@ for k in KEYS:
             label=f"{k}: UTS {R[k]['uts']:.1f} MPa, e_f {R[k]['ef']:.4f}")
     ax.plot(R[k]["uts_e"], R[k]["uts"], "v", color=COLORS[k], ms=11, mec="black", mew=0.6)
     ax.plot(R[k]["ef"], R[k]["sigf"], "x", color=COLORS[k], ms=12, mew=2.8)
-ax.set_xlabel("DIC Cauchy strain ε_c"); ax.set_ylabel("True stress (MPa, nominal 80 mm²)")
+ax.set_xlabel("DIC Cauchy strain ε_c"); ax.set_ylabel("Engineering stress (MPa, nominal 80 mm²)")
 ax.set_title("V5 / V5b / V5c — stress-strain overlay (50 % infill, LED off)", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="lower right", fontsize=11)
 ax.set_xlim(-0.001, 0.034); ax.set_ylim(0, 24)
@@ -274,7 +274,7 @@ fig, ax = plt.subplots(figsize=(12, 6.3))
 for k in KEYS:
     ax.plot(R[k]["xs_pos"], R[k]["ys"], "-", color=COLORS[k], lw=2.2, alpha=0.9,
             label=f"{k}: travel {R[k]['travel_fr']:.2f} mm, gauge share {R[k]['gauge_share']:.0f} %")
-ax.set_xlabel("Crosshead displacement / travel (mm)"); ax.set_ylabel("True stress (MPa, nominal 80 mm²)")
+ax.set_xlabel("Crosshead displacement / travel (mm)"); ax.set_ylabel("Engineering stress (MPa, nominal 80 mm²)")
 ax.set_title("V5 / V5b / V5c — stress vs crosshead displacement", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="lower right", fontsize=11)
 ax.set_xlim(-0.05, 5.2); ax.set_ylim(0, 24)

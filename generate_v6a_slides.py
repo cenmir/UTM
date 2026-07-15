@@ -621,5 +621,48 @@ footer(s, "Feature in Software/UTM_PyQt6/main.py — PRELOAD_SPEED_KNOTS · TARG
           "TIMEOUT 180 s. Used to set the ~470 N preload before every V5 / V6 pull.")
 pageno(s, 162)
 
+# ===== SLIDE 23 — Engineering vs true (Cauchy) stress + measuring the current area =====
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "ENGINEERING vs TRUE (CAUCHY) STRESS — & MEASURING THE AREA")
+
+header(s, 0.4, 1.28, 6.1, "Why the report & plots use ENGINEERING stress")
+tb(s, 0.4, 1.70, 6.15, 3.7,
+   "σ_eng = F / A₀   (A₀ = 80 mm², fixed) — what we compute & report.\n"
+   "σ_true (Cauchy) = F / A_current — the real stress on the shrinking cross-section; NOT measured "
+   "here (the deforming area is never tracked).\n\n"
+   "Link (uniform, pre-neck):   σ_true = σ_eng·(1+ε),    ε_true = ln(1+ε).\n\n"
+   "WHY engineering: ISO 527, Chacón (2017) and the add:north datasheet all report ENGINEERING stress "
+   "— so it is the apples-to-apples basis for our k-factors / PASS–FAIL. True stress reads higher and "
+   "would break that comparison.\n\n"
+   "Gap for our PLA (small strains): ~2–3 % higher at UTS (46.2 → ~47 MPa), ~5 % near fracture; "
+   "E and σ_y essentially unchanged.",
+   fs=11.5, colour=BLACK)
+
+header(s, 6.75, 1.28, 6.2, "Measuring the CURRENT area → true stress (future)")
+meth = [
+    ["Method", "How", "Note"],
+    ["Poisson estimate", "A = A₀(1−ν·ε)²,  ν ≈ 0.35  (no hardware)", "cheap; ν drifts in yield"],
+    ["Transverse markers", "+2 dots across width → ε_w;  A ≈ A₀(1+ε_w)²", "reuses blob-DIC; gives Poisson"],
+    ["+ edge camera", "2nd view → thickness strain;  A = w·t", "rigorous; FDM is orthotropic"],
+    ["Full-field speckle", "fine random speckle + subset DIC", "strain field + necking; new pipeline"],
+]
+ovm = {(2, c): {'bg': GREEN_PASS, 'bold': c == 0} for c in range(3)}      # recommended row
+table(s, 6.75, 1.70, 6.25, 2.5, meth, cw=[1.35, 2.7, 1.6], hf=10, bf=9.5, ov=ovm)
+tb(s, 6.75, 4.32, 6.25, 1.05,
+   "Same speckle style (spray dots): just add a transverse dot pair — the current 2-marker tracker "
+   "extends naturally (2 axial + 2 transverse). A finer random speckle enables full-field DIC "
+   "(transverse field + necking) but needs a new analysis pipeline.",
+   fs=10.5, italic=True, colour=GREY_TEXT)
+
+banner(s, 0.4, 5.55, 12.6, 1.02,
+       "RECOMMENDED — add a TRANSVERSE marker pair (green row): measure width contraction ε_w with the "
+       "existing DIC (bonus: Poisson's ratio). Then A(t) = A₀(1+ε_w)²,  σ_cauchy = F / A(t),  plotted vs "
+       "true strain ln(1+ε). Keep ENGINEERING stress as the reported / validated value (datasheet & journal "
+       "basis); report Cauchy as the physically-accurate supplement. Add an edge camera for through-thickness "
+       "if FDM orthotropy matters.", fill=LIGHT_BLUE, fg=BLACK, fs=11)
+footer(s, "Current V6 report & plots = engineering stress (nominal 80 mm²). True/Cauchy needs the deforming "
+          "area; post-necking needs full-field DIC or markers at the neck.")
+pageno(s, 163)
+
 prs.save("V6a_8_6_20_slides.pptx")
-print("Saved: V6a_8_6_20_slides.pptx (22 slides, pages 141-162)")
+print("Saved: V6a_8_6_20_slides.pptx (23 slides, pages 141-163)")

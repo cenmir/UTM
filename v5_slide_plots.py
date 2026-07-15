@@ -140,7 +140,7 @@ for x0, x1, col, rn, nm in bands:
     ax.axvspan(x0, x1, color=col, alpha=0.55, zorder=0)
     ax.text((x0+x1)/2, 25.4, rn, ha="center", fontsize=15, fontweight="bold", color="#222", zorder=4)
 ax.plot([d["ec"] for d in test], [d["sig"] for d in test], "-", color=BLUE, lw=2.6, zorder=3,
-        label="V5 (true stress)")
+        label="V5 (engineering stress)")
 xf = [0, 0.006]
 ax.plot(xf, [E1*x + c1 for x in xf], "--", color=GREEN, lw=2, zorder=3,
         label=f"elastic slope  E = {E1/1000:.2f} GPa  (R² = {r1:.3f})")
@@ -156,7 +156,7 @@ ax.text(0.0007, 24.4,
         "I  Linear elastic        II  Yield knee\nIII  Plastic / strain-harden    IV  Soften → fracture",
         fontsize=10, va="top", color="#333", zorder=6,
         bbox=dict(facecolor="white", edgecolor="#bbb", boxstyle="round,pad=0.3"))
-ax.set_xlabel("DIC Cauchy strain ε_c"); ax.set_ylabel("True stress (MPa)")
+ax.set_xlabel("DIC Cauchy strain ε_c"); ax.set_ylabel("Engineering stress (MPa)")
 ax.set_title("8.6.20 V5 — Stress vs strain (four deformation regions)", fontweight="bold")
 ax.grid(alpha=0.3, zorder=1); ax.legend(loc="lower right", fontsize=11)
 ax.set_xlim(-0.0005, 0.027); ax.set_ylim(0, 26.5)
@@ -178,7 +178,7 @@ ax.text(0.004, 23.0,
         "Curves overlap at small strain (ε_t ≈ ε_c)\nand separate as strain grows:\nln(1+ε) < ε.  Here max gap ≈ 1.2 %.",
         fontsize=12, color=GREY, style="italic", va="top",
         bbox=dict(facecolor="white", edgecolor="#cccccc", boxstyle="round,pad=0.4"))
-ax.set_xlabel("DIC strain"); ax.set_ylabel("True stress (MPa)")
+ax.set_xlabel("DIC strain"); ax.set_ylabel("Engineering stress (MPa)")
 ax.set_title("8.6.20 V5 — Cauchy vs True strain", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="lower right")
 ax.set_xlim(-0.0005, 0.027); ax.set_ylim(0, 26)
@@ -217,7 +217,7 @@ ax.text(2.55, 11.5,
         f"rig stiffness\nk = F / δ_rig\n= {uts['Ftrue']:.0f} N ÷ {rig_takeup:.2f} mm\n≈ {rig_k:.0f} N/mm",
         fontsize=11.5, va="top",
         bbox=dict(facecolor="#E7F1F8", edgecolor="none", boxstyle="round,pad=0.45"))
-ax.set_xlabel("Displacement (mm)"); ax.set_ylabel("True stress (MPa)")
+ax.set_xlabel("Displacement (mm)"); ax.set_ylabel("Engineering stress (MPa)")
 ax.set_title("8.6.20 V5 — Stress vs displacement: gauge stretch vs rig take-up", fontweight="bold")
 ax.grid(alpha=0.3); ax.set_xlim(-0.1, 4.15); ax.set_ylim(0, 26.5)
 ax.legend(loc="lower right", fontsize=11)
