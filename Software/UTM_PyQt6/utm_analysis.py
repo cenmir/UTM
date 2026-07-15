@@ -79,7 +79,7 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
         E         GPa   elastic modulus (linfit over ec in [0.0005, 0.004])
         E_R2      -     R^2 of the elastic fit
         sy        MPa   0.2 %-offset yield stress
-        uts       MPa   ultimate tensile strength (true stress = (F+anchor)/area)
+        uts       MPa   ultimate tensile strength (engineering stress = (F+anchor)/nominal area)
         uts_F     N     true force at UTS
         ef        -     failure strain (last tracked DIC Cauchy, baseline-rezeroed)
         sigf      MPa   fracture stress
@@ -135,7 +135,8 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
         "gauge_share": gauge_stretch / last["travel"] * 100 if last["travel"] else 0.0,
         "dur": last["t"] - t0,
         "rate": (data[fr_i]["pos"] - data[mv_i]["pos"]) / (t_fr - t0) if (t_fr - t0) else 0.0,
-        "uts_ec": uts["ecz"] * 100, "curve": curve, "fr_i": fr_i, "mv_i": mv_i,
+        "uts_ec": uts["ecz"] * 100, "sy_ec": sy["ecz"] * 100, "c1": c1,
+        "curve": curve, "fr_i": fr_i, "mv_i": mv_i,
     }
 
 
