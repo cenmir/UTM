@@ -664,5 +664,51 @@ footer(s, "Current V6 report & plots = engineering stress (nominal 80 mm²). Tru
           "area; post-necking needs full-field DIC or markers at the neck.")
 pageno(s, 163)
 
+# ---- Slide 164: measuring Poisson / true stress WITHOUT transverse dots ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "MEASURING POISSON'S RATIO & TRUE STRESS — WITHOUT TRANSVERSE DOTS")
+
+header(s, 0.4, 1.28, 6.05, "Why not transverse dots — and the fix")
+tb(s, 0.4, 1.70, 6.05, 4.0,
+   "The mini-dogbone GAUGE is too NARROW to fit a transverse dot pair, and at ~20 px/mm the elastic "
+   "width change is SUB-PIXEL for discrete dots — added markers cannot resolve it.\n\n"
+   "The fix: don't add markers — measure the specimen's OWN EDGES. Track the left & right silhouette "
+   "edges across the gauge and average the width; as it necks, that width shrinks:\n\n"
+   "    ε_w = (W₀ - W)/W₀,   ν = -ε_w/ε_axial,   A = W·t\n\n"
+   "All three routes below return a MEASURED value (no assumed ν) — written to the CSV as real data, "
+   "not an estimate.",
+   fs=11.5, colour=BLACK)
+
+header(s, 6.6, 1.28, 6.4, "Three ways to MEASURE it (no transverse dots)")
+meth = [
+    ["Route", "How it works", "Needs"],
+    ["1  Edge / silhouette\n    width tracking",
+     "find the specimen's L & R edges across the gauge; average width over 100s of rows -> ε_w each frame",
+     "matte-black backdrop;\nreuses THIS camera"],
+    ["2  Full-field\n    speckle DIC",
+     "fine random speckle + subset correlation (Ncorr / muDIC, offline) -> full axial + transverse strain field",
+     "speckle + new\nanalysis pipeline"],
+    ["3  Hardware probe",
+     "2nd side camera (thickness), laser micrometer, or clip-on transverse extensometer",
+     "extra hardware;\nlab-grade"],
+]
+ovm = {(1, c): {'bg': GREEN_PASS, 'bold': c == 0} for c in range(3)}      # recommended row
+table(s, 6.6, 1.70, 6.4, 2.7, meth, cw=[1.7, 3.0, 1.7], hf=10, bf=9, ov=ovm)
+tb(s, 6.6, 4.5, 6.4, 1.0,
+   "Why #1 works at 20 px/mm: one edge is sub-pixel, but averaging the width along the whole gauge "
+   "(100s of rows) cuts the noise ~10x to ~0.01 px — the ~0.5 px elastic width change is then well "
+   "resolved. It only needs CRISP edges = a dark background behind the specimen.",
+   fs=10.5, italic=True, colour=GREY_TEXT)
+
+banner(s, 0.4, 5.6, 12.6, 1.02,
+       "RECOMMENDED — EDGE-WIDTH TRACKING + a matte-black backdrop (e.g. spray-painted MDF a few cm behind "
+       "the gauge): the only route that MEASURES Poisson's ratio & true Cauchy stress while reusing THIS "
+       "camera and specimen. Matte finish avoids LED glare; the gap softens cast shadows. Keep ENGINEERING "
+       "stress as the reported / validated basis — Cauchy as the measured supplement.",
+       fill=LIGHT_BLUE, fg=BLACK, fs=11)
+footer(s, "Supersedes the transverse-marker idea on the previous slide: the narrow gauge + camera resolution "
+          "rule out a transverse dot pair. Measure the specimen's own edges (or full-field speckle) instead.")
+pageno(s, 164)
+
 prs.save("V6a_8_6_20_slides.pptx")
-print("Saved: V6a_8_6_20_slides.pptx (23 slides, pages 141-163)")
+print("Saved: V6a_8_6_20_slides.pptx (24 slides, pages 141-164)")
