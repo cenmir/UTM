@@ -15,25 +15,33 @@ L_TRACK_PX = 100.0     # L_px above this = markers are being tracked (matches ut
 
 
 # ---------- (1) live tracking health ----------
-def dic_health(history, current_blobs=None, expected_markers=2, window=30):
+def dic_health(history, blob_history=None, current_blobs=None, expected_markers=2, window=30):
     """Summarise recent DIC tracking for the live badge.
-    history: sequence of (timestamp, cauchy, true, L_px, dx_px) (camera_manager.dic_history).
+    history: sequence of (timestamp, cauchy, true, L_px, dx_px[, lateral]) (camera_manager.dic_history)
+      -> pixel jitter / drift (only frames where markers were actually found land here).
+    blob_history: recent per-frame blob COUNTS (ints) -> tracking%. Preferred, because it records
+      dropped frames too; if None, tracking% falls back to L_px presence in `history`.
     current_blobs: latest detected blob count, or None if unknown.
     Returns {status, color, tracking_pct, jitter_px, drift_px, markers, expected, n}."""
     recent = list(history)[-window:]
-    n = len(recent)
-    if n == 0:
-        return {"status": "NO DATA", "color": "#8a8f98", "tracking_pct": 0.0,
-                "jitter_px": 0.0, "drift_px": 0.0, "markers": current_blobs,
-                "expected": expected_markers, "n": 0}
     tracked = [r for r in recent if r[3] > L_TRACK_PX]
-    tracking_pct = 100.0 * len(tracked) / n
     lpx = [r[3] for r in tracked]
     dxs = [r[4] for r in tracked]
     # jitter = frame-to-frame wobble of L_px (differencing removes the slow strain ramp)
     diffs = [lpx[i] - lpx[i - 1] for i in range(1, len(lpx))]
     jitter_px = pstdev(diffs) / (2 ** 0.5) if len(diffs) > 1 else 0.0
     drift_px = (max(dxs) - min(dxs)) if dxs else 0.0
+    if blob_history is not None:
+        bh = list(blob_history)[-window:]
+        n = len(bh)
+        tracking_pct = 100.0 * sum(1 for b in bh if b == expected_markers) / n if n else 0.0
+    else:
+        n = len(recent)
+        tracking_pct = 100.0 * len(tracked) / n if n else 0.0
+    if n == 0:
+        return {"status": "NO DATA", "color": "#8a8f98", "tracking_pct": 0.0,
+                "jitter_px": 0.0, "drift_px": 0.0, "markers": current_blobs,
+                "expected": expected_markers, "n": 0}
     markers_ok = (current_blobs is None) or (current_blobs == expected_markers)
     if not markers_ok or tracking_pct < 70:
         status, color = "BAD", "#e74c3c"
@@ -125,8 +133,12 @@ def _selftest():
     print("health OK :", health_text(ho))
     print("health BAD:", health_text(hb))
     assert ho["status"] == "OK" and hb["status"] == "BAD", "health status"
-    assert dic_health([], 0)["status"] == "NO DATA"
+    assert dic_health([], current_blobs=0)["status"] == "NO DATA"
     assert dic_health(ok, current_blobs=1)["status"] == "BAD", "missing marker -> BAD"
+    # blob_history path: half the frames drop to 1 marker -> ~50% tracking -> BAD
+    bh = [2 if i % 2 else 1 for i in range(30)]
+    hbh = dic_health(ok, blob_history=bh, current_blobs=2)
+    assert hbh["tracking_pct"] < 60 and hbh["status"] == "BAD", "blob_history tracking"
 
     # (2) geometry: stretch 5% axial, contract with true nu=0.35 -> lateral -1.75%
     L0, w0, nu_true, eps_ax = 1665.0, 400.0, 0.35, 0.05
