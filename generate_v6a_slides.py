@@ -710,5 +710,134 @@ footer(s, "Supersedes the transverse-marker idea on the previous slide: the narr
           "rule out a transverse dot pair. Measure the specimen's own edges (or full-field speckle) instead.")
 pageno(s, 164)
 
+# =====================================================================================
+# ROADMAP PROGRESS — advanced features & ease of use (slides 165-168)
+# =====================================================================================
+GREY_PLANNED = RGBColor(0xE8, 0xE8, 0xE8)
+
+# ---- Slide 165: roadmap status dashboard ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SOFTWARE ROADMAP — ADVANCED FEATURES & EASE OF USE: STATUS")
+tb(s, 0.4, 1.28, 12.55, 0.62,
+   "The rig automated only ONE thing (auto-preload). A phased roadmap adds automated test modes, "
+   "smart DIC and one-click analysis — each piece shippable on its own. Where it stands today:",
+   fs=12, colour=BLACK)
+road = [
+    ["Phase", "Focus", "Status"],
+    ["0 · Foundations", "shared analysis library · control engine · recipes", "DONE"],
+    ["A · One-click workflow", "per-test report · test registry · prepare-specimen · auto-stop", "BUILT — rig-test"],
+    ["B · Closed-loop modes", "strain-rate + cyclic / staircase / relaxation / creep", "1 of 5 wired"],
+    ["C · Smart DIC", "live health HUD + measured Poisson / true Cauchy", "HUD done"],
+    ["D · UX layer", "guided wizard · live overlay · dashboard", "PLANNED"],
+]
+rov = {(1, 2): {'bg': GREEN_PASS, 'bold': True}, (2, 2): {'bg': YELLOW_WARN, 'bold': True},
+       (3, 2): {'bg': YELLOW_WARN, 'bold': True}, (4, 2): {'bg': YELLOW_WARN, 'bold': True},
+       (5, 2): {'bg': GREY_PLANNED, 'bold': True}}
+table(s, 0.4, 2.02, 12.55, 2.75, road, cw=[2.6, 6.75, 3.2], hf=11, bf=10.5, ov=rov)
+kpi(s, 0.4, 5.02, 2.95, "MODULES (in git)", "7")
+kpi(s, 3.62, 5.02, 2.95, "APP FEATURES", "6")
+kpi(s, 6.84, 5.02, 2.95, "SIM CHECKS PASSED", "9 / 9")
+kpi(s, 10.06, 5.02, 2.89, "TO RIG-TEST", "6")
+banner(s, 0.4, 6.18, 12.55, 0.92,
+       "LEGEND — DONE (green) · BUILT, awaiting rig test (amber) · PLANNED (grey).  Foundations + the "
+       "one-click workflow have shipped; closed-loop modes and smart-DIC are partly in; the UX layer is next.",
+       fill=LIGHT_BLUE, fg=BLACK, fs=11)
+footer(s, "All analysis logic is unit-tested / sim-validated offline; app features live in the (unversioned) "
+          "main.py and follow the proven auto-preload safety discipline.")
+pageno(s, 165)
+
+# ---- Slide 166: DONE — built & committed ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "DONE — BUILT, VERIFIED & COMMITTED")
+header(s, 0.4, 1.28, 6.15, "Analysis & workflow tooling (offline-verified, in git)")
+mods = [
+    ["Module", "What it gives you"],
+    ["utm_analysis.py", "ONE fracture detector + E / σy / UTS / εf / anchor"],
+    ["utm_report.py", "one-click per-test PDF + PNG report"],
+    ["utm_registry.py", "one table of EVERY test (props + anchor)"],
+    ["utm_recipes.py", "save / load a full test setup"],
+    ["control_policies + _sim", "closed-loop test-mode engine — 9/9 sim"],
+    ["utm_dic.py", "live DIC health + Poisson / Cauchy maths"],
+]
+table(s, 0.4, 1.70, 6.15, 3.1, mods, cw=[2.25, 3.9], hf=10, bf=9.5)
+tb(s, 0.4, 4.95, 6.15, 1.4,
+   "Kills the copy-paste-per-specimen analysis burden (the cause of the V6c / V5-S4 detector bugs): "
+   "one tested analyser, reused everywhere. Reproduces the known V5 / V6 numbers exactly.",
+   fs=10.5, italic=True, colour=GREY_TEXT)
+header(s, 6.75, 1.28, 6.2, "In the UI (main.py — awaiting rig test)")
+tb(s, 6.75, 1.72, 6.2, 3.9,
+   "•  Generate report  — one button → PDF + images\n\n"
+   "•  Recipe dropdown  — Load / Save a test setup\n\n"
+   "•  Prepare specimen  — 1-click tare (position + force + DIC)\n\n"
+   "•  Auto-stop at fracture  — halts on load collapse\n\n"
+   "•  Strain-rate mode (BETA)  — closed-loop dε/dt\n\n"
+   "•  DIC health HUD  — live OK / WARN / BAD badge\n\n"
+   "•  Safety net  — 10 kN force / 45 mm travel / 900 s cap",
+   fs=12, colour=BLACK)
+footer(s, "Modules committed & regression-checked against the deck numbers; the UI wiring stays in the "
+          "unversioned main.py and will be snapshot-committed once validated on the rig.")
+pageno(s, 166)
+
+# ---- Slide 167: TO BE TESTED — rig / camera ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "TO BE TESTED — ON THE RIG / CAMERA")
+header(s, 0.4, 1.28, 7.35, "Feature checks (needs motor + camera)")
+tst = [
+    ["Feature", "Pass ="],
+    ["DIC health HUD", "camera on → green 2/2; cover a dot → red BAD"],
+    ["Prepare specimen", "one click → position + force + DIC all tared"],
+    ["Auto-stop at fracture", "scrap pull → Stop right at the load collapse"],
+    ["Recipes", "load a starter → inputs change; Save → in list"],
+    ["Generate report", "after a test → PDF + PNG land in /reports"],
+    ["Strain-rate (BETA)", "scrap pull → holds dε/dt; stops at target / break"],
+]
+table(s, 0.4, 1.70, 7.35, 3.05, tst, cw=[2.35, 5.0], hf=10, bf=9.5)
+header(s, 7.95, 1.28, 5.0, "Rig facts to report back")
+tb(s, 7.95, 1.72, 5.0, 3.0,
+   "These unblock the other 4 test modes:\n\n"
+   "1.  Does SetSpeed 0 HOLD the motor still?\n     (dwell — staircase / relaxation)\n\n"
+   "2.  Clean reversal sequence — Stop → SetSpeed\n     → direction?  (cyclic / creep)\n\n"
+   "3.  Usable crosshead stroke (mm)?\n     (finalise the 45 mm travel cap)",
+   fs=11.5, colour=BLACK)
+banner(s, 0.4, 5.5, 12.55, 1.05,
+       "SAFETY — Auto-stop and Strain-rate drive the motor: run them first on a SCRAP specimen with a hand "
+       "near E-Stop. Everything else is read-only. Full step-by-step list: Software/UTM_PyQt6/TESTING_TODO.md",
+       fill=YELLOW_WARN, fg=BLACK, fs=11.5)
+footer(s, "Logic is already sim/offline-validated — these runs confirm behaviour on real hardware and set the "
+          "tunable thresholds (fracture arm 30% / collapse 50%, travel cap).")
+pageno(s, 167)
+
+# ---- Slide 168: PLANNED NEXT — measured Poisson (edge-width / MDF) + remaining automation ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "PLANNED NEXT — MEASURED POISSON (EDGE-WIDTH) + REMAINING AUTOMATION")
+header(s, 0.4, 1.28, 12.55, "Measured Poisson / true Cauchy — edge-width tracking  (next build, reuses THIS camera)")
+flow(s, 0.4, 1.75, 2.75, 0.95, "Matte-black MDF\nbackdrop\n(behind gauge)", fill=RGBColor(0x33, 0x33, 0x33),
+     border=BLACK, fs=10.5, bold=True, fg=WHITE)
+flow(s, 3.62, 1.75, 2.75, 0.95, "Camera detects\nL & R specimen\nedges", fill=WHITE, border=FLOW_BLUE, fs=10.5)
+flow(s, 6.84, 1.75, 2.75, 0.95, "Average width\nover the gauge\n(100s of rows)", fill=WHITE, border=FLOW_BLUE, fs=10.5)
+flow(s, 10.06, 1.75, 2.89, 0.95, "εw → ν  and\ntrue area →\nCauchy stress", fill=GREEN_PASS, border=DARK_GREEN,
+     fs=10.5, bold=True, fg=DARK_GREEN)
+arrow(s, 3.17, 2.23, 3.60, 2.23); arrow(s, 6.39, 2.23, 6.82, 2.23); arrow(s, 9.61, 2.23, 10.04, 2.23)
+tb(s, 0.4, 2.85, 12.55, 0.95,
+   "MEASURED (no assumed ν), reusing the current camera + specimen — matte finish avoids LED glare, a few-cm "
+   "gap softens shadows. FIRST STEP: mount the board, grab ONE still frame → prototype the edge-detection to "
+   "confirm contrast BEFORE building the live feature. (Transverse dots stay ruled out — see slide 164.)",
+   fs=11, colour=BLACK)
+header(s, 0.4, 3.95, 12.55, "Remaining automation & ease-of-use")
+tb(s, 0.4, 4.38, 6.2, 2.0,
+   "•  Cyclic / staircase / relaxation / creep modes\n    (engine ready — needs the 3 rig facts)\n\n"
+   "•  Full 'Run to fracture' — one button:\n    preload → pull → auto-halt → anchor → save\n\n"
+   "•  Auto specimen metadata + folder from recipe",
+   fs=11.5, colour=BLACK)
+tb(s, 6.75, 4.38, 6.2, 2.0,
+   "•  Guided wizard / checklist\n    (Connect → … → Prepare → Run → Save)\n\n"
+   "•  Live stress-strain + elastic-modulus overlay\n\n"
+   "•  Glanceable dashboard + fracture beep / banner",
+   fs=11.5, colour=BLACK)
+banner(s, 0.4, 6.5, 12.55, 0.72,
+       "ORDER — rig-test what's built → confirm the 3 facts → wire the remaining modes → edge-width Poisson "
+       "(after the backdrop) → UX layer.", fill=LIGHT_BLUE, fg=BLACK, fs=11)
+pageno(s, 168)
+
 prs.save("V6a_8_6_20_slides.pptx")
-print("Saved: V6a_8_6_20_slides.pptx (24 slides, pages 141-164)")
+print("Saved: V6a_8_6_20_slides.pptx (28 slides, pages 141-168)")
