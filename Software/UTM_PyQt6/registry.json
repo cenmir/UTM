@@ -151,5 +151,23 @@
     "ef": 0.0744,
     "tough_kJm3": 3053,
     "anchor_N": 475
+  },
+  {
+    "csv": "Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/Specimen_S16_V2_Spray/UTM_Test_20260728_200615.csv",
+    "specimen": "S16",
+    "test": "S16",
+    "date": "2026-07-28 20:04:23",
+    "material": "PLA",
+    "infill_pct": 100.0,
+    "area_mm2": 80.0,
+    "gauge_mm": 80.0,
+    "comment": null,
+    "UTS_MPa": 47.4,
+    "sy_MPa": 47.02,
+    "E_GPa": 1.876,
+    "ef": 0.06,
+    "tough_kJm3": 2527,
+    "anchor_N": 418,
+    "note": "auto-stop caught fracture + stall-guard validation (first post-stall-guard fracture)"
   }
 ]

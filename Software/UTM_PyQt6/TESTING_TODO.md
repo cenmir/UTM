@@ -25,10 +25,14 @@ A coloured badge on both test tabs: `DIC OK/WARN/BAD · N/2 markers · track % �
 - [x] Preload → **Release preload** backs the load down to ~0 N (correct unloading direction) → re-preload works.
 - **Result:** PASS — releases to ≤5 N; safety halt if load rises; cancel via button / manual dir / E-Stop.
 
-## 3. Auto-stop at fracture (checkbox)  ⚠️ keep a hand near E-Stop the first time
-- [ ] Tick **Auto-stop at fracture**, do a **scrap** tension pull to fracture.
-- [ ] Motor should **Stop** right at the load collapse; console logs `fracture detected — motor stopped`.
-- [ ] If it stops too early/late, the tunable knobs are arm 30 % / collapse 50 % / DIC-jump 3 % in `utm_analysis.LiveFractureDetector`.
+## 3. Auto-stop at fracture  ✅ CONFIRMED 2026-07-28 (S16, via Fracture test button)
+- [x] **Fracture test** on **S16** (100 % infill) → fractured; load collapsed **2992 → −417 N** and the motor stopped at the collapse.
+- **Result:** PASS — auto-stop caught the fracture. UTS **47.4 MPa** (anchor-corrected, V6-consistent); registry `S16`. First successful post-stall-guard fracture.
+
+## (feature) Stall guard  ✅ VALIDATED 2026-07-28 (S16)
+- [x] During S16's ductile drawing (force 3374 → 3070 N while the crosshead kept advancing 5.1 → 7.8 mm) the guard correctly did **NOT** trip — the near-zero-only 6 s threshold is confirmed. (S15 stall = the failure case it's built for; see TEST_FAILURES.md.)
+
+## (feature) Fracture test button  ✅ VALIDATED 2026-07-28 (S16) — checklist → auto-pull → auto-stop at fracture worked end-to-end.
 
 ## 4. Settings (dropdown + Load / Save…)  ✅ CONFIRMED 2026-07-27
 - [x] Set inputs → **Save…** with a name → appears in the dropdown; the JSON captures the values.

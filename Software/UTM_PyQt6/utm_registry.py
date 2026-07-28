@@ -48,6 +48,11 @@ def _record(csv_path, extra=None):
     gauge = float(extra.get("gauge") or meta.get("gauge") or 80.0)
     r = analyze(csv_path, area, gauge)
     infill = next((v for pref, v in INFILL_BY_PREFIX if ids["test"] and ids["test"].startswith(pref)), None)
+    if infill is None and meta.get("infill"):                # fall back to the CSV header's Infill label
+        try:
+            infill = float(meta["infill"])
+        except (ValueError, TypeError):
+            pass
     rec = {
         "csv": csv_path.replace("\\", "/"),
         "specimen": ids["specimen"], "test": ids["test"], "date": ids["date"] or meta.get("date"),
