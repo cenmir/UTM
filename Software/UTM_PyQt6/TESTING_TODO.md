@@ -40,9 +40,10 @@ A coloured badge on both test tabs: `DIC OK/WARN/BAD · N/2 markers · track % �
 - [x] **Default** present + pre-selected on startup.
 - **Result:** PASS — "Test 0" saved preload 300 N / speed 0.2 mm/s and Load restored them. NOTE: selecting only browses; **Load** applies.
 
-## 5. Generate report (button)
-- [ ] After a test, click **Generate report** → a one-page PDF + individual PNGs land in `Software/UTM_PyQt6/reports/`.
-- [ ] Check the stress-strain / load-time / preload markers look right.
+## 5. Generate report (button)  ✅ CONFIRMED 2026-07-28 (S16)
+- [x] Report generated for S16 → one-page PDF + PNGs.
+- [x] Every value verified against the CSV/analysis (UTS 47.4 / σ_y 47.0 / E 1.88 / ε_f 6.0 / anchor 418), settings + validation + plots all faithful. DIC-health header line present.
+- **Result:** PASS — report is a faithful render of the CSV (raw header Max Stress 42.18 = anchor-corrected report UTS 47.4).
 
 ## 6. Strain-rate mode (BETA)  ⚠️ live motor control — scrap specimen first
 - [ ] Set a target dε/dt, start a scrap pull → holds the strain rate, stops at set strain or fracture.
