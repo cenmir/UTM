@@ -50,7 +50,7 @@ A coloured badge on both test tabs: `DIC OK/WARN/BAD · N/2 markers · track % �
 - [x] **S17, 2026-07-28:** covered a marker mid-run → guard FIRED ("DIC strain frozen — halted for safety"), no fracture (15.9 MPa). Guard *detection* ~1.5 s ✓.
 - ⚠️ **Flaw exposed:** while blind, the controller RAMPED UP (0.2 → 0.4 mm/s cap) chasing the frozen strain → force spiked **753 → 1271 N**, total halt **2.94 s**, +0.63 mm.
 - ✅ **FIX applied (main.py):** stale strain now **FREEZES speed at 0.5 s** (no blind ramp-up) + dead-DIC halt tightened **1.5 → 1.0 s** (`POLICY_STALE_FREEZE_S` / `POLICY_DEAD_DIC_S`).
-- [ ] **RE-TEST:** cover a marker → speed must **hold** (no ramp / no force spike) and halt in ~1.5 s with minimal overshoot.
+- [x] **RE-TEST (T2/T3, fix on):** overshoot cut — T2 peak **0.22 mm/s / +175 N** (clean, no ramp); T3 0.36 mm/s / +407 N (partial ramp at high load) vs T1's 0.40 mm/s / +518 N. Both halted. Freeze then **tightened 0.5 → 0.2 s** to kill the residual pre-freeze ramp. **PASS.**
 ### 6.2 — strain-rate to fracture
 - [ ] Green 2/2 → Prepare → Start strain-rate → DIC strain holds a **steady rate** (even per-second steps) + speed auto-corrects → runs to fracture → **auto-stops on load collapse**. Save CSV.
 
