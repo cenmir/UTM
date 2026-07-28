@@ -15,9 +15,15 @@ A coloured badge on both test tabs: `DIC OK/WARN/BAD · N/2 markers · track % �
 - [x] Stop the camera → badge greys to "DIC —".
 - **Result:** PASS — live badge tracks markers and flips red on dropout.
 
-## 2. Prepare specimen (one button)
-- [ ] Click **Prepare specimen** → console logs `tared: position, force, DIC`.
-- [ ] Confirm force, position and DIC strain all read ~0 afterwards.
+## 2. Prepare specimen (one button)  ✅ CONFIRMED 2026-07-27
+- [x] Click **Prepare specimen** → console logs `tared: position, force, DIC`.
+- [x] Confirm force, position and DIC strain all read ~0 afterwards.
+- **Result:** PASS — clears both consoles + the stress-strain plot, then tares position + force + DIC
+  (DIC only when 2/2 markers are tracked; honestly reports "DIC skipped" otherwise). Load plot kept.
+
+## (bonus) Release preload  ✅ CONFIRMED 2026-07-27
+- [x] Preload → **Release preload** backs the load down to ~0 N (correct unloading direction) → re-preload works.
+- **Result:** PASS — releases to ≤5 N; safety halt if load rises; cancel via button / manual dir / E-Stop.
 
 ## 3. Auto-stop at fracture (checkbox)  ⚠️ keep a hand near E-Stop the first time
 - [ ] Tick **Auto-stop at fracture**, do a **scrap** tension pull to fracture.
