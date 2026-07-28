@@ -158,6 +158,7 @@ def build_report(csv_path, settings=None, out_dir=None, individual_plots=True):
         ("Test speed", f"{g('speed')} mm/s" if g('speed') != "—" else "—"),
         ("Cross-section", f"{area:.0f} mm²"),
         ("Gauge length L₀", f"{gauge:.0f} mm"),
+        ("Infill (label)", (f"{meta.get('infill')} %" if meta.get('infill') else str(g('infill', '—')))),
         ("Force calib", f"sc {_fmt(g('scale', meta.get('scale','—')))} / off {_fmt(g('offset', meta.get('offset','—')))}"),
         ("Comment", str(g("comment", meta.get("comment", "—")))),
         ("Test date", str(meta.get("date", "—"))[:22]),
@@ -165,7 +166,7 @@ def build_report(csv_path, settings=None, out_dir=None, individual_plots=True):
     ]
     sett.text(0.04, 0.95, "TEST SETTINGS", fontsize=11, fontweight="bold", color="#333", va="top")
     for j, (k, v) in enumerate(lines):
-        y = 0.85 - j * 0.083
+        y = 0.85 - j * 0.077
         sett.text(0.04, y, k, fontsize=9, color="#666", va="top")
         sett.text(0.52, y, str(v)[:30], fontsize=9, color="black", va="top", fontweight="bold")
 
