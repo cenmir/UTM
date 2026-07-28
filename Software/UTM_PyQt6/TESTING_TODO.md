@@ -30,9 +30,11 @@ A coloured badge on both test tabs: `DIC OK/WARN/BAD · N/2 markers · track % �
 - [ ] Motor should **Stop** right at the load collapse; console logs `fracture detected — motor stopped`.
 - [ ] If it stops too early/late, the tunable knobs are arm 30 % / collapse 50 % / DIC-jump 3 % in `utm_analysis.LiveFractureDetector`.
 
-## 4. Recipes (dropdown + Load / Save…)
-- [ ] Pick a starter recipe (e.g. *V6 100% infill tensile*) → **Load** → dimensions / preload / speed / DIC-mode inputs update.
-- [ ] Change some inputs → **Save…** with a name → it appears in the dropdown and reloads correctly.
+## 4. Settings (dropdown + Load / Save…)  ✅ CONFIRMED 2026-07-27
+- [x] Set inputs → **Save…** with a name → appears in the dropdown; the JSON captures the values.
+- [x] Select a saved profile → **Load** → inputs (area/gauge/preload/speed/DIC mode/infill/auto-stop) restore.
+- [x] **Default** present + pre-selected on startup.
+- **Result:** PASS — "Test 0" saved preload 300 N / speed 0.2 mm/s and Load restored them. NOTE: selecting only browses; **Load** applies.
 
 ## 5. Generate report (button)
 - [ ] After a test, click **Generate report** → a one-page PDF + individual PNGs land in `Software/UTM_PyQt6/reports/`.
