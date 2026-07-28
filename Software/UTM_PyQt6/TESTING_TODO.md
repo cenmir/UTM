@@ -46,8 +46,10 @@ A coloured badge on both test tabs: `DIC OK/WARN/BAD · N/2 markers · track % �
 - **Result:** PASS — report is a faithful render of the CSV (raw header Max Stress 42.18 = anchor-corrected report UTS 47.4).
 
 ## 6. Strain-rate mode (BETA)  ⚠️ live motor control — scrap specimen first
-- [ ] Set a target dε/dt, start a scrap pull → holds the strain rate, stops at set strain or fracture.
-- [ ] Watch the dead-DIC guard: if strain freezes >1.5 s while moving, it should halt.
+### 6.1 — dead-DIC guard (do FIRST)
+- [ ] Green 2/2 → Prepare → set 0.001 /s → Start strain-rate → after a few s of steady strain, **cover a marker** → motor must **halt within ~1.5 s** (strain frozen while moving).
+### 6.2 — strain-rate to fracture
+- [ ] Green 2/2 → Prepare → Start strain-rate → DIC strain holds a **steady rate** (even per-second steps) + speed auto-corrects → runs to fracture → **auto-stops on load collapse**. Save CSV.
 
 ---
 
