@@ -94,7 +94,6 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
-    seed_examples()
     args = sys.argv[1:]
     if args and args[0] == "show" and len(args) > 1:
         r = find(args[1])
