@@ -48,7 +48,7 @@ A coloured badge on both test tabs: `DIC OK/WARN/BAD · N/2 markers · track % �
 
 ## Rig facts to report back (these unblock the remaining test modes)
 - [x] **Hold on STOP** — CONFIRMED 2026-07-27: after Stop, δ held at −1.9191 mm across 5/10/15 s (zero drift). Motor has holding torque → staircase / relaxation *dwell* works via Stop. (SetSpeed-0-specific hold not separately tested — not required.)
-- [ ] **Clean reversal sequence** — is it `Stop` → `SetSpeed` → direction? — needed for cyclic / creep.
+- [x] **Reversal** — CONFIRMED 2026-07-28 (video frame analysis): a DIRECT opposite-direction click auto-reverses cleanly — smooth decel → ~1 s stop (δ holds, no overshoot/jolt) → accel in the new direction. No manual Stop needed. Cyclic/creep can issue direct direction changes; velocity readout is signed (+ Down / − Up).
 - [ ] **Usable crosshead stroke (mm)** — to finalise the 45 mm travel safety cap.
 
 ## Known limitation logged (2026-07)
