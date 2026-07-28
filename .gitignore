@@ -37,6 +37,9 @@ Software/data*
 # Generated per-test reports (local artifacts, like the CSVs)
 Software/UTM_PyQt6/reports/
 
+# User-saved test settings ("Settings" dropdown — local per machine; Default is auto-created)
+Software/UTM_PyQt6/recipes/
+
 # Python bytecode (any location)
 __pycache__/
 *.pyc

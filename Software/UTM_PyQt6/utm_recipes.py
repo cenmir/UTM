@@ -76,17 +76,15 @@ def find(name, directory=RECIPES_DIR):
     return None
 
 
-def seed_examples(directory=RECIPES_DIR):
-    """Create starter recipes if the folder has none. Returns the number created."""
-    if list_recipes(directory):
-        return 0
-    TestRecipe(name="V6 100% infill tensile", infill_pct=100, specimen_mode="White",
-               preload_N=470, test_speed_mm_s=0.1, mode="manual",
-               notes="8.6.20 V6 quintet setup (LED on, spray markers)").save(directory)
-    TestRecipe(name="V5 50% infill tensile", infill_pct=50, specimen_mode="White",
-               preload_N=465, test_speed_mm_s=0.1, mode="manual",
-               notes="8.6.20 V5 group setup").save(directory)
-    return 2
+def ensure_default(directory=RECIPES_DIR):
+    """Guarantee a 'Default' settings profile exists (created from the dataclass defaults if
+    missing). The dropdown then always has at least 'Default'; users Save... their own on top.
+    Idempotent — if the user has customised 'Default', it is left untouched."""
+    d = find("Default", directory)
+    if d is None:
+        d = TestRecipe(name="Default", notes="Baseline setup — Save... your own settings on top.")
+        d.save(directory)
+    return d
 
 
 def main():
