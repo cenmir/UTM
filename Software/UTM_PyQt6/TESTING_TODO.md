@@ -6,14 +6,14 @@ Tick each off after testing; note anything that misbehaves.
 
 ---
 
-## 1. DIC health HUD  *(Phase C — built 2026-07)*
+## 1. DIC health HUD  ✅ CONFIRMED 2026-07-27  *(Phase C)*
 A coloured badge on both test tabs: `DIC OK/WARN/BAD · N/2 markers · track % · jitter px`.
-- [ ] Start the camera with a good 2-marker specimen → badge goes **green "OK · 2/2 · track 100%"**.
-- [ ] Cover / occlude one marker → badge goes **red "BAD"** and shows `1/2` or `0/2` within ~1 s.
-- [ ] Uncover → returns to green.
-- [ ] Nudge the rig / add vibration → **jitter px** rises (amber "WARN" if it gets bad).
-- [ ] Stop the camera → badge greys to "DIC —".
-- **Expect:** the badge should have *predicted* the V6c / V6e end-of-test dropouts before the CSV did.
+- [x] Start the camera with a good 2-marker specimen → badge goes **green "OK · 2/2 · track 100%"**.
+- [x] Cover / occlude one marker → badge goes **red "BAD"** and shows `1/2` or `0/2` within ~1 s.
+- [x] Uncover → returns to green.
+- [x] Nudge the rig / add vibration → **jitter px** rises (amber "WARN" if it gets bad).
+- [x] Stop the camera → badge greys to "DIC —".
+- **Result:** PASS — live badge tracks markers and flips red on dropout.
 
 ## 2. Prepare specimen (one button)
 - [ ] Click **Prepare specimen** → console logs `tared: position, force, DIC`.
