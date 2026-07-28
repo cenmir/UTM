@@ -47,7 +47,7 @@ A coloured badge on both test tabs: `DIC OK/WARN/BAD · N/2 markers · track % �
 ---
 
 ## Rig facts to report back (these unblock the remaining test modes)
-- [ ] **Does `SetSpeed 0` hold the motor still** (no drift)? — needed for staircase / relaxation *dwell*.
+- [x] **Hold on STOP** — CONFIRMED 2026-07-27: after Stop, δ held at −1.9191 mm across 5/10/15 s (zero drift). Motor has holding torque → staircase / relaxation *dwell* works via Stop. (SetSpeed-0-specific hold not separately tested — not required.)
 - [ ] **Clean reversal sequence** — is it `Stop` → `SetSpeed` → direction? — needed for cyclic / creep.
 - [ ] **Usable crosshead stroke (mm)** — to finalise the 45 mm travel safety cap.
 
