@@ -47,7 +47,10 @@ A coloured badge on both test tabs: `DIC OK/WARN/BAD · N/2 markers · track % �
 
 ## 6. Strain-rate mode (BETA)  ⚠️ live motor control — scrap specimen first
 ### 6.1 — dead-DIC guard (do FIRST)
-- [ ] Green 2/2 → Prepare → set 0.001 /s → Start strain-rate → after a few s of steady strain, **cover a marker** → motor must **halt within ~1.5 s** (strain frozen while moving).
+- [x] **S17, 2026-07-28:** covered a marker mid-run → guard FIRED ("DIC strain frozen — halted for safety"), no fracture (15.9 MPa). Guard *detection* ~1.5 s ✓.
+- ⚠️ **Flaw exposed:** while blind, the controller RAMPED UP (0.2 → 0.4 mm/s cap) chasing the frozen strain → force spiked **753 → 1271 N**, total halt **2.94 s**, +0.63 mm.
+- ✅ **FIX applied (main.py):** stale strain now **FREEZES speed at 0.5 s** (no blind ramp-up) + dead-DIC halt tightened **1.5 → 1.0 s** (`POLICY_STALE_FREEZE_S` / `POLICY_DEAD_DIC_S`).
+- [ ] **RE-TEST:** cover a marker → speed must **hold** (no ramp / no force spike) and halt in ~1.5 s with minimal overshoot.
 ### 6.2 — strain-rate to fracture
 - [ ] Green 2/2 → Prepare → Start strain-rate → DIC strain holds a **steady rate** (even per-second steps) + speed auto-corrects → runs to fracture → **auto-stops on load collapse**. Save CSV.
 
