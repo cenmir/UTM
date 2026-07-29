@@ -702,6 +702,16 @@ class UTMApplication(QMainWindow):
         self.saveDataButton.clicked.connect(self.on_save_data)
         self.openDataButton.clicked.connect(self.on_open_data)
 
+        # One-click per-specimen PDF report (uses the shared analysis library utm_analysis)
+        from PyQt6.QtWidgets import QPushButton
+        self.generateReportButton = QPushButton("Generate report")
+        self.generateReportButton.setToolTip(
+            "Build a one-page PDF report (+ individual vector graphs) from the current / last-saved\n"
+            "test CSV, using the UI settings (specimen mode, preload, speed, area, gauge).")
+        self.generateReportButton.clicked.connect(self.on_generate_report)
+        if hasattr(self, "dataButtonsLayout"):
+            self.dataButtonsLayout.addWidget(self.generateReportButton)
+
     def init_state(self):
         """Initialize application state variables"""
         from PyQt6.QtCore import QTimer
@@ -737,6 +747,7 @@ class UTMApplication(QMainWindow):
         self.load_plot_dic_timestamps = []  # datetime when DIC value was computed by camera
         self.load_plot_dic_L_px = []  # DIC current pixel distance between blobs (gauge axis)
         self.load_plot_dic_dx_px = []  # DIC perpendicular-axis pixel distance (diagnostic)
+        self.load_plot_dic_blobs = []  # DIC health: blob count (markers found) per load sample
         self.load_plot_mcu_timestamps = []  # MCU millis() timestamp from firmware (true sample time)
 
         # Time anchor for MCU↔PC clock bridge (set on first load cell sample)
@@ -772,6 +783,8 @@ class UTMApplication(QMainWindow):
 
         # Auto-preload controls (target-force jog) in the Motor Control group
         self._setup_preload_controls()
+        self._setup_testmode_controls()
+        self._setup_recipe_controls()
 
         # Replace HBoxLayout between tabs and right panel with a draggable splitter
         self._setup_main_splitter()
@@ -801,6 +814,15 @@ class UTMApplication(QMainWindow):
         self.camera_manager.frame_ready.connect(self.update_camera_feed)
         self.camera_manager.dic_strain_updated.connect(self.update_dic_strain_label)
         self.camera_manager.error_occurred.connect(self.on_camera_error)
+        # --- Live DIC health badge (Phase C) ---
+        self.camera_manager.blobs_detected.connect(self._on_dic_blobs)
+        self.camera_manager.error_occurred.connect(self._on_dic_error_count)
+        self._dic_blob_count = 0
+        self._dic_blob_history = []                       # recent per-frame blob counts
+        self._expected_markers = 2                        # 4 when a multi-marker preset is selected
+        self._dic_health_timer = QTimer(self)
+        self._dic_health_timer.timeout.connect(self._update_dic_health)
+        self._dic_health_timer.start(500)
         self.camera_manager.connection_changed.connect(self.on_camera_connection_changed)
 
         # Calibration values (synced with UI spinboxes)
@@ -841,6 +863,17 @@ class UTMApplication(QMainWindow):
         # Auto-preload: move in tension until the load reaches a target, then stop
         self.preload_active = False
         self.preload_target = 0.0
+        self._release_active = False
+        # Closed-loop test-mode (Phase B) — active policy from control_policies, or None when idle
+        self.active_policy = None
+        self._policy_last_speed = 0.0
+        self._policy_last_speed_t = 0.0
+        self._policy_start_t = 0.0
+        self._policy_button = None
+        self._policy_start_label = "Start mode"
+        self._policy_dic_watch = (0.0, 0.0)
+        self._autostop_detector = None       # live fracture detector for manual-pull auto-stop
+        self._stall_hist = []                # (t, pos) samples for the stall guard
         self._preload_last_speed = 0.0   # last commanded approach speed (mm/s) for throttling
         self._preload_last_speed_t = 0.0
         self.preload_timeout_timer = QTimer()
@@ -1060,10 +1093,30 @@ class UTMApplication(QMainWindow):
     # ========== Stress/Strain Functions ==========
 
     def on_clear_stress_strain_plot(self):
-        """Clear the stress-strain plot"""
-        # TODO: Implement when matplotlib canvas is added
+        """Clear the stress-strain plot (display + data), leaving the load plot intact."""
+        self.stress_strain_strains.clear()
+        self.stress_strain_stresses.clear()
+        self.max_stress = 0.0
+        self.max_strain = 0.0
+        if hasattr(self, 'maxStressValue'):
+            self.maxStressValue.setText("0.0000")
+        if hasattr(self, 'maxStrainValue'):
+            self.maxStrainValue.setText("0.000000")
+        if hasattr(self, 'ssCurrentPointsValue'):
+            self.ssCurrentPointsValue.setText("0")
+        if hasattr(self, 'ssCropRangeSlider'):
+            self.ssCropRangeSlider.blockSignals(True)
+            self.ssCropRangeSlider.setRange(0, 100)
+            self.ssCropRangeSlider.blockSignals(False)
+        for _m in ('ss_crop_line_low', 'ss_crop_line_high', 'ss_crop_span'):
+            if hasattr(self, _m):
+                getattr(self, _m).set_visible(False)
+        self.ss_line.set_data([], [])
+        self.ss_markers.set_data([], [])
+        self.ss_ax.relim()
+        self.ss_ax.autoscale_view()
+        self.ss_canvas.draw_idle()
         self.append_to_console("Stress-Strain plot cleared")
-        pass
 
     def on_specimen_dimensions_changed(self):
         """Handle changes to specimen dimensions"""
@@ -1100,6 +1153,7 @@ class UTMApplication(QMainWindow):
         self.load_plot_dic_timestamps.clear()
         self.load_plot_dic_L_px.clear()
         self.load_plot_dic_dx_px.clear()
+        self.load_plot_dic_blobs.clear()
         self.load_plot_mcu_timestamps.clear()
 
         # Reset time anchor for MCU↔PC clock bridge
@@ -1325,6 +1379,7 @@ class UTMApplication(QMainWindow):
         self.load_plot_dic_timestamps = self.load_plot_dic_timestamps[low_idx:high_idx + 1]
         self.load_plot_dic_L_px = self.load_plot_dic_L_px[low_idx:high_idx + 1]
         self.load_plot_dic_dx_px = self.load_plot_dic_dx_px[low_idx:high_idx + 1]
+        self.load_plot_dic_blobs = self.load_plot_dic_blobs[low_idx:high_idx + 1]
         self.load_plot_mcu_timestamps = self.load_plot_mcu_timestamps[low_idx:high_idx + 1]
 
         # Crop the stress-strain data
@@ -1679,6 +1734,10 @@ class UTMApplication(QMainWindow):
         if getattr(self, 'preloadButton', None) is not None:
             self.preloadButton.setEnabled(direction_enabled)
             self.preloadTargetSpinBox.setEnabled(direction_enabled and not self.preload_active)
+        if getattr(self, 'releaseButton', None) is not None:
+            self.releaseButton.setEnabled(direction_enabled)
+        if getattr(self, 'strainRateButton', None) is not None:
+            self.strainRateButton.setEnabled(direction_enabled)
 
         # Emergency stop - always enabled when connected (safety!)
         self.emergencyStopButton.setEnabled(connected)
@@ -1792,6 +1851,29 @@ class UTMApplication(QMainWindow):
                                   # decays ~2 % after the motor stops) so the held load lands >= target
     PRELOAD_OVERSHOOT_CAP = 1.25  # hard safety: force-halt if load exceeds this multiple of target
     PRELOAD_TIMEOUT_S = 180       # runaway safety: abort auto-preload after this long without reaching target
+    RELEASE_SPEED_MM_S = 0.30     # release: constant gentle back-off speed (mm/s)
+    RELEASE_TARGET_N = 5.0        # release: stop once load drops to/below this (~zero tension)
+    RELEASE_MIN_LOAD_N = -50.0    # release safety: hard stop if load goes this far into compression
+    RELEASE_RISE_CAP_N = 50.0     # release safety: halt if load RISES this far (wrong direction / snag)
+    RELEASE_TIMEOUT_S = 180       # release runaway safety (s)
+    STALL_WINDOW_S = 6.0          # stall guard: crosshead must advance within this window while pulling
+    STALL_MIN_ADVANCE_MM = 0.05   # ...by at least this much, else it is stalled (near-zero movement only)
+    STALL_MIN_LOAD_N = 200.0      # ...only guard under load (avoids slack / start-up false trips)
+
+    # Closed-loop test-mode (Phase B) safety net — independent of any policy
+    # Load cell = ANYLOAD 3 t = 29.4 kN rated. Specimens peak <= ~4.8 kN, so this protects the cell
+    # (and the 3D-printed grips) while leaving 2x headroom over a normal fracture -> never false-halts.
+    # Raise toward ~25 kN only if you test much stronger materials; MUST stay below 29.4 kN.
+    POLICY_MAX_FORCE_N = 10000    # hard Stop+EStop if load exceeds this (N)
+    # End-stop backstop for the test modes ONLY (the preload has no travel limit — it stops on force /
+    # overshoot / timeout). Must be ABOVE any real fracture travel (V6 fractured ~7-9 mm) yet below the
+    # rig's usable stroke so a post-fracture runaway can't drive into the mechanical end-stop.
+    # TODO: set to (rig usable stroke - a few mm) once confirmed; 45 mm is a safe non-false-halting placeholder.
+    POLICY_MAX_TRAVEL_MM = 30.0   # hard Stop+EStop if crosshead travel exceeds this (mm); ~2x a PLA fracture test's ~8-15 mm
+    POLICY_TIMEOUT_S = 900        # runaway backstop for long holds (relaxation/creep)
+    POLICY_STALE_FREEZE_S = 0.2   # strain-rate: HOLD speed (no blind ramp-up) once DIC strain is stale this long
+                                  #   (0.2 s ~= 2 DIC frames — freezes before the controller can ramp a high command)
+    POLICY_DEAD_DIC_S = 1.0       # strain-rate: hard-HALT if strain stays frozen this long (camera lost)
 
     def _init_speed_controls(self):
         """Initialize speed controls with mm/s defaults"""
@@ -1921,9 +2003,19 @@ class UTMApplication(QMainWindow):
         if not checked:
             return
 
-        # a manual direction change cancels an in-progress auto-preload
+        # a manual direction change cancels an in-progress auto-preload / release / test mode
         if self.preload_active:
             self._reset_preload_ui()
+        if getattr(self, '_release_active', False):
+            self._release_active = False
+            if getattr(self, 'releaseButton', None) is not None:
+                self.releaseButton.setText("Release preload")
+        if getattr(self, 'active_policy', None) is not None:
+            self.active_policy = None                       # manual takeover ends any test-mode policy
+            if getattr(self, '_policy_button', None) is not None:
+                self._policy_button.setText(getattr(self, '_policy_start_label', 'Start mode'))
+        self._autostop_detector = None                      # reset the fracture detector on any direction change
+        self._stall_hist = []                               # reset the stall guard on any direction change
 
         if not self.connected:
             return
@@ -2020,8 +2112,13 @@ class UTMApplication(QMainWindow):
         self.preloadButton = QPushButton("Preload tension")
         self.preloadButton.setToolTip(
             "Auto-move the gripper in tension until Current Load reaches the target, then stop. Click again to cancel.")
+        self.releaseButton = QPushButton("Release preload")
+        self.releaseButton.setToolTip(
+            "Back off the tension — move the gripper in the release direction until the load returns to ~0 N, "
+            "so you can preload again. Click again to cancel.")
         row.addWidget(self.preloadTargetSpinBox)
         row.addWidget(self.preloadButton)
+        row.addWidget(self.releaseButton)
         lay = self.motorControlGroup.layout()
         idx = lay.indexOf(self.emergencyStopButton)
         if idx >= 0:
@@ -2031,6 +2128,8 @@ class UTMApplication(QMainWindow):
         self.preloadButton.clicked.connect(self.on_preload_start)
         self.preloadButton.setEnabled(False)
         self.preloadTargetSpinBox.setEnabled(False)
+        self.releaseButton.clicked.connect(self.on_release_preload_start)
+        self.releaseButton.setEnabled(False)
 
     def on_preload_start(self):
         """Start (or, if already running, cancel) an automatic preload to the target force."""
@@ -2151,10 +2250,487 @@ class UTMApplication(QMainWindow):
         if getattr(self, 'preloadTargetSpinBox', None) is not None:
             self.preloadTargetSpinBox.setEnabled(True)
 
+    # ---- Release preload: back off the tension so you can preload again ----
+    def on_release_preload_start(self):
+        """Start (or, if running, cancel) a controlled release of the applied tension back to ~0 N."""
+        if getattr(self, '_release_active', False):
+            self._stop_release("cancelled by user"); return
+        if not self.connected:
+            self.append_to_console("[Release] Not connected — cannot move."); return
+        if not self.motorsSwitch.isChecked():
+            self.append_to_console("[Release] Enable motors first."); return
+        if self.preload_active or getattr(self, 'active_policy', None) is not None:
+            self.append_to_console("[Release] Cancel the preload / test mode first."); return
+        if self.current_load <= self.RELEASE_TARGET_N:
+            self.append_to_console(f"[Release] Load already {self.current_load:.1f} N — nothing to release."); return
+        import time
+        self._release_active = True
+        self._release_start_load = self.current_load
+        self._release_start_t = time.monotonic()
+        self._release_last_log = 0.0
+        # release direction = downRadioButton = firmware "Up" = physical release (reduces tension)
+        self.downRadioButton.blockSignals(True)
+        self.downRadioButton.setChecked(True)
+        self.downRadioButton.blockSignals(False)
+        self.serial_manager.send_command(f"SetSpeed {self._fw_speed(self.RELEASE_SPEED_MM_S)}")
+        self.serial_manager.send_command("Up")   # firmware "Up" = physical release on this rig
+        self._start_movement_grace_period()
+        self.releaseButton.setText("Cancel release")
+        self.append_to_console(
+            f"[Release] Releasing tension from {self.current_load:.1f} N to <= {self.RELEASE_TARGET_N:.0f} N "
+            f"at {self.RELEASE_SPEED_MM_S:.2f} mm/s ...")
+        self.set_status("Releasing preload ...")
+
+    def _release_check(self):
+        """Live-load loop for the release: gentle back-off until load ~0, with safety nets. The direction
+        is latched ONCE at start (preload discipline); here we only watch the load and stop."""
+        import time
+        # SAFETY: load must be DROPPING — if it climbs, we're moving the wrong way / snagged.
+        if self.current_load > self._release_start_load + self.RELEASE_RISE_CAP_N:
+            if self.connected:
+                self.serial_manager.send_command("Stop"); self.serial_manager.send_command("EStop")
+            self._stop_release(f"SAFETY — load ROSE to {self.current_load:.1f} N during release; halted", warn=True)
+            return
+        # SAFETY: do not drive into compression
+        if self.current_load <= self.RELEASE_MIN_LOAD_N:
+            self._stop_release(f"reached {self.current_load:.1f} N (compression limit)", warn=True)
+            return
+        if time.monotonic() - self._release_start_t > self.RELEASE_TIMEOUT_S:
+            self._stop_release("timed out", warn=True)
+            return
+        # DONE: tension released to ~zero
+        if self.current_load <= self.RELEASE_TARGET_N:
+            self._stop_release(f"released to {self.current_load:.1f} N — ready to preload again")
+            return
+        now = time.monotonic()
+        if now - getattr(self, '_release_last_log', 0.0) >= 1.0:
+            self._release_last_log = now
+            self.append_to_console(
+                f"[Release] current {self.current_load:.1f} N  ->  target <= {self.RELEASE_TARGET_N:.0f} N")
+
+    def _stop_release(self, message, warn=False):
+        """Stop the motor and end the release, restoring the button."""
+        self._release_active = False
+        self.stopRadioButton.blockSignals(True)
+        self.stopRadioButton.setChecked(True)
+        self.stopRadioButton.blockSignals(False)
+        self.movement_start_grace_period = False
+        if getattr(self, 'grace_period_timer', None) is not None:
+            self.grace_period_timer.stop()
+        if self.connected:
+            self.serial_manager.send_command("Stop")
+        if getattr(self, 'releaseButton', None) is not None:
+            self.releaseButton.setText("Release preload")
+        self.append_to_console(f"[Release] {message}")
+        self.set_status(f"Release: {message}", is_warning=warn)
+
+    # ========== Closed-loop test modes (Phase B, BETA) — reuse the safe preload discipline ==========
+    def _setup_testmode_controls(self):
+        """Add a strain-rate control (BETA) to the Motor Control group. Closed-loop on the DIC gauge
+        strain rate — same live-SetSpeed-only discipline as auto-preload, so it is the safe first
+        Phase-B mode. Cyclic/staircase/relaxation/creep exist in control_policies.py but are NOT wired
+        here yet (they need rig checks of hold / direction-reversal firmware behaviour)."""
+        from PyQt6.QtWidgets import QHBoxLayout, QLabel, QDoubleSpinBox, QPushButton
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Strain rate:"))
+        self.strainRateSpinBox = QDoubleSpinBox()
+        self.strainRateSpinBox.setRange(0.0001, 0.0100); self.strainRateSpinBox.setDecimals(4)
+        self.strainRateSpinBox.setSingleStep(0.0005); self.strainRateSpinBox.setValue(0.0005)
+        self.strainRateSpinBox.setSuffix(" /s")
+        self.strainRateSpinBox.setToolTip("Target DIC gauge strain rate (compliance-free). Needs the DIC camera running.\n"
+                                          "Lower = slower crosshead demand = more motor force headroom (steppers lose "
+                                          "force at speed). On a stiff specimen it may become speed-limited rather than stall.")
+        self.strainRateButton = QPushButton("Start strain-rate fracture test")
+        self.strainRateButton.setToolTip("BETA closed-loop DIC strain-rate pull to FRACTURE. Crosshead capped low so the "
+                                         "motor keeps its pulling force. Keep Emergency Stop in reach and use a fresh "
+                                         "specimen; needs the DIC camera running (green 2/2).")
+        row.addWidget(self.strainRateSpinBox); row.addWidget(self.strainRateButton)
+        lay = self.motorControlGroup.layout()
+        idx = lay.indexOf(self.emergencyStopButton)
+        lay.insertLayout(idx, row) if idx >= 0 else lay.addLayout(row)
+        self.strainRateButton.clicked.connect(self.on_strain_rate_start)
+        self.strainRateButton.setEnabled(False)
+
+    def on_strain_rate_start(self):
+        """Start (or, if running, cancel) the closed-loop strain-rate mode."""
+        if getattr(self, "active_policy", None) is not None:
+            self._stop_policy("cancelled by user"); return
+        if not self.connected or not self.motorsSwitch.isChecked():
+            self.append_to_console("[Mode] Connect and enable motors first."); return
+        if self.preload_active:
+            self.append_to_console("[Mode] Finish or cancel the preload first."); return
+        from control_policies import StrainRatePolicy
+        gauge = self.gauge_length if self.gauge_length > 0 else 80.0
+        policy = StrainRatePolicy(self.strainRateSpinBox.value(), gauge_mm=gauge, stop_strain=None,
+                                  speed_limits=(0.005, 0.2))   # moderate cap: enough to TRACK the target rate on a
+                                  # stiff specimen, low enough to limit blind-ramp overshoot if DIC drops. (Speed is
+                                  # NOT the stall cause — that is the motor's variable torque ceiling; see memory.)
+        self._start_policy(policy, self.strainRateButton, "Start strain-rate fracture test")
+
+    def _start_policy(self, policy, button=None, start_label="Start mode"):
+        """Arm a control policy: latch tension ONCE, then live SetSpeed only (preload discipline)."""
+        import time
+        from control_policies import Signals
+        self.active_policy = policy
+        self._policy_button = button
+        self._policy_start_label = start_label
+        self._policy_last_speed = 0.0; self._policy_last_speed_t = 0.0
+        self._policy_start_t = time.monotonic()
+        self._policy_dic_watch = (self.latest_dic_cauchy, self._policy_start_t)
+        self._stall_hist = []                               # arm the stall guard for this run
+        first = policy.step(Signals(t=self._policy_start_t, load=self.current_load,
+                                    pos=self.motor_displacement_mm, strain=self.latest_dic_cauchy))
+        self.upRadioButton.blockSignals(True); self.upRadioButton.setChecked(True); self.upRadioButton.blockSignals(False)
+        self.serial_manager.send_command(f"SetSpeed {self._fw_speed(max(first.speed, 0.02))}")
+        self.serial_manager.send_command("Down")     # firmware Down = physical tension on this rig
+        self._start_movement_grace_period()
+        if button is not None:
+            button.setText("Stop mode")
+        self.append_to_console(f"[Mode] {policy.start_message()}")
+        self.set_status(f"Test mode: {policy.name} ...")
+
+    def _policy_step(self):
+        """Per-load-sample control step (mirrors _preload_check): safety net → policy → SetSpeed."""
+        import time
+        from control_policies import Signals
+        now = time.monotonic()
+        # hard safety net, independent of the policy
+        if self.current_load >= self.POLICY_MAX_FORCE_N or abs(self.motor_displacement_mm) >= self.POLICY_MAX_TRAVEL_MM:
+            if self.connected:
+                self.serial_manager.send_command("Stop"); self.serial_manager.send_command("EStop")
+            self._stop_policy(f"SAFETY halt — {self.current_load:.0f} N / {self.motor_displacement_mm:.1f} mm", warn=True)
+            return
+        if now - self._policy_start_t >= self.POLICY_TIMEOUT_S:
+            self._stop_policy("timed out", warn=True); return
+        # STALL GUARD (same as the auto-stop path): commanded to pull but crosshead frozen under load ->
+        # halt. The DIC-staleness guard MISSES a motor stall at its force ceiling because the specimen
+        # keeps creeping (strain still advances) — S17 jittered 62 s at ~2.9 kN with no auto-halt.
+        # Near-zero movement only, so a legitimately slow pull to fracture does not trip it.
+        self._stall_hist.append((now, self.motor_displacement_mm))
+        while self._stall_hist and now - self._stall_hist[0][0] > self.STALL_WINDOW_S:
+            self._stall_hist.pop(0)
+        if (self.current_load > self.STALL_MIN_LOAD_N and self._stall_hist
+                and now - self._stall_hist[0][0] >= self.STALL_WINDOW_S - 0.5
+                and abs(self.motor_displacement_mm - self._stall_hist[0][1]) < self.STALL_MIN_ADVANCE_MM):
+            if self.connected:
+                self.serial_manager.send_command("Stop"); self.serial_manager.send_command("EStop")
+            self._stop_policy(f"STALL — crosshead frozen (< {self.STALL_MIN_ADVANCE_MM:.2f} mm in "
+                              f"{self.STALL_WINDOW_S:.0f} s) at {self.current_load:.0f} N — motor hit its force limit",
+                              warn=True)
+            return
+        # DIC-staleness guard, staged so a strain-rate loop can never ramp the speed up blind:
+        #   (a) FREEZE the speed once the strain has been stale > STALE_FREEZE_S (no acceleration on a
+        #       frozen/stale reading), then (b) hard-HALT if it stays frozen > DEAD_DIC_S (camera lost).
+        last_val, last_t = self._policy_dic_watch
+        if abs(self.latest_dic_cauchy - last_val) > 1e-5:
+            self._policy_dic_watch = (self.latest_dic_cauchy, now)
+        stale = now - last_t
+        if self._policy_last_speed > 0 and stale > self.POLICY_DEAD_DIC_S:
+            if self.connected:
+                self.serial_manager.send_command("Stop")
+            self._stop_policy("DIC strain frozen (camera lost?) — halted for safety", warn=True); return
+        cmd = self.active_policy.step(Signals(t=now, load=self.current_load,
+                                              pos=self.motor_displacement_mm, strain=self.latest_dic_cauchy))
+        if cmd.done:
+            self._stop_policy(cmd.message); return
+        if cmd.direction != "tension":
+            # beta wiring is tension-only; never re-latch / reverse blindly
+            self._stop_policy(f"unsupported command '{cmd.direction}' in beta mode", warn=True); return
+        spd = cmd.speed
+        if stale > self.POLICY_STALE_FREEZE_S:
+            spd = self._policy_last_speed          # strain stale -> HOLD last good speed, never accelerate blind
+        if abs(spd - self._policy_last_speed) >= 0.01 and now - self._policy_last_speed_t >= 0.15:
+            self._policy_last_speed = spd; self._policy_last_speed_t = now
+            self.serial_manager.send_command(f"SetSpeed {self._fw_speed(spd)}")
+
+    def _stop_policy(self, message, warn=False):
+        """Stop the motor and end the active test-mode policy (mirrors _stop_preload)."""
+        self.active_policy = None
+        self.movement_start_grace_period = False
+        if getattr(self, 'grace_period_timer', None) is not None:
+            self.grace_period_timer.stop()
+        self.stopRadioButton.blockSignals(True); self.stopRadioButton.setChecked(True); self.stopRadioButton.blockSignals(False)
+        if self.connected:
+            self.serial_manager.send_command("Stop")
+        btn = getattr(self, '_policy_button', None)
+        if btn is not None:
+            btn.setText(getattr(self, '_policy_start_label', 'Start mode'))
+        self.append_to_console(f"[Mode] {message}")
+        self.set_status(f"Test mode: {message}", is_warning=warn)
+
+    # ===== Recipes / Prepare-specimen / Auto-stop-at-fracture (offline-built helpers) =====
+    def _setup_recipe_controls(self):
+        """Add a Recipe dropdown + Load/Save, a 'Prepare specimen' one-button, and an
+        'Auto-stop at fracture' toggle to the Motor Control group. Recipes come from
+        utm_recipes.py; auto-stop reuses the shared LiveFractureDetector during a MANUAL pull."""
+        from PyQt6.QtWidgets import QHBoxLayout, QLabel, QComboBox, QPushButton, QCheckBox, QSpinBox
+        r1 = QHBoxLayout()
+        settings_help = ("Save your specimen & test settings — dimensions, DIC mode, preload, speed, infill — "
+                         "under a name and reuse them in one click. Pick a saved profile here, then press Load "
+                         "to apply it; press Save… to store the current inputs. 'Default' is always available.")
+        settings_label = QLabel("Settings:"); settings_label.setToolTip(settings_help)
+        r1.addWidget(settings_label)
+        self.recipeCombo = QComboBox(); self.recipeCombo.setMinimumWidth(150)
+        self.recipeCombo.setToolTip(settings_help)
+        self.recipeLoadButton = QPushButton("Load")
+        self.recipeSaveButton = QPushButton("Save…")
+        self.recipeLoadButton.setToolTip("Load — apply the selected saved settings to all the inputs "
+                                         "(dimensions, DIC mode, preload, speed, infill).")
+        self.recipeSaveButton.setToolTip("Save… — store the current inputs as a named settings profile you can reload later.")
+        r1.addWidget(self.recipeCombo); r1.addWidget(self.recipeLoadButton); r1.addWidget(self.recipeSaveButton)
+        r1.addSpacing(16)
+        r1.addWidget(QLabel("Infill %:"))
+        self.infillSpinBox = QSpinBox()
+        self.infillSpinBox.setRange(0, 100)
+        self.infillSpinBox.setValue(100)
+        self.infillSpinBox.setToolTip("Infill % does NOT change any recorded test data. It is a label only — "
+                                      "kept for the saved settings, the CSV header and the report.")
+        r1.addWidget(self.infillSpinBox)
+        r2 = QHBoxLayout()
+        self.prepareSpecimenButton = QPushButton("Prepare specimen")
+        self.prepareSpecimenButton.setToolTip("One click: tare position + force + DIC so the test starts from zero.")
+        self.autoStopFractureCheck = QCheckBox("Auto-stop at fracture")
+        self.autoStopFractureCheck.setToolTip("During a MANUAL tension pull, stop the motor automatically when the "
+                                              "load collapses (fracture). Same detector as the offline analysis.")
+        self.autoStopFractureCheck.setChecked(True)   # on by default (safety); a loaded profile can override
+        self.fractureTestButton = QPushButton("Fracture test")
+        self.fractureTestButton.setToolTip("One-click run to fracture: confirms your checklist (specimen mounted, "
+                                           "preloaded, Prepare specimen done), then pulls in TENSION and auto-stops "
+                                           "at fracture (with the force/travel backstop). Stop / E-Stop aborts.")
+        r2.addWidget(self.prepareSpecimenButton); r2.addWidget(self.autoStopFractureCheck)
+        r2.addWidget(self.fractureTestButton); r2.addStretch()
+        lay = self.motorControlGroup.layout()
+        idx = lay.indexOf(self.emergencyStopButton)
+        if idx >= 0:
+            lay.insertLayout(idx, r1); lay.insertLayout(idx, r2)
+        else:
+            lay.addLayout(r1); lay.addLayout(r2)
+        self.recipeLoadButton.clicked.connect(self.on_recipe_load)
+        self.recipeSaveButton.clicked.connect(self.on_recipe_save)
+        self.prepareSpecimenButton.clicked.connect(self.on_prepare_specimen)
+        self.fractureTestButton.clicked.connect(self.on_fracture_test)
+        try:
+            from utm_recipes import ensure_default
+            ensure_default()
+        except Exception:
+            pass
+        self._refresh_recipes()
+        i = self.recipeCombo.findText("Default")
+        if i >= 0:
+            self.recipeCombo.setCurrentIndex(i)
+
+    def _refresh_recipes(self):
+        """Repopulate the recipe dropdown from recipes/*.json, preserving the selection."""
+        if getattr(self, 'recipeCombo', None) is None:
+            return
+        try:
+            from utm_recipes import list_recipes
+            recipes = list_recipes()
+        except Exception as e:
+            self.append_to_console(f"[Settings] could not list saved settings: {e}"); return
+        cur = self.recipeCombo.currentText()
+        self.recipeCombo.blockSignals(True)
+        self.recipeCombo.clear()
+        for r in recipes:
+            self.recipeCombo.addItem(r.name)
+        i = self.recipeCombo.findText(cur)
+        if i >= 0:
+            self.recipeCombo.setCurrentIndex(i)
+        self.recipeCombo.blockSignals(False)
+
+    def on_recipe_load(self):
+        """Apply the selected recipe to the dimension / preload / speed / DIC-mode inputs."""
+        from utm_recipes import find
+        r = find(self.recipeCombo.currentText())
+        if r is None:
+            self.append_to_console("[Settings] nothing selected."); return
+        self.areaSpinBox.setValue(r.area_mm2)
+        self.gaugeLengthSpinBox.setValue(r.gauge_mm)
+        self.preloadTargetSpinBox.setValue(r.preload_N)
+        if self.speedUnitMmRadio.isChecked():
+            self.setSpeedSpinBox.setValue(r.test_speed_mm_s)
+        elif self.MM_PER_S_PER_RPM > 0:
+            self.setSpeedSpinBox.setValue(r.test_speed_mm_s / self.MM_PER_S_PER_RPM)
+        i = self.specimenModeCombo.findText(r.specimen_mode)
+        if i >= 0:
+            self.specimenModeCombo.setCurrentIndex(i)
+        if getattr(self, 'strainRateSpinBox', None) is not None:
+            self.strainRateSpinBox.setValue(r.strain_rate)
+        if getattr(self, 'autoStopFractureCheck', None) is not None:
+            self.autoStopFractureCheck.setChecked(bool(r.auto_stop_fracture))
+        if getattr(self, 'infillSpinBox', None) is not None:
+            self.infillSpinBox.setValue(int(round(r.infill_pct)))
+        self.append_to_console(f"[Settings] loaded '{r.name}' — "
+                               f"preload {r.preload_N:.0f} N, {r.test_speed_mm_s:.3f} mm/s, DIC {r.specimen_mode}")
+        self.set_status(f"Settings '{r.name}' applied")
+
+    def on_recipe_save(self):
+        """Save the current inputs as a named recipe (prompts for a name)."""
+        from PyQt6.QtWidgets import QInputDialog
+        from utm_recipes import TestRecipe
+        name, ok = QInputDialog.getText(self, "Save settings", "Settings name:")
+        if not ok or not name.strip():
+            return
+        r = TestRecipe(
+            name=name.strip(),
+            specimen_mode=self.specimenModeCombo.currentText(),
+            infill_pct=(self.infillSpinBox.value() if getattr(self, 'infillSpinBox', None) is not None else 100.0),
+            area_mm2=self.areaSpinBox.value(),
+            gauge_mm=self.gaugeLengthSpinBox.value(),
+            preload_N=self.preloadTargetSpinBox.value(),
+            test_speed_mm_s=self.get_speed_rpm() * self.MM_PER_S_PER_RPM,
+            strain_rate=(self.strainRateSpinBox.value() if getattr(self, 'strainRateSpinBox', None) is not None else 0.001),
+            auto_stop_fracture=(self.autoStopFractureCheck.isChecked() if getattr(self, 'autoStopFractureCheck', None) is not None else True),
+        )
+        try:
+            path = r.save()
+        except Exception as e:
+            self.append_to_console(f"[Settings] save failed: {e}"); return
+        self._refresh_recipes()
+        i = self.recipeCombo.findText(r.name)
+        if i >= 0:
+            self.recipeCombo.setCurrentIndex(i)
+        self.append_to_console(f"[Settings] saved '{r.name}' -> {path}")
+        self.set_status(f"Settings '{r.name}' saved")
+
+    def on_prepare_specimen(self):
+        """One click: clear the consoles, then tare position + force + DIC for a clean start.
+        DIC is only tared when markers are actually tracked (2 or 4 blobs)."""
+        # Fresh start — clear both consoles + the stress-strain plot (load plot kept)
+        self.consoleTextEdit.clear()
+        if hasattr(self, 'cameraConsoleTextEdit'):
+            self.cameraConsoleTextEdit.clear()
+        try:
+            self.on_clear_stress_strain_plot()
+        except Exception as e:
+            self.append_to_console(f"[Prepare] could not clear stress-strain plot: {e}")
+        done, skipped = [], []
+        # Position + force always tare
+        for label, fn in [("position", getattr(self, 'on_tare_location', None)),
+                          ("force", getattr(self, 'on_tare', None))]:
+            if callable(fn):
+                try:
+                    fn(); done.append(label)
+                except Exception as e:
+                    self.append_to_console(f"[Prepare] {label} tare failed: {e}")
+        # DIC only tares when markers are being tracked
+        blobs = getattr(self, '_dic_blob_count', 0)
+        if callable(getattr(self, 'on_tare_dic', None)):
+            if blobs in (2, 4):
+                try:
+                    self.on_tare_dic(); done.append("DIC")
+                except Exception as e:
+                    self.append_to_console(f"[Prepare] DIC tare failed: {e}")
+            else:
+                skipped.append("DIC")
+                self.append_to_console(f"[Prepare] DIC NOT tared — {blobs} markers detected (need 2 or 4). "
+                                       "Start the camera and get a green 2/2 badge, then Prepare again.")
+        self.append_to_console(f"[Prepare] tared: {', '.join(done) if done else 'nothing'}"
+                               + (f"  |  skipped: {', '.join(skipped)}" if skipped else ""))
+        if skipped:
+            self.set_status(f"Prepared — {', '.join(done)} tared; DIC skipped (no markers)", is_warning=True)
+        else:
+            self.set_status("Specimen prepared — tared position + force + DIC")
+
+    def on_fracture_test(self):
+        """One-click run to fracture: checklist confirm -> arm auto-stop -> pull in tension.
+        Reuses the manual auto-stop path (fracture detector + force/travel backstop); Stop / E-Stop aborts."""
+        from PyQt6.QtWidgets import QMessageBox
+        if not self.connected:
+            self.append_to_console("[Fracture test] Not connected."); return
+        if not self.motorsSwitch.isChecked():
+            self.append_to_console("[Fracture test] Enable motors first."); return
+        if self.preload_active or getattr(self, '_release_active', False) or getattr(self, 'active_policy', None) is not None:
+            self.append_to_console("[Fracture test] Finish the preload / release / test mode first."); return
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setWindowTitle("Fracture test — checklist")
+        msg.setText("Run the specimen to FRACTURE?")
+        msg.setInformativeText("Confirm you have:\n   •  mounted the specimen\n   •  applied preload\n"
+                               "   •  pressed Prepare specimen (tared)\n\n"
+                               "On Yes, the gripper pulls in TENSION and auto-stops at fracture. "
+                               "Keep Emergency STOP in reach.")
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setDefaultButton(QMessageBox.StandardButton.No)
+        if msg.exec() != QMessageBox.StandardButton.Yes:
+            self.append_to_console("[Fracture test] cancelled."); return
+        # arm auto-stop at fracture (fresh detector)
+        if getattr(self, 'autoStopFractureCheck', None) is not None:
+            self.autoStopFractureCheck.setChecked(True)
+        self._autostop_detector = None
+        self._stall_hist = []
+        # start the tension pull at the current Set speed (Up = tension; firmware "Down")
+        speed_mm_s = self.get_speed_rpm() * self.MM_PER_S_PER_RPM
+        self.upRadioButton.blockSignals(True); self.upRadioButton.setChecked(True); self.upRadioButton.blockSignals(False)
+        self.serial_manager.send_command(f"SetSpeed {self._fw_speed(speed_mm_s)}")
+        self.serial_manager.send_command("Down")   # firmware "Down" = physical tension on this rig
+        self._start_movement_grace_period()
+        self.append_to_console(f"[Fracture test] pulling to fracture at {speed_mm_s:.3f} mm/s — auto-stop armed "
+                               f"(backstop {self.POLICY_MAX_FORCE_N:.0f} N / {self.POLICY_MAX_TRAVEL_MM:.0f} mm). "
+                               f"Press Stop / E-Stop to abort.")
+        self.set_status("Fracture test — pulling to fracture ...")
+
+    def _autostop_check(self):
+        """Manual-pull fracture auto-halt: a hard force/travel backstop, then the live fracture detector."""
+        # BACKSTOP (independent of the detector): hard Stop + EStop on force / travel limit,
+        # so a manual auto-stop pull can't run away even if fracture detection misses.
+        if self.current_load >= self.POLICY_MAX_FORCE_N or abs(self.motor_displacement_mm) >= self.POLICY_MAX_TRAVEL_MM:
+            if self.connected:
+                self.serial_manager.send_command("Stop"); self.serial_manager.send_command("EStop")
+            self.stopRadioButton.blockSignals(True); self.stopRadioButton.setChecked(True); self.stopRadioButton.blockSignals(False)
+            self._autostop_detector = None
+            self.append_to_console(f"[Auto-stop] SAFETY LIMIT — halted at {self.current_load:.0f} N / "
+                                   f"{abs(self.motor_displacement_mm):.1f} mm (backstop; fracture detector did not fire).")
+            self.set_status("⚠ Auto-stop SAFETY limit — motor halted", is_warning=True)
+            return
+        # STALL GUARD: motor commanded to pull but the crosshead is frozen under load -> halt.
+        # Triggers only on NEAR-ZERO movement (< STALL_MIN_ADVANCE_MM over STALL_WINDOW_S), so a
+        # legitimately slow approach to fracture (still advancing) does NOT trip it.
+        import time as _t
+        _now = _t.monotonic()
+        self._stall_hist.append((_now, self.motor_displacement_mm))
+        while self._stall_hist and _now - self._stall_hist[0][0] > self.STALL_WINDOW_S:
+            self._stall_hist.pop(0)
+        if (self.current_load > self.STALL_MIN_LOAD_N and self._stall_hist
+                and _now - self._stall_hist[0][0] >= self.STALL_WINDOW_S - 0.5
+                and abs(self.motor_displacement_mm - self._stall_hist[0][1]) < self.STALL_MIN_ADVANCE_MM):
+            if self.connected:
+                self.serial_manager.send_command("Stop"); self.serial_manager.send_command("EStop")
+            self.stopRadioButton.blockSignals(True); self.stopRadioButton.setChecked(True); self.stopRadioButton.blockSignals(False)
+            self._autostop_detector = None; self._stall_hist = []
+            self.append_to_console(f"[Stall guard] STALL — crosshead frozen (< {self.STALL_MIN_ADVANCE_MM:.2f} mm in "
+                                   f"{self.STALL_WINDOW_S:.0f} s) at {self.current_load:.0f} N while commanded to move. Motor halted.")
+            self.set_status("⚠ Stall guard — motor halted (no crosshead movement)", is_warning=True)
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Stall guard activated",
+                                f"The test was stopped by the STALL GUARD.\n\n"
+                                f"The crosshead did not move (< {self.STALL_MIN_ADVANCE_MM:.2f} mm in "
+                                f"{self.STALL_WINDOW_S:.0f} s) while the motor was commanded to pull, at "
+                                f"{self.current_load:.0f} N.\n\nLikely the motor hit its force limit — check that it "
+                                f"is not hot, the driver current, and for binding; or use a smaller-cross-section "
+                                f"specimen so the fracture force is within the rig's capacity.")
+            return
+        from utm_analysis import LiveFractureDetector
+        if getattr(self, '_autostop_detector', None) is None:
+            self._autostop_detector = LiveFractureDetector()
+        cm = getattr(self, 'camera_manager', None)
+        lpx = getattr(cm, 'latest_dic_L_px', 0.0) if cm is not None else 0.0
+        if self._autostop_detector.update(self.current_load, ec=self.latest_dic_cauchy, lpx=lpx):
+            if self.connected:
+                self.serial_manager.send_command("Stop")
+            self.stopRadioButton.blockSignals(True); self.stopRadioButton.setChecked(True); self.stopRadioButton.blockSignals(False)
+            self._autostop_detector = None
+            self.append_to_console("[Auto-stop] fracture detected (load collapse) — motor stopped.")
+            self.set_status("Auto-stopped at fracture")
+
     def on_emergency_stop(self):
         """Emergency stop button pressed"""
         self.append_to_console("EMERGENCY STOP activated!")
         self._reset_preload_ui()
+        self.active_policy = None                           # EStop also kills any closed-loop test mode
+        self._release_active = False
+        if getattr(self, 'releaseButton', None) is not None:
+            self.releaseButton.setText("Release preload")
         self.set_status("⚠ EMERGENCY STOP - Motors halted", is_warning=True)
         if self.connected:
             self.serial_manager.send_command("EStop")
@@ -2270,12 +2846,60 @@ class UTMApplication(QMainWindow):
 
         try:
             self._export_csv(file_path)
+            self._last_saved_csv = file_path
             self.data_unsaved = False
             self._update_plot_title()
             self.append_to_console(f"Data saved to: {file_path}")
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to save data:\n{str(e)}")
             self.append_to_console(f"Export error: {str(e)}")
+
+    def on_generate_report(self):
+        """Build a one-page PDF report (+ individual vector graphs) from a test CSV, using the current
+        UI settings. Reports on the last saved/opened CSV; if none, prompts for a file. Output PDFs
+        are vector (editable) and land next to the CSV."""
+        import os
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        csv_path = getattr(self, "_last_saved_csv", None)
+        if not csv_path or not os.path.exists(csv_path):
+            csv_path, _ = QFileDialog.getOpenFileName(
+                self, "Select test CSV for the report", "", "CSV Files (*.csv);;All Files (*)")
+            if not csv_path:
+                return
+        try:
+            speed_mm_s = self.get_speed_rpm() * self.MM_PER_S_PER_RPM
+        except Exception:
+            speed_mm_s = None
+        comment = self.commentLineEdit.text().strip() if hasattr(self, "commentLineEdit") else None
+        file_id = self.fileIdLineEdit.text().strip() if hasattr(self, "fileIdLineEdit") else None
+        settings = {
+            "id": file_id or None,
+            "specimen_mode": self.specimenModeCombo.currentText(),
+            "preload": f"{self.preloadTargetSpinBox.value():.0f}",
+            "speed": (f"{speed_mm_s:.3f}" if speed_mm_s is not None else None),
+            "area": self.cross_sectional_area,
+            "gauge": self.gauge_length,
+            "scale": self.force_scale,
+            "offset": self.force_offset,
+            "comment": comment or None,
+        }
+        try:
+            from utm_report import build_report
+            paths = build_report(csv_path, settings=settings)
+        except Exception as e:
+            QMessageBox.critical(self, "Report error", f"Failed to generate report:\n{e}")
+            self.append_to_console(f"Report error: {e}")
+            return
+        pdf = paths[0]
+        self.append_to_console(f"Report written: {pdf}")
+        self.set_status(f"Report saved: {os.path.basename(pdf)}")
+        try:
+            os.startfile(pdf)                       # open the PDF for the user (Windows)
+        except Exception:
+            pass
+        QMessageBox.information(
+            self, "Report generated",
+            f"Report written (one-pager + individual graphs, each as PDF and PNG):\n\n{pdf}")
 
     def _export_csv(self, file_path):
         """Export data to CSV file with metadata header"""
@@ -2308,9 +2932,13 @@ class UTMApplication(QMainWindow):
                 f.write(f"# Comment: {comment}\n")
             f.write("#\n")
             f.write(f"# Calibration - Scale: {self.force_scale}, Offset: {self.force_offset}\n")
-            f.write(f"# Specimen - Area: {self.cross_sectional_area} mm², Gauge Length: {self.gauge_length} mm\n")
+            infill_val = self.infillSpinBox.value() if getattr(self, 'infillSpinBox', None) is not None else ''
+            f.write(f"# Specimen - Area: {self.cross_sectional_area} mm², Gauge Length: {self.gauge_length} mm, Infill: {infill_val} %\n")
             px_per_mm = getattr(self.camera_manager, 'px_per_mm', 0.0)
             f.write(f"# DIC Calibration - px_per_mm: {px_per_mm:.4f}\n")
+            _bl = self.load_plot_dic_blobs
+            _ok = sum(1 for b in _bl if b == 2)
+            f.write(f"# DIC Health - {100.0*_ok/len(_bl):.0f}% frames tracked 2/2 ({_ok}/{len(_bl)})\n" if _bl else "# DIC Health - n/a\n")
             f.write("#\n")
             f.write(f"# Max Load: {self.max_load:.2f} N\n")
             f.write(f"# Max Stress: {max_stress:.4f} MPa\n")
@@ -2321,7 +2949,7 @@ class UTMApplication(QMainWindow):
             f.write("#\n")
 
             # Write data header
-            f.write("Time_s,RawADC,Force_N,Position_mm,Speed_mm_s,Motor_Strain,Stress_MPa,DIC_Cauchy,DIC_True,DIC_Time_s,Lag_ms,MCU_Time_s,L_px,dx_px\n")
+            f.write("Time_s,RawADC,Force_N,Position_mm,Speed_mm_s,Motor_Strain,Stress_MPa,DIC_Cauchy,DIC_True,DIC_Time_s,Lag_ms,MCU_Time_s,L_px,dx_px,DIC_Blobs\n")
 
             # First MCU timestamp for relative time calculation
             first_mcu_ms = self.load_plot_mcu_timestamps[0] if self.load_plot_mcu_timestamps else 0
@@ -2339,6 +2967,7 @@ class UTMApplication(QMainWindow):
                 dic_true = self.load_plot_dic_true[i] if i < len(self.load_plot_dic_true) else 0.0
                 dic_L_px = self.load_plot_dic_L_px[i] if i < len(self.load_plot_dic_L_px) else 0.0
                 dic_dx_px = self.load_plot_dic_dx_px[i] if i < len(self.load_plot_dic_dx_px) else 0.0
+                dic_blobs = self.load_plot_dic_blobs[i] if i < len(self.load_plot_dic_blobs) else 2
 
                 # DIC timestamp and lag calculation
                 dic_ts = self.load_plot_dic_timestamps[i] if i < len(self.load_plot_dic_timestamps) else None
@@ -2353,7 +2982,7 @@ class UTMApplication(QMainWindow):
                 mcu_ms = self.load_plot_mcu_timestamps[i] if i < len(self.load_plot_mcu_timestamps) else 0
                 mcu_elapsed_s = (mcu_ms - first_mcu_ms) / 1000.0 if mcu_ms > 0 else 0.0
 
-                f.write(f"{elapsed_s:.3f},{raw_adc:.0f},{force:.4f},{position:.4f},{speed:.4f},{strain:.6f},{stress:.4f},{dic_cauchy:.6f},{dic_true:.6f},{dic_elapsed_s:.3f},{lag_ms:.1f},{mcu_elapsed_s:.3f},{dic_L_px:.1f},{dic_dx_px:.1f}\n")
+                f.write(f"{elapsed_s:.3f},{raw_adc:.0f},{force:.4f},{position:.4f},{speed:.4f},{strain:.6f},{stress:.4f},{dic_cauchy:.6f},{dic_true:.6f},{dic_elapsed_s:.3f},{lag_ms:.1f},{mcu_elapsed_s:.3f},{dic_L_px:.1f},{dic_dx_px:.1f},{int(dic_blobs)}\n")
 
     def on_open_data(self):
         """Open and load data from a CSV file"""
@@ -2389,6 +3018,7 @@ class UTMApplication(QMainWindow):
         self.load_plot_dic_true.clear()
         self.load_plot_dic_L_px.clear()
         self.load_plot_dic_dx_px.clear()
+        self.load_plot_dic_blobs.clear()
         self.stress_strain_strains.clear()
         self.stress_strain_stresses.clear()
 
@@ -2687,6 +3317,13 @@ class UTMApplication(QMainWindow):
         # Auto-preload: stop the motor once the target load is reached (or a safety limit trips)
         if self.preload_active:
             self._preload_check()
+        elif getattr(self, '_release_active', False):
+            self._release_check()
+        elif getattr(self, 'active_policy', None) is not None:
+            self._policy_step()
+        elif (getattr(self, 'autoStopFractureCheck', None) is not None and self.autoStopFractureCheck.isChecked()
+              and self.upRadioButton.isChecked() and self.motorsSwitch.isChecked()):
+            self._autostop_check()          # manual tension pull: auto-halt on fracture
 
         # Add to plot data if:
         # 1. Load cell data stream is enabled (loadCellSwitch)
@@ -2720,6 +3357,7 @@ class UTMApplication(QMainWindow):
             self.load_plot_dic_timestamps.append(dic_ts)
             self.load_plot_dic_L_px.append(dic_L_px)
             self.load_plot_dic_dx_px.append(dic_dx_px)
+            self.load_plot_dic_blobs.append(int(getattr(self, '_dic_blob_count', 2)))
 
             # Calculate stress and strain for stress-strain plot
             # Strain = displacement / gauge_length (dimensionless)
@@ -2925,6 +3563,11 @@ class UTMApplication(QMainWindow):
 
         # --- Info row: L0 and DIC Strain ---
         info_row = QHBoxLayout()
+        self.dicHealthLabel = QLabel("DIC —")
+        self.dicHealthLabel.setStyleSheet("font-weight: bold; padding: 1px 6px; border-radius: 6px; color: white; background: #8a8f98;")
+        self.dicHealthLabel.setToolTip("Live DIC tracking health: markers found / % of recent frames tracked / pixel jitter.")
+        info_row.addWidget(self.dicHealthLabel)
+        info_row.addSpacing(16)
         info_row.addWidget(QLabel("L0:"))
         self.dicL0Label = QLabel("— px")
         self.dicL0Label.setStyleSheet("font-weight: bold;")
@@ -3062,6 +3705,11 @@ class UTMApplication(QMainWindow):
         lay.addLayout(btn_row)
 
         info_row = QHBoxLayout()
+        self.dicHealthLabelLP = QLabel("DIC —")
+        self.dicHealthLabelLP.setStyleSheet("font-weight: bold; padding: 1px 6px; border-radius: 6px; color: white; background: #8a8f98;")
+        self.dicHealthLabelLP.setToolTip("Live DIC tracking health: markers found / % of recent frames tracked / pixel jitter.")
+        info_row.addWidget(self.dicHealthLabelLP)
+        info_row.addSpacing(16)
         info_row.addWidget(QLabel("L0:"))
         self.dicL0LabelLP = QLabel("— px")
         self.dicL0LabelLP.setStyleSheet("font-weight: bold;")
@@ -3128,6 +3776,53 @@ class UTMApplication(QMainWindow):
                     lbl.setPixmap(scaled)
         except Exception as e:
             print(f"Feed error: {e}")
+
+    # ===== Live DIC health badge (Phase C) =====
+    def _on_dic_blobs(self, blobs):
+        """A good frame: record its marker count for the health badge."""
+        n = len(blobs)
+        self._dic_blob_count = n
+        self._dic_blob_history.append(n)
+        if len(self._dic_blob_history) > 60:
+            del self._dic_blob_history[:-60]
+
+    def _on_dic_error_count(self, msg):
+        """A dropped frame ('...found N'): record it so tracking% reflects the dropout."""
+        import re
+        m = re.search(r"found (\d+)", str(msg))
+        if not m:
+            return
+        n = int(m.group(1))
+        self._dic_blob_count = n
+        self._dic_blob_history.append(n)
+        if len(self._dic_blob_history) > 60:
+            del self._dic_blob_history[:-60]
+
+    def _update_dic_health(self):
+        """Refresh the live DIC health badge (~2 Hz timer)."""
+        cm = getattr(self, "camera_manager", None)
+        badges = [getattr(self, n, None) for n in ("dicHealthLabel", "dicHealthLabelLP")]
+        if all(b is None for b in badges):
+            return
+        idle = "font-weight: bold; padding: 1px 6px; border-radius: 6px; color: white; background: #8a8f98;"
+        if cm is None or getattr(cm, "camera", None) is None:      # camera not running -> idle badge
+            self._dic_blob_history.clear()
+            for b in badges:
+                if b is not None:
+                    b.setText("DIC —"); b.setStyleSheet(idle)
+            return
+        try:
+            from utm_dic import dic_health, health_text
+        except Exception:
+            return
+        h = dic_health(cm.dic_history, blob_history=self._dic_blob_history,
+                       current_blobs=self._dic_blob_count,
+                       expected_markers=getattr(self, "_expected_markers", 2))
+        txt = health_text(h)
+        style = f"font-weight: bold; padding: 1px 6px; border-radius: 6px; color: white; background: {h['color']};"
+        for b in badges:
+            if b is not None:
+                b.setText(txt); b.setStyleSheet(style)
 
     def update_dic_strain_label(self, cauchy, true_strain):
         self.latest_dic_cauchy = cauchy
