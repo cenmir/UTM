@@ -51,8 +51,9 @@ A coloured badge on both test tabs: `DIC OK/WARN/BAD · N/2 markers · track % �
 - ⚠️ **Flaw exposed:** while blind, the controller RAMPED UP (0.2 → 0.4 mm/s cap) chasing the frozen strain → force spiked **753 → 1271 N**, total halt **2.94 s**, +0.63 mm.
 - ✅ **FIX applied (main.py):** stale strain now **FREEZES speed at 0.5 s** (no blind ramp-up) + dead-DIC halt tightened **1.5 → 1.0 s** (`POLICY_STALE_FREEZE_S` / `POLICY_DEAD_DIC_S`).
 - [x] **RE-TEST (T2/T3, fix on):** overshoot cut — T2 peak **0.22 mm/s / +175 N** (clean, no ramp); T3 0.36 mm/s / +407 N (partial ramp at high load) vs T1's 0.40 mm/s / +518 N. Both halted. Freeze then **tightened 0.5 → 0.2 s** to kill the residual pre-freeze ramp. **PASS.**
-### 6.2 — strain-rate to fracture
-- [ ] Green 2/2 → Prepare → Start strain-rate → DIC strain holds a **steady rate** (even per-second steps) + speed auto-corrects → runs to fracture → **auto-stops on load collapse**. Save CSV.
+### 6.2 — strain-rate to fracture  ✅ PASS 2026-07-29 (50% infill)
+- [x] **50% specimen (fractures ~1.4 kN, under today's ~2.6 kN torque ceiling):** strain-rate held **0.00051 /s vs 0.0005 target** while the crosshead speed **auto-adapted 0.10 → 0.05 mm/s** (fast in stiff elastic, slow in necking) — true constant-*gauge*-strain-rate control, not constant crosshead speed. **Fractured** (UTS 1387 N / 17.3 MPa nominal, 20.5 MPa anchor-corr, anchor 255 N) and **auto-stopped on load collapse**. Speed ≤ 0.2 cap, no stall.
+- NOTE: the 100% attempts (S17/fresh) could NOT fracture — motor's variable **torque ceiling ~2.6 kN today** (see `project_motor_stall_limit`), NOT a strain-rate issue (a normal S15 pull also stalled ~2.6). Infill label left at 100% in the CSV header (cosmetic; set Infill=50 next time).
 
 ---
 
