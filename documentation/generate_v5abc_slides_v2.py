@@ -1,3 +1,5 @@
+import os as _os  # [doc-folder] run from repo root so plot PNGs & Software/ resolve
+_os.chdir(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..'))
 """V5 / V5b / V5c repeatability comparison deck — V2 (50% infill, LED off).
 V2 uses the re-run V5c (S2): crosshead position correctly zeroed, but the run was
 executed at 0.2 mm/s (vs 0.1 mm/s for V5/V5b) — a strain-rate confound flagged
@@ -306,8 +308,8 @@ banner(s, 0.5, 6.5, 12.6, 0.6,
 pageno(s, 140)
 
 try:
-    prs.save("V5abc_comparison_slides_v2.pptx")
+    prs.save("documentation/V5abc_comparison_slides_v2.pptx")
     print("Saved: V5abc_comparison_slides_v2.pptx (7 slides, pages 134-140)")
 except PermissionError:
-    prs.save("V5abc_comparison_slides_v2_updated.pptx")
+    prs.save("documentation/V5abc_comparison_slides_v2_updated.pptx")
     print("Locked. Saved: V5abc_comparison_slides_v2_updated.pptx")

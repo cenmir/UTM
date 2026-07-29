@@ -1,3 +1,5 @@
+import os as _os  # [doc-folder] run from repo root so plot PNGs & Software/ resolve
+_os.chdir(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..'))
 """Slide-friendly single-panel plots for the 8.6.20 deck (revised).
 Outputs:
   V5_slide_load_time.png       (with preload->UTS delta arrow)

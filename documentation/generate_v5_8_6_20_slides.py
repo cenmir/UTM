@@ -1,3 +1,5 @@
+import os as _os  # [doc-folder] run from repo root so plot PNGs & Software/ resolve
+_os.chdir(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..'))
 """Phase 8.6.20 (Tensile to failure) presentation — 7 slides, JU template.
 Pages 126-132:
   126 Overview + timeline flowchart
@@ -467,5 +469,5 @@ tb(s, 0.5, 6.95, 12.3, 0.4,
    fs=11, italic=True, colour=GREY_TEXT)
 pageno(s, 134)
 
-prs.save("V5_8_6_20_slides.pptx")
+prs.save("documentation/V5_8_6_20_slides.pptx")
 print("Saved: V5_8_6_20_slides.pptx (9 slides, pages 126-134)")

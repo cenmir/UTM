@@ -1,3 +1,5 @@
+import os as _os  # [doc-folder] run from repo root so plot PNGs & Software/ resolve
+_os.chdir(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..'))
 """Phase 8.6.20 V6a (S7, 100% infill, LED on) deck + V6a-vs-V5 comparison.
 Mirrors the V5 single-specimen deck, then appends 4 comparison slides.
 13 slides, JU template (pages 141-153):
@@ -843,5 +845,5 @@ banner(s, 0.4, 6.5, 12.55, 0.72,
        "edge-width Poisson → UX layer.", fill=YELLOW_WARN, fg=BLACK, fs=10.5)
 pageno(s, 168)
 
-prs.save("V6a_8_6_20_slides.pptx")
+prs.save("documentation/V6a_8_6_20_slides.pptx")
 print("Saved: V6a_8_6_20_slides.pptx (28 slides, pages 141-168)")
