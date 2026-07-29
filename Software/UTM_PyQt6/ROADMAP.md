@@ -71,6 +71,7 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
 - ⬜ **Chacón reference — measurement basis:** confirm whether Chacón et al. measured PLA properties on a **printed specimen** or on **raw filament / bulk material** — decides whether our (infill-corrected) values are directly comparable.
 - ⬜ **Moisture effect:** check whether specimen / ambient **moisture** shifts strength or stiffness vs literature (PLA is mildly hygroscopic) — dry / condition specimens and compare.
 - ⬜ **Camera-parameter sensitivity:** enumerate every camera parameter controlled in software (exposure, gain, threshold, ROI, px/mm, …) and study how varying each affects the DIC results and the **noise floor**.
+- ⬜ **Black-specimen DIC check (100% infill):** every specimen tested so far is WHITE (black dots, DIC "White" mode). Print/mark a **BLACK** specimen (white dots, DIC "Black" mode) and confirm the camera tracks strain just as reliably.
 - ⬜ **UTM instruction manual (for students):** short, crisp usage guide with clear photos of the rig + UI screenshots — Connect → Calibrate → Mount → Prepare → Run → Save → Report.
 
 ---
