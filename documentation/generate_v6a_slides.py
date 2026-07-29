@@ -845,5 +845,146 @@ banner(s, 0.4, 6.5, 12.55, 0.72,
        "edge-width Poisson → UX layer.", fill=YELLOW_WARN, fg=BLACK, fs=10.5)
 pageno(s, 168)
 
-prs.save("documentation/V6a_8_6_20_slides.pptx")
-print("Saved: V6a_8_6_20_slides.pptx (28 slides, pages 141-168)")
+# =====================================================================================
+# NEW FEATURE SLIDES (169-175) — proof · methods · roadmap-workflow · UI · specimen register
+# =====================================================================================
+LIGHT_GREY = RGBColor(0xF2, 0xF2, 0xF2)
+
+# ---- Slide 169: new feature set (card grid) ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "NEW — SMART-UTM FEATURE SET (2026-07)")
+tb(s, 0.4, 1.24, 12.55, 0.5, "Every card below is built AND rig-validated (green).", fs=12, italic=True, colour=GREY_TEXT)
+cards = [
+    ("DIC health HUD", "live 2/2 · jitter"), ("Prepare specimen", "1-click tare all"),
+    ("Settings save / load", "reuse a setup"), ("Generate report", "1-click PDF + PNG"),
+    ("Auto-stop at fracture", "halts on collapse"), ("Strain-rate fracture", "constant dε/dt"),
+    ("Stall guard", "halts frozen motor"), ("Release preload", "safe return to 0"),
+]
+cx = [0.4, 3.62, 6.84, 10.06]; cy = [1.85, 3.75]
+for i, (t_, b_) in enumerate(cards):
+    flow(s, cx[i % 4], cy[i // 4], 3.0, 1.5, t_ + "\n\n" + b_, fill=GREEN_PASS, border=DARK_GREEN, fs=12, bold=True, fg=DARK_GREEN)
+banner(s, 0.4, 5.6, 12.55, 0.95,
+       "3-layer safety on every driven test — load-collapse detector · stall guard · 10 kN / 30 mm backstop + dead-DIC "
+       "freeze.  Engine ready to add 4 more modes: cyclic · staircase · relaxation · creep.",
+       fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
+footer(s, "Details: Software/UTM_PyQt6/ROADMAP.md · TESTING_TODO.md. App wiring snapshot-committed (main.py a3b187f).")
+pageno(s, 169)
+
+# ---- Slide 170: auto-stop at fracture — proof ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "PROOF — AUTO-STOP AT FRACTURE  (S16, 100% infill)")
+s.shapes.add_picture("feat_autostop_proof.png", Inches(0.35), Inches(1.55), width=Inches(7.4))
+header(s, 8.0, 1.28, 4.95, "How it works")
+flow(s, 8.0, 1.75, 4.95, 0.6, "Track the peak load", fill=WHITE, border=FLOW_BLUE, fs=11)
+arrow(s, 10.47, 2.35, 10.47, 2.53, width=2)
+flow(s, 8.0, 2.53, 4.95, 0.6, "Arm at 30% of peak", fill=WHITE, border=FLOW_BLUE, fs=11)
+arrow(s, 10.47, 3.13, 10.47, 3.31, width=2)
+flow(s, 8.0, 3.31, 4.95, 0.6, "Fire when load < 50% (collapse)", fill=YELLOW_WARN, border=FLOW_NEUTRAL, fs=11)
+arrow(s, 10.47, 3.91, 10.47, 4.09, width=2)
+flow(s, 8.0, 4.09, 4.95, 0.6, "Stop + E-Stop", fill=GREEN_PASS, border=DARK_GREEN, fs=11.5, bold=True, fg=DARK_GREEN)
+kpi(s, 8.0, 5.0, 2.4, "PEAK", "2992 N", h=0.95)
+kpi(s, 10.55, 5.0, 2.4, "UTS (true)", "47.4 MPa", h=0.95)
+banner(s, 0.4, 6.35, 12.55, 0.72, "No hand on the button — the rig detects its own fracture and halts in one sample.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
+pageno(s, 170)
+
+# ---- Slide 171: strain-rate fracture — results & why ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "STRAIN-RATE FRACTURE TEST — RESULTS & WHY IT WORKS")
+s.shapes.add_picture("feat_strainrate_proof.png", Inches(0.35), Inches(1.55), width=Inches(7.4))
+header(s, 8.0, 1.28, 4.95, "Rate held BY adapting speed")
+sr = [["Regime", "speed", "dε/dt"], ["elastic", "0.10", "0.00049"], ["yield", "0.09", "0.00050"],
+      ["necking", "0.06", "0.00048"], ["draw", "0.05", "0.00054"]]
+table(s, 8.0, 1.75, 4.95, 1.95, sr, cw=[1.9, 1.5, 1.55], hf=10, bf=9.5)
+header(s, 8.0, 3.95, 4.95, "Why it matters")
+tb(s, 8.0, 4.38, 4.95, 1.9,
+   "•  Constant MATERIAL strain rate (test standards)\n\n"
+   "•  Compliance-free — measures the gauge, not the machine\n\n"
+   "•  Comparable E / σy across specimens & rigs",
+   fs=11, colour=BLACK)
+banner(s, 0.4, 6.35, 12.55, 0.72,
+       "Held 0.00051 /s (target 0.0005) while HALVING crosshead speed 0.10 → 0.05 mm/s — a fixed-speed pull cannot.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
+pageno(s, 171)
+
+# ---- Slide 172: two fracture methods — when to use which ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "TWO WAYS TO FRACTURE — WHEN TO USE WHICH")
+meth = [["", "Direct motor speed", "Strain-rate fracture"],
+        ["How", "constant crosshead mm/s", "closed-loop on DIC dε/dt"],
+        ["Rate", "varies (fast neck, slow elastic)", "CONSTANT gauge rate"],
+        ["Needs DIC?", "no", "YES (green 2/2)"],
+        ["Motor force", "full — higher speed OK", "capped speed → less force"],
+        ["Best for", "quick UTS · strong specimens", "standards-grade · rate-sensitive"]]
+table(s, 0.4, 1.4, 12.55, 3.25, meth, cw=[2.1, 5.2, 5.25], hf=11, bf=10.5)
+header(s, 0.4, 4.9, 12.55, "Suggestion")
+flow(s, 0.4, 5.37, 6.2, 1.0, "MAX pulling force or a quick UTS?\n→  DIRECT motor speed", fill=LIGHT_BLUE, border=FLOW_BLUE, fs=12.5, bold=True)
+flow(s, 6.75, 5.37, 6.2, 1.0, "Controlled material strain rate (comparable)?\n→  STRAIN-RATE fracture", fill=GREEN_PASS, border=DARK_GREEN, fs=12.5, bold=True, fg=DARK_GREEN)
+footer(s, "Both auto-stop on fracture (same detector) + stall guard. On THIS rig (torque ~2.6 kN today) use 50% / smaller specimens for strain-rate to reach break.")
+pageno(s, 172)
+
+# ---- Slide 173: innovation roadmap — workflow ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "INNOVATION ROADMAP — AT A GLANCE")
+ph = [("0 · Foundations", "analysis · engine · recipes", GREEN_PASS, DARK_GREEN, "DONE"),
+      ("A · One-click", "report · prepare · auto-stop", GREEN_PASS, DARK_GREEN, "DONE"),
+      ("B · Test modes", "strain-rate ✓ · 4 more", YELLOW_WARN, FLOW_NEUTRAL, "1 / 5"),
+      ("C · Smart DIC", "health HUD ✓ · Poisson", YELLOW_WARN, FLOW_NEUTRAL, "partial"),
+      ("D · UX layer", "wizard · overlay · dash", GREY_PLANNED, FLOW_NEUTRAL, "next")]
+bx = [0.4, 2.98, 5.56, 8.14, 10.72]; bw = 2.35
+for i, (t_, d_, fill, fg, st) in enumerate(ph):
+    flow(s, bx[i], 2.1, bw, 1.5, t_ + "\n\n" + d_, fill=fill, border=fg, fs=10.5, bold=True, fg=fg)
+    tb(s, bx[i], 3.66, bw, 0.4, st, fs=11, bold=True, colour=fg)
+    if i < 4:
+        arrow(s, bx[i] + bw, 2.85, bx[i + 1], 2.85, width=2)
+header(s, 0.4, 4.5, 12.55, "Next up (in order)")
+flow(s, 0.4, 4.98, 4.05, 0.95, "1 · Wire the 4 remaining\nmodes (engine ready)", fill=WHITE, border=FLOW_BLUE, fs=11.5, bold=True)
+arrow(s, 4.47, 5.45, 4.68, 5.45, width=2)
+flow(s, 4.7, 4.98, 4.05, 0.95, "2 · Measured Poisson\n(4-marker + backdrop)", fill=WHITE, border=FLOW_BLUE, fs=11.5, bold=True)
+arrow(s, 8.77, 5.45, 8.98, 5.45, width=2)
+flow(s, 9.0, 4.98, 3.95, 0.95, "3 · UX wizard +\nlive overlay", fill=WHITE, border=FLOW_BLUE, fs=11.5, bold=True)
+banner(s, 0.4, 6.2, 12.55, 0.72, "Hardware gate — motor torque ~2.6 kN today; fix driver Vref / cooling to fracture 100% infill.",
+       fill=YELLOW_WARN, fg=BLACK, fs=11)
+pageno(s, 173)
+
+# ---- Slide 174: UI proof — report + settings ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "IN THE APP — ONE-CLICK REPORT & SAVED SETTINGS")
+header(s, 0.4, 1.28, 6.2, "Generate report  →  one-page PDF + PNGs")
+s.shapes.add_picture("feat_report_s16.png", Inches(0.4), Inches(1.78), width=Inches(6.15))
+header(s, 6.95, 1.28, 6.0, "Settings  —  save a setup, reload in 1 click")
+flow(s, 6.95, 1.78, 6.0, 0.55, "Settings:  [ Default v ]   [ Load ]   [ Save... ]   Infill %: [ 100 ]",
+     fill=LIGHT_GREY, border=FLOW_NEUTRAL, fs=11, bold=True)
+tb(s, 6.95, 2.55, 6.0, 3.2,
+   "•  Saves area · gauge · preload · speed · mode + params\n\n"
+   "•  'Default' always present (auto-stop ON)\n\n"
+   "•  Reload a full test setup with ONE click\n\n"
+   "•  Infill % = recorded label only (does NOT change data)\n\n"
+   "•  Report reads the CSV header → KPIs + 4 plots + validation",
+   fs=11.5, colour=BLACK)
+footer(s, "Report shown is the REAL S16 one-pager (auto-generated: reports/…200615_report.png). Settings row is a schematic of the Motor-Control controls.")
+pageno(s, 174)
+
+# ---- Slide 175: specimen register ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SPECIMEN REGISTER  (S1 – S19)")
+Lc = [["Spec", "Infill", "Colour", "Test / result"],
+      ["S1", "", "", ""], ["S2", "50%", "", "V5c · 22.0 MPa"], ["S3", "50%", "", "V5b · 22.0 MPa"],
+      ["S4", "50%", "", "V5 · 22.1 MPa"], ["S5", "", "", ""], ["S6", "", "", ""],
+      ["S7", "100%", "", "V6a · 47.8 MPa"], ["S8", "100%", "", "V6b · 44.8 MPa"], ["S9", "100%", "", "V6e · 45.5 MPa"]]
+Rc = [["Spec", "Infill", "Colour", "Test / result"],
+      ["S10", "100%", "", "V6c · 46.8 MPa"], ["S11", "100%", "", "V6d · 46.1 MPa"], ["S12", "", "", ""],
+      ["S13", "", "", ""], ["S14", "", "", ""], ["S15", "100%", "", "stall (no fracture)"],
+      ["S16", "100%", "", "first 100% fracture · 47.4"], ["S17", "100%", "", "halt tests · SR-frac"],
+      ["S18", "", "", ""], ["S19", "50%", "", "V1 batch"]]
+table(s, 0.4, 1.4, 6.2, 4.95, Lc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
+table(s, 6.75, 1.4, 6.2, 4.95, Rc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
+footer(s, "All spray markers (black dots on PLA). V1_Spray batch = 50% · V2_Spray = 100%. Colour (white/black) + blank cells to be filled by operator.")
+pageno(s, 175)
+
+try:
+    prs.save("documentation/V6a_8_6_20_slides.pptx")
+    print("Saved: V6a_8_6_20_slides.pptx (35 slides, pages 141-175)")
+except PermissionError:
+    prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (35 slides)")
