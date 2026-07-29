@@ -720,30 +720,31 @@ s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "SOFTWARE ROADMAP — ADVANCED FEATURES & EASE OF USE: STATUS")
 tb(s, 0.4, 1.28, 12.55, 0.62,
    "The rig automated only ONE thing (auto-preload). A phased roadmap adds automated test modes, "
-   "smart DIC and one-click analysis — each piece shippable on its own. Where it stands today:",
+   "smart DIC and one-click analysis — each piece shippable on its own. After the full rig-test campaign:",
    fs=12, colour=BLACK)
 road = [
     ["Phase", "Focus", "Status"],
     ["0 · Foundations", "shared analysis library · control engine · recipes", "DONE"],
-    ["A · One-click workflow", "per-test report · test registry · prepare-specimen · auto-stop", "BUILT — rig-test"],
-    ["B · Closed-loop modes", "strain-rate + cyclic / staircase / relaxation / creep", "1 of 5 wired"],
-    ["C · Smart DIC", "live health HUD + measured Poisson / true Cauchy", "HUD done"],
+    ["A · One-click workflow", "per-test report · test registry · prepare-specimen · auto-stop", "DONE — VALIDATED"],
+    ["B · Closed-loop modes", "strain-rate + cyclic / staircase / relaxation / creep", "strain-rate DONE · 4 to wire"],
+    ["C · Smart DIC", "live health HUD + measured Poisson / true Cauchy", "HUD DONE · Poisson next"],
     ["D · UX layer", "guided wizard · live overlay · dashboard", "PLANNED"],
 ]
-rov = {(1, 2): {'bg': GREEN_PASS, 'bold': True}, (2, 2): {'bg': YELLOW_WARN, 'bold': True},
+rov = {(1, 2): {'bg': GREEN_PASS, 'bold': True}, (2, 2): {'bg': GREEN_PASS, 'bold': True},
        (3, 2): {'bg': YELLOW_WARN, 'bold': True}, (4, 2): {'bg': YELLOW_WARN, 'bold': True},
        (5, 2): {'bg': GREY_PLANNED, 'bold': True}}
 table(s, 0.4, 2.02, 12.55, 2.75, road, cw=[2.6, 6.75, 3.2], hf=11, bf=10.5, ov=rov)
 kpi(s, 0.4, 5.02, 2.95, "MODULES (in git)", "7")
-kpi(s, 3.62, 5.02, 2.95, "APP FEATURES", "6")
+kpi(s, 3.62, 5.02, 2.95, "APP FEATURES", "9")
 kpi(s, 6.84, 5.02, 2.95, "SIM CHECKS PASSED", "9 / 9")
-kpi(s, 10.06, 5.02, 2.89, "TO RIG-TEST", "6")
+kpi(s, 10.06, 5.02, 2.89, "RIG TESTS PASSED", "6 / 6")
 banner(s, 0.4, 6.18, 12.55, 0.92,
-       "LEGEND — DONE (green) · BUILT, awaiting rig test (amber) · PLANNED (grey).  Foundations + the "
-       "one-click workflow have shipped; closed-loop modes and smart-DIC are partly in; the UX layer is next.",
+       "LEGEND — DONE + rig-validated (green) · partial, more to wire (amber) · PLANNED (grey).  Foundations, "
+       "the one-click workflow and the strain-rate fracture test are validated on the rig; the remaining modes, "
+       "measured Poisson and the UX layer are next.",
        fill=LIGHT_BLUE, fg=BLACK, fs=11)
-footer(s, "All analysis logic is unit-tested / sim-validated offline; app features live in the (unversioned) "
-          "main.py and follow the proven auto-preload safety discipline.")
+footer(s, "All analysis logic is unit-tested / sim-validated offline; the app feature set is now snapshot-committed "
+          "(main.py a3b187f) after the full rig-test campaign — see ROADMAP.md / TESTING_TODO.md.")
 pageno(s, 165)
 
 # ---- Slide 166: DONE — built & committed ----
@@ -764,47 +765,49 @@ tb(s, 0.4, 4.95, 6.15, 1.4,
    "Kills the copy-paste-per-specimen analysis burden (the cause of the V6c / V5-S4 detector bugs): "
    "one tested analyser, reused everywhere. Reproduces the known V5 / V6 numbers exactly.",
    fs=10.5, italic=True, colour=GREY_TEXT)
-header(s, 6.75, 1.28, 6.2, "In the UI (main.py — awaiting rig test)")
+header(s, 6.75, 1.28, 6.2, "In the UI (main.py — RIG-VALIDATED · snapshot a3b187f)")
 tb(s, 6.75, 1.72, 6.2, 3.9,
    "•  Generate report  — one button → PDF + images\n\n"
-   "•  Recipe dropdown  — Load / Save a test setup\n\n"
+   "•  Settings  — Load / Save a setup (+ Default)\n\n"
    "•  Prepare specimen  — 1-click tare (position + force + DIC)\n\n"
-   "•  Auto-stop at fracture  — halts on load collapse\n\n"
-   "•  Strain-rate mode (BETA)  — closed-loop dε/dt\n\n"
+   "•  Fracture test / Auto-stop  — halts on load collapse\n\n"
+   "•  Strain-rate fracture test  — closed-loop dε/dt\n\n"
    "•  DIC health HUD  — live OK / WARN / BAD badge\n\n"
-   "•  Safety net  — 10 kN force / 45 mm travel / 900 s cap",
+   "•  Safety net  — 10 kN / 30 mm / stall guard / dead-DIC",
    fs=12, colour=BLACK)
-footer(s, "Modules committed & regression-checked against the deck numbers; the UI wiring stays in the "
-          "unversioned main.py and will be snapshot-committed once validated on the rig.")
+footer(s, "Modules committed & regression-checked against the deck numbers; the UI feature set is now "
+          "snapshot-committed (main.py a3b187f) after full rig validation.")
 pageno(s, 166)
 
 # ---- Slide 167: TO BE TESTED — rig / camera ----
 s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "TO BE TESTED — ON THE RIG / CAMERA")
-header(s, 0.4, 1.28, 7.35, "Feature checks (needs motor + camera)")
+title(s, "VALIDATED ON THE RIG  (2026-07-28 / 29)")
+header(s, 0.4, 1.28, 7.35, "Feature checks — ALL PASSED")
 tst = [
-    ["Feature", "Pass ="],
-    ["DIC health HUD", "camera on → green 2/2; cover a dot → red BAD"],
-    ["Prepare specimen", "one click → position + force + DIC all tared"],
-    ["Auto-stop at fracture", "scrap pull → Stop right at the load collapse"],
-    ["Recipes", "load a starter → inputs change; Save → in list"],
-    ["Generate report", "after a test → PDF + PNG land in /reports"],
-    ["Strain-rate (BETA)", "scrap pull → holds dε/dt; stops at target / break"],
+    ["Feature", "Result"],
+    ["DIC health HUD", "green 2/2 live; red BAD on dot cover  ✓"],
+    ["Prepare specimen", "1 click → position + force + DIC tared  ✓"],
+    ["Auto-stop at fracture", "caught S16 collapse 2992 → −417 N  ✓"],
+    ["Settings", "Default + Load / Save round-trip  ✓"],
+    ["Generate report", "S16 report = CSV, every KPI  ✓"],
+    ["Strain-rate fracture", "held 0.0005/s → fracture, auto-stop  ✓"],
 ]
 table(s, 0.4, 1.70, 7.35, 3.05, tst, cw=[2.35, 5.0], hf=10, bf=9.5)
-header(s, 7.95, 1.28, 5.0, "Rig facts to report back")
+header(s, 7.95, 1.28, 5.0, "Rig facts — ALL RESOLVED")
 tb(s, 7.95, 1.72, 5.0, 3.0,
    "These unblock the other 4 test modes:\n\n"
-   "1.  Does SetSpeed 0 HOLD the motor still?\n     (dwell — staircase / relaxation)\n\n"
-   "2.  Clean reversal sequence — Stop → SetSpeed\n     → direction?  (cyclic / creep)\n\n"
-   "3.  Usable crosshead stroke (mm)?\n     (finalise the 45 mm travel cap)",
+   "1.  Stop HOLDS position ✓\n     (zero drift over 5 / 10 / 15 s)\n\n"
+   "2.  Direct reversal auto-decels ~1 s ✓\n     (no manual Stop needed)\n\n"
+   "3.  Travel cap set to 30 mm ✓\n\n"
+   "→  cyclic / staircase / relaxation / creep\n     are now UNBLOCKED to wire.",
    fs=11.5, colour=BLACK)
 banner(s, 0.4, 5.5, 12.55, 1.05,
-       "SAFETY — Auto-stop and Strain-rate drive the motor: run them first on a SCRAP specimen with a hand "
-       "near E-Stop. Everything else is read-only. Full step-by-step list: Software/UTM_PyQt6/TESTING_TODO.md",
-       fill=YELLOW_WARN, fg=BLACK, fs=11.5)
-footer(s, "Logic is already sim/offline-validated — these runs confirm behaviour on real hardware and set the "
-          "tunable thresholds (fracture arm 30% / collapse 50%, travel cap).")
+       "RESULT — every built feature passed on the rig; S16 = first 100% infill fracture (UTS 47.4 MPa, "
+       "anchor-corrected). Strain-rate 6.2 held the target rate by adapting crosshead speed 0.10 → 0.05 mm/s. "
+       "ONE hardware limit found — motor torque ceiling ~2.6 kN (next slide).",
+       fill=GREEN_PASS, fg=BLACK, fs=11.5)
+footer(s, "Full step-by-step results: Software/UTM_PyQt6/TESTING_TODO.md; thresholds confirmed (fracture arm "
+          "30% / collapse 50%, travel cap 30 mm, stall guard 0.05 mm / 6 s).")
 pageno(s, 167)
 
 # ---- Slide 168: PLANNED NEXT — measured Poisson (edge-width / MDF) + remaining automation ----
@@ -825,9 +828,9 @@ tb(s, 0.4, 2.85, 12.55, 0.95,
    fs=11, colour=BLACK)
 header(s, 0.4, 3.95, 12.55, "Remaining automation & ease-of-use")
 tb(s, 0.4, 4.38, 6.2, 2.0,
-   "•  Cyclic / staircase / relaxation / creep modes\n    (engine ready — needs the 3 rig facts)\n\n"
-   "•  Full 'Run to fracture' — one button:\n    preload → pull → auto-halt → anchor → save\n\n"
-   "•  Auto specimen metadata + folder from recipe",
+   "•  Cyclic / staircase / relaxation / creep modes\n    (engine ready — rig facts RESOLVED, ready to wire)\n\n"
+   "•  Measured Poisson — 4-marker / edge-width\n    + auto specimen metadata + folder from recipe\n\n"
+   "•  One-click per-specimen report deck",
    fs=11.5, colour=BLACK)
 tb(s, 6.75, 4.38, 6.2, 2.0,
    "•  Guided wizard / checklist\n    (Connect → … → Prepare → Run → Save)\n\n"
@@ -835,8 +838,9 @@ tb(s, 6.75, 4.38, 6.2, 2.0,
    "•  Glanceable dashboard + fracture beep / banner",
    fs=11.5, colour=BLACK)
 banner(s, 0.4, 6.5, 12.55, 0.72,
-       "ORDER — rig-test what's built → confirm the 3 facts → wire the remaining modes → edge-width Poisson "
-       "(after the backdrop) → UX layer.", fill=LIGHT_BLUE, fg=BLACK, fs=11)
+       "HARDWARE LIMIT — motor torque ceiling ~2.6 kN (variable; driver Vref / thermal / PSU) blocks 100% "
+       "full-area fracture; use 50% / smaller specimens until resolved.   ORDER — wire remaining modes → "
+       "edge-width Poisson → UX layer.", fill=YELLOW_WARN, fg=BLACK, fs=10.5)
 pageno(s, 168)
 
 prs.save("V6a_8_6_20_slides.pptx")
