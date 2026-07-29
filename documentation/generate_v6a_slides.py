@@ -846,9 +846,17 @@ banner(s, 0.4, 6.5, 12.55, 0.72,
 pageno(s, 168)
 
 # =====================================================================================
-# NEW FEATURE SLIDES (169-175) — proof · methods · roadmap-workflow · UI · specimen register
+# NEW FEATURE SLIDES (169-179) — proof · methods · limits · roadmap · DIC-HUD · UI · register
 # =====================================================================================
 LIGHT_GREY = RGBColor(0xF2, 0xF2, 0xF2)
+
+
+def pic_or_ph(sl, path, x, y, w, ph_h, note):
+    """Add the picture if the file exists, else a labelled placeholder (for pending UI screenshots)."""
+    if _os.path.exists(path):
+        sl.shapes.add_picture(path, Inches(x), Inches(y), width=Inches(w))
+    else:
+        flow(sl, x, y, w, ph_h, note, fill=LIGHT_GREY, border=FLOW_NEUTRAL, fs=11, bold=True, fg=GREY_TEXT)
 
 # ---- Slide 169: new feature set (card grid) ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -874,17 +882,15 @@ pageno(s, 169)
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PROOF — AUTO-STOP AT FRACTURE  (S16, 100% infill)")
 s.shapes.add_picture("feat_autostop_proof.png", Inches(0.35), Inches(1.55), width=Inches(7.4))
-header(s, 8.0, 1.28, 4.95, "How it works")
-flow(s, 8.0, 1.75, 4.95, 0.6, "Track the peak load", fill=WHITE, border=FLOW_BLUE, fs=11)
-arrow(s, 10.47, 2.35, 10.47, 2.53, width=2)
-flow(s, 8.0, 2.53, 4.95, 0.6, "Arm at 30% of peak", fill=WHITE, border=FLOW_BLUE, fs=11)
-arrow(s, 10.47, 3.13, 10.47, 3.31, width=2)
-flow(s, 8.0, 3.31, 4.95, 0.6, "Fire when load < 50% (collapse)", fill=YELLOW_WARN, border=FLOW_NEUTRAL, fs=11)
-arrow(s, 10.47, 3.91, 10.47, 4.09, width=2)
-flow(s, 8.0, 4.09, 4.95, 0.6, "Stop + E-Stop", fill=GREEN_PASS, border=DARK_GREEN, fs=11.5, bold=True, fg=DARK_GREEN)
-kpi(s, 8.0, 5.0, 2.4, "PEAK", "2992 N", h=0.95)
-kpi(s, 10.55, 5.0, 2.4, "UTS (true)", "47.4 MPa", h=0.95)
-banner(s, 0.4, 6.35, 12.55, 0.72, "No hand on the button — the rig detects its own fracture and halts in one sample.",
+header(s, 8.0, 1.28, 4.95, "ACTIVATION CONDITION")
+flow(s, 8.0, 1.72, 4.95, 1.55,
+     "ARM  when load ≥ 30% of peak\n\nFIRE  when load < 50% of peak\n(collapse)  →  Stop + E-Stop",
+     fill=YELLOW_WARN, border=FLOW_NEUTRAL, fs=12.5, bold=True)
+kpi(s, 8.0, 3.5, 2.4, "PEAK", "2992 N", h=0.9)
+kpi(s, 10.55, 3.5, 2.4, "UTS (true)", "47.4 MPa", h=0.9)
+tb(s, 8.0, 4.62, 4.95, 1.0, "Fires in ONE sample after the load collapses — no hand on the button.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+banner(s, 0.4, 6.35, 12.55, 0.72, "The rig detects its OWN fracture and halts — arm at 30% of peak, fire at 50% collapse.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
 pageno(s, 170)
 
@@ -907,7 +913,37 @@ banner(s, 0.4, 6.35, 12.55, 0.72,
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
 pageno(s, 171)
 
-# ---- Slide 172: two fracture methods — when to use which ----
+# ---- Slide 172: strain-rate — report plots (S19, 50%) + speed limits ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "STRAIN-RATE FRACTURE — REPORT PLOTS  (S19, 50% infill)")
+s.shapes.add_picture("feat_sr_plots.png", Inches(0.5), Inches(1.5), width=Inches(12.3))
+header(s, 0.4, 5.02, 12.55, "Closed-loop speed limits")
+kpi(s, 0.4, 5.46, 3.9, "TARGET RATE", "0.0005 /s")
+kpi(s, 4.55, 5.46, 3.9, "MIN SPEED", "0.005 mm/s")
+kpi(s, 8.7, 5.46, 4.25, "MAX SPEED (cap)", "0.20 mm/s")
+footer(s, "S19 (50%) fractures ~1.4 kN — under the motor ceiling. The loop varied crosshead speed 0.005–0.20 mm/s to hold 0.0005 /s to fracture.")
+pageno(s, 172)
+
+# ---- Slide 173: safety guards & limits ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SAFETY GUARDS & LIMITS — WHAT STOPS THE TEST")
+header(s, 0.4, 1.28, 12.55, "Guards that halt a driven test")
+guards = [["Guard", "Trips when", "Action"],
+          ["Fracture auto-stop", "load < 50% of peak (armed at 30%)", "Stop"],
+          ["Stall guard", "crosshead < 0.05 mm in 6 s under load > 200 N", "Stop + E-Stop"],
+          ["Dead-DIC guard", "DIC strain frozen (markers lost)", "freeze speed 0.2 s → HALT 1.0 s"],
+          ["Force backstop", "load ≥ 10 kN", "Stop + E-Stop"],
+          ["Travel backstop", "crosshead travel ≥ 30 mm", "Stop + E-Stop"],
+          ["Timeout", "runtime ≥ 900 s", "Stop"]]
+table(s, 0.4, 1.72, 12.55, 3.55, guards, cw=[2.9, 6.6, 3.05], hf=11, bf=10)
+banner(s, 0.4, 5.5, 12.55, 1.0,
+       "HARD LIMITS —  force 10 kN  ·  travel 30 mm  ·  stall 0.05 mm in 6 s (>200 N)  ·  dead-DIC halt 1.0 s  ·  timeout 900 s.   "
+       "Any breach → Stop + E-Stop.",
+       fill=YELLOW_WARN, fg=BLACK, fs=12)
+footer(s, "Layered so a driven test (preload · fracture · strain-rate) can't run away — protects the motor, the printed grips and the 3 t load cell.")
+pageno(s, 173)
+
+# ---- Slide 174: two fracture methods — when to use which ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "TWO WAYS TO FRACTURE — WHEN TO USE WHICH")
 meth = [["", "Direct motor speed", "Strain-rate fracture"],
@@ -921,7 +957,7 @@ header(s, 0.4, 4.9, 12.55, "Suggestion")
 flow(s, 0.4, 5.37, 6.2, 1.0, "MAX pulling force or a quick UTS?\n→  DIRECT motor speed", fill=LIGHT_BLUE, border=FLOW_BLUE, fs=12.5, bold=True)
 flow(s, 6.75, 5.37, 6.2, 1.0, "Controlled material strain rate (comparable)?\n→  STRAIN-RATE fracture", fill=GREEN_PASS, border=DARK_GREEN, fs=12.5, bold=True, fg=DARK_GREEN)
 footer(s, "Both auto-stop on fracture (same detector) + stall guard. On THIS rig (torque ~2.6 kN today) use 50% / smaller specimens for strain-rate to reach break.")
-pageno(s, 172)
+pageno(s, 174)
 
 # ---- Slide 173: innovation roadmap — workflow ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -945,27 +981,62 @@ arrow(s, 8.77, 5.45, 8.98, 5.45, width=2)
 flow(s, 9.0, 4.98, 3.95, 0.95, "3 · UX wizard +\nlive overlay", fill=WHITE, border=FLOW_BLUE, fs=11.5, bold=True)
 banner(s, 0.4, 6.2, 12.55, 0.72, "Hardware gate — motor torque ~2.6 kN today; fix driver Vref / cooling to fracture 100% infill.",
        fill=YELLOW_WARN, fg=BLACK, fs=11)
-pageno(s, 173)
+pageno(s, 175)
 
-# ---- Slide 174: UI proof — report + settings ----
+# ---- Slide 176: DIC health HUD — modes ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "DIC HEALTH HUD — LIVE TRACKING QUALITY")
+pic_or_ph(s, "feat_dic_hud.png", 0.4, 1.3, 8.2, 0.8, "[ drop feat_dic_hud.png here — your DIC-HUD screenshot ]")
+tb(s, 8.8, 1.28, 4.15, 0.95, "A live badge on both test tabs:\nmarkers found / expected · % frames tracked · pixel jitter.",
+   fs=11, italic=True, colour=GREY_TEXT)
+header(s, 0.4, 2.35, 12.55, "What each state means")
+modes = [["State", "Colour", "Condition", "Meaning"],
+         ["OK", "green", "all markers · ≥ 95% tracked · jitter ≤ 1.5 px", "trust the strain"],
+         ["WARN", "amber", "70–95% tracked  OR  jitter > 1.5 px", "degraded — re-light / watch"],
+         ["BAD", "red", "a marker missing  OR  < 70% tracked", "unreliable — fix before pulling"],
+         ["NO DATA", "grey", "camera off / no frames", "—"]]
+mov = {(1, 1): {'bg': GREEN_PASS, 'bold': True}, (2, 1): {'bg': YELLOW_WARN, 'bold': True},
+       (3, 1): {'bg': RED_FAIL, 'bold': True}, (4, 1): {'bg': GREY_PLANNED, 'bold': True}}
+table(s, 0.4, 2.8, 12.55, 2.65, modes, cw=[1.7, 1.4, 5.9, 3.55], hf=11, bf=10.5, ov=mov)
+banner(s, 0.4, 5.75, 12.55, 0.9,
+       "Recorded per-frame in the CSV (DIC_Blobs column) — so you know DIC was reliable, and can PROVE it after the test.",
+       fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
+pageno(s, 176)
+
+# ---- Slide 177: DIC-driven safety halt — proof (S17) ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "DIC-DRIVEN SAFETY — HALT IF TRACKING GOES BAD  (proof, S17)")
+s.shapes.add_picture("feat_dic_halt.png", Inches(0.35), Inches(1.55), width=Inches(7.3))
+header(s, 7.9, 1.28, 5.05, "CONDITION")
+flow(s, 7.9, 1.72, 5.05, 1.6,
+     "During a strain-rate test, if DIC strain FREEZES (markers lost):\n\n•  FREEZE speed at 0.2 s\n•  HALT at 1.0 s",
+     fill=YELLOW_WARN, border=FLOW_NEUTRAL, fs=12, bold=True)
+header(s, 7.9, 3.55, 5.05, "Why")
+tb(s, 7.9, 3.98, 5.05, 1.9,
+   "The loop STEERS on DIC strain.\n\nIf tracking dies it is blind — so it stops instead of pulling on stale / frozen data.",
+   fs=11.5, colour=BLACK)
+banner(s, 0.4, 6.35, 12.55, 0.72, "S17 — covered a marker mid-test → DIC went BAD → motor auto-halted. No runaway on blind data.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
+pageno(s, 177)
+
+# ---- Slide 178: UI proof — report + settings screenshot ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "IN THE APP — ONE-CLICK REPORT & SAVED SETTINGS")
 header(s, 0.4, 1.28, 6.2, "Generate report  →  one-page PDF + PNGs")
 s.shapes.add_picture("feat_report_s16.png", Inches(0.4), Inches(1.78), width=Inches(6.15))
 header(s, 6.95, 1.28, 6.0, "Settings  —  save a setup, reload in 1 click")
-flow(s, 6.95, 1.78, 6.0, 0.55, "Settings:  [ Default v ]   [ Load ]   [ Save... ]   Infill %: [ 100 ]",
-     fill=LIGHT_GREY, border=FLOW_NEUTRAL, fs=11, bold=True)
-tb(s, 6.95, 2.55, 6.0, 3.2,
+pic_or_ph(s, "feat_settings_ui.png", 6.95, 1.78, 6.0, 0.6, "[ drop feat_settings_ui.png here — your Settings screenshot ]")
+tb(s, 6.95, 2.65, 6.0, 3.1,
    "•  Saves area · gauge · preload · speed · mode + params\n\n"
    "•  'Default' always present (auto-stop ON)\n\n"
    "•  Reload a full test setup with ONE click\n\n"
    "•  Infill % = recorded label only (does NOT change data)\n\n"
    "•  Report reads the CSV header → KPIs + 4 plots + validation",
    fs=11.5, colour=BLACK)
-footer(s, "Report shown is the REAL S16 one-pager (auto-generated: reports/…200615_report.png). Settings row is a schematic of the Motor-Control controls.")
-pageno(s, 174)
+footer(s, "Report shown is the REAL S16 one-pager (auto-generated). Settings image = the live Motor-Control controls.")
+pageno(s, 178)
 
-# ---- Slide 175: specimen register ----
+# ---- Slide 179: specimen register ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "SPECIMEN REGISTER  (S1 – S19)")
 Lc = [["Spec", "Infill", "Colour", "Test / result"],
@@ -975,16 +1046,16 @@ Lc = [["Spec", "Infill", "Colour", "Test / result"],
 Rc = [["Spec", "Infill", "Colour", "Test / result"],
       ["S10", "100%", "", "V6c · 46.8 MPa"], ["S11", "100%", "", "V6d · 46.1 MPa"], ["S12", "", "", ""],
       ["S13", "", "", ""], ["S14", "", "", ""], ["S15", "100%", "", "stall (no fracture)"],
-      ["S16", "100%", "", "first 100% fracture · 47.4"], ["S17", "100%", "", "halt tests · SR-frac"],
-      ["S18", "", "", ""], ["S19", "50%", "", "V1 batch"]]
+      ["S16", "100%", "", "first 100% fracture · 47.4"], ["S17", "100%", "", "halt tests (DIC / stall)"],
+      ["S18", "", "", ""], ["S19", "50%", "", "strain-rate frac · 17.3 MPa"]]
 table(s, 0.4, 1.4, 6.2, 4.95, Lc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
 table(s, 6.75, 1.4, 6.2, 4.95, Rc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
 footer(s, "All spray markers (black dots on PLA). V1_Spray batch = 50% · V2_Spray = 100%. Colour (white/black) + blank cells to be filled by operator.")
-pageno(s, 175)
+pageno(s, 179)
 
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print("Saved: V6a_8_6_20_slides.pptx (35 slides, pages 141-175)")
+    print("Saved: V6a_8_6_20_slides.pptx (39 slides, pages 141-179)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (35 slides)")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (39 slides)")
