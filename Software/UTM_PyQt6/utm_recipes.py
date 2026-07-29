@@ -24,7 +24,7 @@ class TestRecipe:
     preload_N: float = 470.0
     test_speed_mm_s: float = 0.1
     mode: str = "manual"                  # manual | strain-rate | cyclic | staircase | relaxation | creep
-    strain_rate: float = 0.001            # used when mode == strain-rate (1/s)
+    strain_rate: float = 0.0005           # used when mode == strain-rate (1/s)
     auto_stop_fracture: bool = True       # auto-halt the pull on load collapse
     notes: str = ""
 
