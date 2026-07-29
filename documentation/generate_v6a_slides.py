@@ -986,7 +986,7 @@ pageno(s, 175)
 # ---- Slide 176: DIC health HUD — modes ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "DIC HEALTH HUD — LIVE TRACKING QUALITY")
-pic_or_ph(s, "feat_dic_hud.png", 0.4, 1.3, 8.2, 0.8, "[ drop feat_dic_hud.png here — your DIC-HUD screenshot ]")
+pic_or_ph(s, "DIC HUD UI Screenshot.png", 0.4, 1.35, 8.2, 0.8, "[ drop DIC HUD UI Screenshot.png here ]")
 tb(s, 8.8, 1.28, 4.15, 0.95, "A live badge on both test tabs:\nmarkers found / expected · % frames tracked · pixel jitter.",
    fs=11, italic=True, colour=GREY_TEXT)
 header(s, 0.4, 2.35, 12.55, "What each state means")
@@ -1025,7 +1025,7 @@ title(s, "IN THE APP — ONE-CLICK REPORT & SAVED SETTINGS")
 header(s, 0.4, 1.28, 6.2, "Generate report  →  one-page PDF + PNGs")
 s.shapes.add_picture("feat_report_s16.png", Inches(0.4), Inches(1.78), width=Inches(6.15))
 header(s, 6.95, 1.28, 6.0, "Settings  —  save a setup, reload in 1 click")
-pic_or_ph(s, "feat_settings_ui.png", 6.95, 1.78, 6.0, 0.6, "[ drop feat_settings_ui.png here — your Settings screenshot ]")
+pic_or_ph(s, "Settings save_UI_Screenshot.png", 6.95, 1.85, 6.0, 0.6, "[ drop Settings save_UI_Screenshot.png here ]")
 tb(s, 6.95, 2.65, 6.0, 3.1,
    "•  Saves area · gauge · preload · speed · mode + params\n\n"
    "•  'Default' always present (auto-stop ON)\n\n"
@@ -1056,7 +1056,7 @@ pageno(s, 179)
 # ---- Slide 180: buck-converter enclosure CAD ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "BUCK-CONVERTER ENCLOSURE — CAD (PLA)")
-pic_or_ph(s, "feat_buck_enclosure.png", 0.5, 1.35, 6.7, 5.48, "[ drop feat_buck_enclosure.png here — CAD screenshot ]")
+pic_or_ph(s, "Buckconverter_Enclosure_CAD.png", 0.5, 1.4, 6.3, 5.43, "[ drop Buckconverter_Enclosure_CAD.png here ]")
 header(s, 7.35, 1.28, 5.55, "Purpose")
 tb(s, 7.35, 1.7, 5.55, 0.95, "PLA-printed enclosure that houses the buck converter powering the LED ring lights.",
    fs=12, colour=BLACK)
