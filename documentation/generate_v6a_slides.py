@@ -1053,9 +1053,28 @@ table(s, 6.75, 1.4, 6.2, 4.95, Rc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
 footer(s, "All spray markers (black dots on PLA). V1_Spray batch = 50% · V2_Spray = 100%. Colour (white/black) + blank cells to be filled by operator.")
 pageno(s, 179)
 
+# ---- Slide 180: buck-converter enclosure CAD ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "BUCK-CONVERTER ENCLOSURE — CAD (PLA)")
+pic_or_ph(s, "feat_buck_enclosure.png", 0.5, 1.35, 6.7, 5.48, "[ drop feat_buck_enclosure.png here — CAD screenshot ]")
+header(s, 7.35, 1.28, 5.55, "Purpose")
+tb(s, 7.35, 1.7, 5.55, 0.95, "PLA-printed enclosure that houses the buck converter powering the LED ring lights.",
+   fs=12, colour=BLACK)
+flow(s, 7.35, 2.78, 3.55, 0.62, "1 · PCB locating pins", fill=LIGHT_BLUE, border=FLOW_RED, fs=12, bold=True)
+arrow(s, 7.35, 3.09, 4.2, 3.2, colour=FLOW_RED, width=2.25)
+flow(s, 7.35, 4.35, 3.95, 0.62, "2 · LED-switch extrusion", fill=LIGHT_BLUE, border=FLOW_RED, fs=12, bold=True)
+arrow(s, 7.35, 4.66, 2.0, 5.05, colour=FLOW_RED, width=2.25)
+tb(s, 7.35, 5.28, 5.55, 1.4,
+   "•  Pins align + hold the buck-converter PCB\n\n"
+   "•  Side extrusion = housing for the LED on/off switch\n\n"
+   "•  Open top + side slots for wiring / mounting",
+   fs=11.5, colour=BLACK)
+footer(s, "CAD for a PLA-printed part. Callout arrows mark the PCB locating pins (floor posts) and the LED-switch extrusion (side tube).")
+pageno(s, 180)
+
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print("Saved: V6a_8_6_20_slides.pptx (39 slides, pages 141-179)")
+    print("Saved: V6a_8_6_20_slides.pptx (40 slides, pages 141-180)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (39 slides)")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (40 slides)")
