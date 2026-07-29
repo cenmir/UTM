@@ -55,6 +55,10 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
 - ⬜ **Auto-metadata + foldering** and **one-click per-specimen deck** (extract pptx builders → `utm_slides.py`).
 - ⬜ **Deferred script migration:** `v6a_plots.py` / `v6a_analyze.py` → shared `utm_analysis` (when it grows a live-plotting return).
 
+### Repo / version-control housekeeping
+- ⬜ **Track the untracked app source modules** — these core files were never committed: `camera_manager.py`, `serial_manager.py`, `camera_setup.py`, `roi_tool.py`, `widgets.py`, `build_exe.py`, `requirements.txt`. Add them so the app is fully version-controlled.
+- ⬜ **Add a `.gitignore`** so data / binaries stop showing as untracked: `8.6.20 - Tensile test to Failure/` (test CSVs), `*.mp4`, test/binary PNGs, `reports/`, `__pycache__/`, `recipes/` (user-local). Keep the deck plot-PNGs tracked.
+
 ---
 
 ## 4. Hardware constraints (not software — track separately)
