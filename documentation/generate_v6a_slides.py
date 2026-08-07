@@ -846,7 +846,7 @@ banner(s, 0.4, 6.5, 12.55, 0.72,
 pageno(s, 168)
 
 # =====================================================================================
-# NEW FEATURE SLIDES (169-179) — proof · methods · limits · roadmap · DIC-HUD · UI · register
+# NEW FEATURE SLIDES (169-182) — SF 1-8 overview, proof slides IN FEATURE ORDER, then context
 # =====================================================================================
 LIGHT_GREY = RGBColor(0xF2, 0xF2, 0xF2)
 
@@ -858,10 +858,10 @@ def pic_or_ph(sl, path, x, y, w, ph_h, note):
     else:
         flow(sl, x, y, w, ph_h, note, fill=LIGHT_GREY, border=FLOW_NEUTRAL, fs=11, bold=True, fg=GREY_TEXT)
 
-# ---- Slide 169: new feature set (card grid) ----
+# ---- Slide 169: SMART-UTM feature set (SF 1-8) — proof slides FOLLOW in this order ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "NEW — SMART-UTM FEATURE SET (2026-07)")
-tb(s, 0.4, 1.24, 12.55, 0.5, "Every card below is built AND rig-validated (green).", fs=12, italic=True, colour=GREY_TEXT)
+tb(s, 0.4, 1.24, 12.55, 0.5, "Every card is built AND rig-validated (green). Proof slides FOLLOW in this same SF 1-8 order.", fs=12, italic=True, colour=GREY_TEXT)
 cards = [
     ("DIC health HUD", "live 2/2 · jitter"), ("Prepare specimen", "1-click tare all"),
     ("Settings save / load", "reuse a setup"), ("Generate report", "1-click PDF + PNG"),
@@ -870,7 +870,7 @@ cards = [
 ]
 cx = [0.4, 3.62, 6.84, 10.06]; cy = [1.85, 3.75]
 for i, (t_, b_) in enumerate(cards):
-    flow(s, cx[i % 4], cy[i // 4], 3.0, 1.5, t_ + "\n\n" + b_, fill=GREEN_PASS, border=DARK_GREEN, fs=12, bold=True, fg=DARK_GREEN)
+    flow(s, cx[i % 4], cy[i // 4], 3.0, 1.5, "SF %d\n%s\n\n%s" % (i + 1, t_, b_), fill=GREEN_PASS, border=DARK_GREEN, fs=12, bold=True, fg=DARK_GREEN)
 banner(s, 0.4, 5.6, 12.55, 0.95,
        "3-layer safety on every driven test — load-collapse detector · stall guard · 10 kN / 30 mm backstop + dead-DIC "
        "freeze.  Engine ready to add 4 more modes: cyclic · staircase · relaxation · creep.",
@@ -878,7 +878,81 @@ banner(s, 0.4, 5.6, 12.55, 0.95,
 footer(s, "Details: Software/UTM_PyQt6/ROADMAP.md · TESTING_TODO.md. App wiring snapshot-committed (main.py a3b187f).")
 pageno(s, 169)
 
-# ---- Slide 170: auto-stop at fracture — proof ----
+# ---- Slide 170: SF 1 · DIC health HUD — modes  [content unchanged, was slide 176] ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "DIC HEALTH HUD — LIVE TRACKING QUALITY")
+pic_or_ph(s, "DIC HUD UI Screenshot.png", 0.4, 1.35, 8.2, 0.8, "[ drop DIC HUD UI Screenshot.png here ]")
+tb(s, 8.8, 1.28, 4.15, 0.95, "A live badge on both test tabs:\nmarkers found / expected · % frames tracked · pixel jitter.",
+   fs=11, italic=True, colour=GREY_TEXT)
+header(s, 0.4, 2.35, 12.55, "What each state means")
+modes = [["State", "Colour", "Condition", "Meaning"],
+         ["OK", "green", "all markers · ≥ 95% tracked · jitter ≤ 1.5 px", "trust the strain"],
+         ["WARN", "amber", "70–95% tracked  OR  jitter > 1.5 px", "degraded — re-light / watch"],
+         ["BAD", "red", "a marker missing  OR  < 70% tracked", "unreliable — fix before pulling"],
+         ["NO DATA", "grey", "camera off / no frames", "—"]]
+mov = {(1, 1): {'bg': GREEN_PASS, 'bold': True}, (2, 1): {'bg': YELLOW_WARN, 'bold': True},
+       (3, 1): {'bg': RED_FAIL, 'bold': True}, (4, 1): {'bg': GREY_PLANNED, 'bold': True}}
+table(s, 0.4, 2.8, 12.55, 2.65, modes, cw=[1.7, 1.4, 5.9, 3.55], hf=11, bf=10.5, ov=mov)
+banner(s, 0.4, 5.75, 12.55, 0.9,
+       "Recorded per-frame in the CSV (DIC_Blobs column) — so you know DIC was reliable, and can PROVE it after the test.",
+       fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
+pageno(s, 170)
+
+# ---- Slide 171: SF 1 · DIC-driven safety halt — proof (S17)  [content unchanged, was slide 177] ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "DIC-DRIVEN SAFETY — HALT IF TRACKING GOES BAD  (proof, S17)")
+s.shapes.add_picture("feat_dic_halt.png", Inches(0.35), Inches(1.55), width=Inches(7.3))
+header(s, 7.9, 1.28, 5.05, "CONDITION")
+flow(s, 7.9, 1.72, 5.05, 1.6,
+     "During a strain-rate test, if DIC strain FREEZES (markers lost):\n\n•  FREEZE speed at 0.2 s\n•  HALT at 1.0 s",
+     fill=YELLOW_WARN, border=FLOW_NEUTRAL, fs=12, bold=True)
+header(s, 7.9, 3.55, 5.05, "Why")
+tb(s, 7.9, 3.98, 5.05, 1.9,
+   "The loop STEERS on DIC strain.\n\nIf tracking dies it is blind — so it stops instead of pulling on stale / frozen data.",
+   fs=11.5, colour=BLACK)
+banner(s, 0.4, 6.35, 12.55, 0.72, "S17 — covered a marker mid-test → DIC went BAD → motor auto-halted. No runaway on blind data.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
+pageno(s, 171)
+
+# ---- Slide 172: SF 2 · Prepare specimen  [NEW] ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF 2 — PREPARE SPECIMEN  (one-click tare)")
+header(s, 0.4, 1.28, 12.55, "One click zeroes everything")
+pf = ["Tare position\n(δ = 0)", "Tare force\n(N = 0)", "Tare DIC\n(set L0)", "Clear plots\n+ consoles"]
+px_ = [0.4, 3.62, 6.84, 10.06]
+for i, tx in enumerate(pf):
+    flow(s, px_[i], 2.0, 3.0, 1.2, tx, fill=GREEN_PASS if i < 3 else LIGHT_BLUE, border=DARK_GREEN if i < 3 else FLOW_BLUE,
+         fs=12, bold=True, fg=DARK_GREEN if i < 3 else BLACK)
+    if i < 3:
+        arrow(s, px_[i] + 3.0, 2.6, px_[i + 1], 2.6, width=2)
+tb(s, 0.4, 3.6, 12.55, 1.6,
+   "•  Replaces the old 3-click tare with ONE button\n\n"
+   "•  DIC tares only at green 2/2 — otherwise 'DIC skipped' (honest, no false L0)\n\n"
+   "•  Leaves a clean, ready-to-pull baseline",
+   fs=12, colour=BLACK)
+banner(s, 0.4, 5.55, 12.55, 0.9, "Rig-validated — position + force + DIC all zeroed, consoles + stress-strain plot cleared, from one press.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
+footer(s, "Feature in Software/UTM_PyQt6/main.py (Prepare specimen button). Validated 2026-07-28.")
+pageno(s, 172)
+
+# ---- Slide 173: SF 3 & 4 · Report + Settings  [content unchanged, was slide 178] ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "IN THE APP — ONE-CLICK REPORT & SAVED SETTINGS")
+header(s, 0.4, 1.28, 6.2, "Generate report  →  one-page PDF + PNGs")
+s.shapes.add_picture("feat_report_s16.png", Inches(0.4), Inches(1.78), width=Inches(6.15))
+header(s, 6.95, 1.28, 6.0, "Settings  —  save a setup, reload in 1 click")
+pic_or_ph(s, "Settings save_UI_Screenshot.png", 6.95, 1.85, 6.0, 0.6, "[ drop Settings save_UI_Screenshot.png here ]")
+tb(s, 6.95, 2.65, 6.0, 3.1,
+   "•  Saves area · gauge · preload · speed · mode + params\n\n"
+   "•  'Default' always present (auto-stop ON)\n\n"
+   "•  Reload a full test setup with ONE click\n\n"
+   "•  Infill % = recorded label only (does NOT change data)\n\n"
+   "•  Report reads the CSV header → KPIs + 4 plots + validation",
+   fs=11.5, colour=BLACK)
+footer(s, "Report shown is the REAL S16 one-pager (auto-generated). Settings image = the live Motor-Control controls.")
+pageno(s, 173)
+
+# ---- Slide 174: SF 5 · auto-stop at fracture — proof  [content unchanged, was slide 170] ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PROOF — AUTO-STOP AT FRACTURE  (S16, 100% infill)")
 s.shapes.add_picture("feat_autostop_proof.png", Inches(0.35), Inches(1.55), width=Inches(7.4))
@@ -892,9 +966,9 @@ tb(s, 8.0, 4.62, 4.95, 1.0, "Fires in ONE sample after the load collapses — no
    fs=11.5, italic=True, colour=GREY_TEXT)
 banner(s, 0.4, 6.35, 12.55, 0.72, "The rig detects its OWN fracture and halts — arm at 30% of peak, fire at 50% collapse.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
-pageno(s, 170)
+pageno(s, 174)
 
-# ---- Slide 171: strain-rate fracture — results & why ----
+# ---- Slide 175: SF 6 · strain-rate fracture — results & why  [content unchanged, was slide 171] ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "STRAIN-RATE FRACTURE TEST — RESULTS & WHY IT WORKS")
 s.shapes.add_picture("feat_strainrate_proof.png", Inches(0.35), Inches(1.55), width=Inches(7.4))
@@ -911,9 +985,9 @@ tb(s, 8.0, 4.38, 4.95, 1.9,
 banner(s, 0.4, 6.35, 12.55, 0.72,
        "Held 0.00051 /s (target 0.0005) while HALVING crosshead speed 0.10 → 0.05 mm/s — a fixed-speed pull cannot.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
-pageno(s, 171)
+pageno(s, 175)
 
-# ---- Slide 172: strain-rate — report plots (S19, 50%) + speed limits ----
+# ---- Slide 176: SF 6 · strain-rate — report plots (S19, 50%)  [content unchanged, was slide 172] ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "STRAIN-RATE FRACTURE — REPORT PLOTS  (S19, 50% infill)")
 s.shapes.add_picture("feat_sr_plots.png", Inches(0.5), Inches(1.5), width=Inches(12.3))
@@ -922,9 +996,9 @@ kpi(s, 0.4, 5.46, 3.9, "TARGET RATE", "0.0005 /s")
 kpi(s, 4.55, 5.46, 3.9, "MIN SPEED", "0.005 mm/s")
 kpi(s, 8.7, 5.46, 4.25, "MAX SPEED (cap)", "0.20 mm/s")
 footer(s, "S19 (50%) fractures ~1.4 kN — under the motor ceiling. The loop varied crosshead speed 0.005–0.20 mm/s to hold 0.0005 /s to fracture.")
-pageno(s, 172)
+pageno(s, 176)
 
-# ---- Slide 173: safety guards & limits ----
+# ---- Slide 177: SF 7 · safety guards & limits (stall guard)  [content unchanged, was slide 173] ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "SAFETY GUARDS & LIMITS — WHAT STOPS THE TEST")
 header(s, 0.4, 1.28, 12.55, "Guards that halt a driven test")
@@ -941,9 +1015,30 @@ banner(s, 0.4, 5.5, 12.55, 1.0,
        "Any breach → Stop + E-Stop.",
        fill=YELLOW_WARN, fg=BLACK, fs=12)
 footer(s, "Layered so a driven test (preload · fracture · strain-rate) can't run away — protects the motor, the printed grips and the 3 t load cell.")
-pageno(s, 173)
+pageno(s, 177)
 
-# ---- Slide 174: two fracture methods — when to use which ----
+# ---- Slide 178: SF 8 · Release preload  [NEW] ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF 8 — RELEASE PRELOAD  (safe return to 0)")
+header(s, 0.4, 1.28, 12.55, "Controlled unload after a preload")
+rf = ["Preloaded\nspecimen", "Reverse at\n0.30 mm/s", "Stop at\n~5 N"]
+rx = [0.4, 4.35, 8.3]
+for i, tx in enumerate(rf):
+    flow(s, rx[i], 2.0, 3.1, 1.15, tx, fill=LIGHT_BLUE if i < 2 else GREEN_PASS, border=FLOW_BLUE if i < 2 else DARK_GREEN,
+         fs=12.5, bold=True, fg=BLACK if i < 2 else DARK_GREEN)
+    if i < 2:
+        arrow(s, rx[i] + 3.1, 2.57, rx[i + 1], 2.57, width=2)
+header(s, 0.4, 3.45, 12.55, "Limits")
+kpi(s, 0.4, 3.9, 3.0, "RELEASE SPEED", "0.30 mm/s")
+kpi(s, 3.62, 3.9, 3.0, "TARGET", "5 N")
+kpi(s, 6.84, 3.9, 3.0, "RISE CAP", "50 N")
+kpi(s, 10.06, 3.9, 2.9, "TIMEOUT", "180 s")
+banner(s, 0.4, 5.15, 12.55, 0.95, "Rig-validated — eases tension off the specimen + grips; live-SetSpeed only (no re-latch runaway); stops on target / rise-cap / timeout.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
+footer(s, "Feature in Software/UTM_PyQt6/main.py (Release preload button). Validated 2026-07-28.")
+pageno(s, 178)
+
+# ---- Slide 179: two fracture methods — when to use which  [content unchanged, was slide 174] ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "TWO WAYS TO FRACTURE — WHEN TO USE WHICH")
 meth = [["", "Direct motor speed", "Strain-rate fracture"],
@@ -957,9 +1052,9 @@ header(s, 0.4, 4.9, 12.55, "Suggestion")
 flow(s, 0.4, 5.37, 6.2, 1.0, "MAX pulling force or a quick UTS?\n→  DIRECT motor speed", fill=LIGHT_BLUE, border=FLOW_BLUE, fs=12.5, bold=True)
 flow(s, 6.75, 5.37, 6.2, 1.0, "Controlled material strain rate (comparable)?\n→  STRAIN-RATE fracture", fill=GREEN_PASS, border=DARK_GREEN, fs=12.5, bold=True, fg=DARK_GREEN)
 footer(s, "Both auto-stop on fracture (same detector) + stall guard. On THIS rig (torque ~2.6 kN today) use 50% / smaller specimens for strain-rate to reach break.")
-pageno(s, 174)
+pageno(s, 179)
 
-# ---- Slide 173: innovation roadmap — workflow ----
+# ---- Slide 180: innovation roadmap — workflow  [content unchanged, was slide 175] ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "INNOVATION ROADMAP — AT A GLANCE")
 ph = [("0 · Foundations", "analysis · engine · recipes", GREEN_PASS, DARK_GREEN, "DONE"),
@@ -981,62 +1076,9 @@ arrow(s, 8.77, 5.45, 8.98, 5.45, width=2)
 flow(s, 9.0, 4.98, 3.95, 0.95, "3 · UX wizard +\nlive overlay", fill=WHITE, border=FLOW_BLUE, fs=11.5, bold=True)
 banner(s, 0.4, 6.2, 12.55, 0.72, "Hardware gate — motor torque ~2.6 kN today; fix driver Vref / cooling to fracture 100% infill.",
        fill=YELLOW_WARN, fg=BLACK, fs=11)
-pageno(s, 175)
+pageno(s, 180)
 
-# ---- Slide 176: DIC health HUD — modes ----
-s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "DIC HEALTH HUD — LIVE TRACKING QUALITY")
-pic_or_ph(s, "DIC HUD UI Screenshot.png", 0.4, 1.35, 8.2, 0.8, "[ drop DIC HUD UI Screenshot.png here ]")
-tb(s, 8.8, 1.28, 4.15, 0.95, "A live badge on both test tabs:\nmarkers found / expected · % frames tracked · pixel jitter.",
-   fs=11, italic=True, colour=GREY_TEXT)
-header(s, 0.4, 2.35, 12.55, "What each state means")
-modes = [["State", "Colour", "Condition", "Meaning"],
-         ["OK", "green", "all markers · ≥ 95% tracked · jitter ≤ 1.5 px", "trust the strain"],
-         ["WARN", "amber", "70–95% tracked  OR  jitter > 1.5 px", "degraded — re-light / watch"],
-         ["BAD", "red", "a marker missing  OR  < 70% tracked", "unreliable — fix before pulling"],
-         ["NO DATA", "grey", "camera off / no frames", "—"]]
-mov = {(1, 1): {'bg': GREEN_PASS, 'bold': True}, (2, 1): {'bg': YELLOW_WARN, 'bold': True},
-       (3, 1): {'bg': RED_FAIL, 'bold': True}, (4, 1): {'bg': GREY_PLANNED, 'bold': True}}
-table(s, 0.4, 2.8, 12.55, 2.65, modes, cw=[1.7, 1.4, 5.9, 3.55], hf=11, bf=10.5, ov=mov)
-banner(s, 0.4, 5.75, 12.55, 0.9,
-       "Recorded per-frame in the CSV (DIC_Blobs column) — so you know DIC was reliable, and can PROVE it after the test.",
-       fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
-pageno(s, 176)
-
-# ---- Slide 177: DIC-driven safety halt — proof (S17) ----
-s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "DIC-DRIVEN SAFETY — HALT IF TRACKING GOES BAD  (proof, S17)")
-s.shapes.add_picture("feat_dic_halt.png", Inches(0.35), Inches(1.55), width=Inches(7.3))
-header(s, 7.9, 1.28, 5.05, "CONDITION")
-flow(s, 7.9, 1.72, 5.05, 1.6,
-     "During a strain-rate test, if DIC strain FREEZES (markers lost):\n\n•  FREEZE speed at 0.2 s\n•  HALT at 1.0 s",
-     fill=YELLOW_WARN, border=FLOW_NEUTRAL, fs=12, bold=True)
-header(s, 7.9, 3.55, 5.05, "Why")
-tb(s, 7.9, 3.98, 5.05, 1.9,
-   "The loop STEERS on DIC strain.\n\nIf tracking dies it is blind — so it stops instead of pulling on stale / frozen data.",
-   fs=11.5, colour=BLACK)
-banner(s, 0.4, 6.35, 12.55, 0.72, "S17 — covered a marker mid-test → DIC went BAD → motor auto-halted. No runaway on blind data.",
-       fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
-pageno(s, 177)
-
-# ---- Slide 178: UI proof — report + settings screenshot ----
-s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "IN THE APP — ONE-CLICK REPORT & SAVED SETTINGS")
-header(s, 0.4, 1.28, 6.2, "Generate report  →  one-page PDF + PNGs")
-s.shapes.add_picture("feat_report_s16.png", Inches(0.4), Inches(1.78), width=Inches(6.15))
-header(s, 6.95, 1.28, 6.0, "Settings  —  save a setup, reload in 1 click")
-pic_or_ph(s, "Settings save_UI_Screenshot.png", 6.95, 1.85, 6.0, 0.6, "[ drop Settings save_UI_Screenshot.png here ]")
-tb(s, 6.95, 2.65, 6.0, 3.1,
-   "•  Saves area · gauge · preload · speed · mode + params\n\n"
-   "•  'Default' always present (auto-stop ON)\n\n"
-   "•  Reload a full test setup with ONE click\n\n"
-   "•  Infill % = recorded label only (does NOT change data)\n\n"
-   "•  Report reads the CSV header → KPIs + 4 plots + validation",
-   fs=11.5, colour=BLACK)
-footer(s, "Report shown is the REAL S16 one-pager (auto-generated). Settings image = the live Motor-Control controls.")
-pageno(s, 178)
-
-# ---- Slide 179: specimen register ----
+# ---- Slide 181: specimen register  [content unchanged, was slide 179] ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "SPECIMEN REGISTER  (S1 – S19)")
 Lc = [["Spec", "Infill", "Colour", "Test / result"],
@@ -1051,7 +1093,7 @@ Rc = [["Spec", "Infill", "Colour", "Test / result"],
 table(s, 0.4, 1.4, 6.2, 4.95, Lc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
 table(s, 6.75, 1.4, 6.2, 4.95, Rc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
 footer(s, "All spray markers (black dots on PLA). V1_Spray batch = 50% · V2_Spray = 100%. Colour (white/black) + blank cells to be filled by operator.")
-pageno(s, 179)
+pageno(s, 181)
 
 # ---- Slide 180: buck-converter enclosure CAD ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1070,11 +1112,11 @@ tb(s, 7.35, 5.28, 5.55, 1.4,
    "•  Open top + side slots for wiring / mounting",
    fs=11.5, colour=BLACK)
 footer(s, "CAD for a PLA-printed part. Callout arrows mark the PCB locating pins (floor posts) and the LED-switch extrusion (side tube).")
-pageno(s, 180)
+pageno(s, 182)
 
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print("Saved: V6a_8_6_20_slides.pptx (40 slides, pages 141-180)")
+    print("Saved: V6a_8_6_20_slides.pptx (42 slides, pages 141-182)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (40 slides)")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (42 slides)")
