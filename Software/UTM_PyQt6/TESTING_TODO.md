@@ -55,6 +55,43 @@ A coloured badge on both test tabs: `DIC OK/WARN/BAD · N/2 markers · track % �
 - [x] **50% specimen (fractures ~1.4 kN, under today's ~2.6 kN torque ceiling):** strain-rate held **0.00051 /s vs 0.0005 target** while the crosshead speed **auto-adapted 0.10 → 0.05 mm/s** (fast in stiff elastic, slow in necking) — true constant-*gauge*-strain-rate control, not constant crosshead speed. **Fractured** (UTS 1387 N / 17.3 MPa nominal, 20.5 MPa anchor-corr, anchor 255 N) and **auto-stopped on load collapse**. Speed ≤ 0.2 cap, no stall.
 - NOTE: the 100% attempts (S17/fresh) could NOT fracture — motor's variable **torque ceiling ~2.6 kN today** (see `project_motor_stall_limit`), NOT a strain-rate issue (a normal S15 pull also stalled ~2.6). Infill label left at 100% in the CSV header (cosmetic; set Infill=50 next time).
 
+## 7. Advanced test modes — cyclic · staircase · relaxation · creep  (wired 2026-08-08)
+UI: "Advanced test modes (BETA)" segment in Motor Control — enable checkbox (greys the whole
+segment until ticked) → Test-type dropdown + per-mode settings + **?** help diagram → Start test.
+Shares `_policy_step` with strain-rate; `_policy_step` extended to drive **tension / compression /
+hold**, with **phase-aware guards** (stall guard silent during an intentional hold; dead-DIC guard
+only for DIC-steered modes) + adaptive timeout (hold duration + 300 s).
+All runs below on **scrap specimen #1** (100 % infill), 300 N preload → Prepare → run.
+
+### Session 1 — holds  ✅ PASS 2026-08-08
+- [x] **T1 Creep** (400 N / 60 s / 0.1): ramped, entered hold, parked **~395–403 N** with position frozen at 0.6135 mm for ~80 s; small compression nudges worked; clean "creep complete".
+  - ⚠️ **Overshoot 400 → 448 N (+12 %)** on arrival = the ~1 s decel coast. **FIX:** `CreepPolicy.ease_frac` (taper the last 25 % of the approach). Sim on a T1-calibrated plant: **38.8 N → 0.6 N**.
+- [x] **T2 Relaxation** (ε 0.010 / 60 s / 0.1): stopped ramping at ε 0.010 = **2145.9 N (26.8 MPa)**, held position 2.8252 mm, **force decayed 2145 → 2040 N (~5 %)** at flat strain — textbook stress relaxation. DIC 99 %.
+  - NOTE: ε targets are **heavy** on stiff 100 % infill (E≈2.68 GPa → ~215 N per 0.001 strain). ε 0.010 ≈ 2.45 kN absolute, near the ~2.6 kN ceiling. Use **ε 0.003–0.005** for a gentle elastic relaxation.
+- ✅ **Stall guard stayed silent through both holds** (crosshead frozen, load ≫ 200 N) — phase-aware fix validated on hardware.
+
+### Session 2 — staircase, Linear vs Smooth  ✅ PASS 2026-08-08
+Same specimen + identical settings (300 N start / 300 N step / 3 levels / 20 s dwell / 0.1), only the ramp shape differs.
+
+| Level | T3 **Linear** peak | over | T4 **Smooth** peak | over |
+|---|---|---|---|---|
+| 300 N | 345.5 N | **+45.5 (15.2 %)** | 306.0 N | **+6.0 (2.0 %)** |
+| 600 N | 646.8 N | **+46.8 (7.8 %)** | 604.8 N | **+4.8 (0.8 %)** |
+| 900 N | 952.6 N | **+52.6 (5.8 %)** | 907.8 N | **+7.8 (0.9 %)** |
+
+- [x] 3 levels hit in order; **dwells 20.3/20.2/20.0 s (T3), 20.4/20.5/20.0 s (T4)** — spot on.
+- [x] **Stall guard silent through all 6 dwells** (20 s frozen at 300–950 N).
+- [x] Sine speed profile visible in T4: **0.01 → 0.096 → 0.0025 mm/s** per ramp.
+- [x] Bonus real data — **stress relaxation at every level**: T3 −4.4/−2.9/−2.4 %, T4 −3.9/−2.9/−2.1 %.
+- ⚠️ Smooth **doubled ramp time** (25.3 s vs 12.7 s) because `sin(π·frac)` also eased the ramp *start*, which buys no accuracy. **FIX:** taper only the top `ease_frac` (matches creep). Sim on a T3/T4-calibrated plant (850 N/mm, 1.24 s decel): overshoot stays ≤1 N, ramp **27.0 s → 18.0 s** (linear 11.2 s).
+- **Verdict:** Smooth is the better default — ~85–90 % less overshoot for ~60 % more ramp time.
+
+### Session 3 — cyclic  ⬜ TODO (the only reversal-heavy mode)
+- [ ] **T5 Cyclic Triangle** — Low 100 / High 500 N / 3 cycles / 0.1. Watch the FIRST reversal; check reversal count + bounds respected.
+- [ ] **T6 Cyclic Sine** — identical but Waveform = Sine. Compare turnaround overshoot + hysteresis loops.
+- Loads ≤500 N (6.25 MPa, ~14 % of yield) — no fracture/stall risk. Save as `_T5_Triangle` / `_T6_Sine`.
+- **After Session 3:** build the deck slides for the 4 control modes (results + why each mode matters).
+
 ---
 
 ## Rig facts to report back (these unblock the remaining test modes)
