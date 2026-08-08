@@ -623,88 +623,6 @@ footer(s, "Feature in Software/UTM_PyQt6/main.py — PRELOAD_SPEED_KNOTS · TARG
           "TIMEOUT 180 s. Used to set the ~470 N preload before every V5 / V6 pull.")
 pageno(s, 162)
 
-# ===== SLIDE 23 — Engineering vs true (Cauchy) stress + measuring the current area =====
-s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "ENGINEERING vs TRUE (CAUCHY) STRESS — & MEASURING THE AREA")
-
-header(s, 0.4, 1.28, 6.1, "Why we REPORT engineering stress")
-s.shapes.add_picture("feat_eng_vs_true.png", Inches(0.4), Inches(1.66), width=Inches(6.15))
-tb(s, 0.4, 4.32, 6.15, 1.15,
-   "σ_eng = F / A₀  (REPORTED)      σ_true = F / A  (not tracked, ~2–5% higher)\n\n"
-   "Basis: ISO 527 · Chacón · datasheet all use ENGINEERING → apples-to-apples for our k-factors.  E & σ_y ~unchanged.",
-   fs=11, colour=BLACK)
-
-header(s, 6.75, 1.28, 6.2, "Measuring the CURRENT area → true stress (future)")
-meth = [
-    ["Method", "How", "Note"],
-    ["Poisson estimate", "A = A₀(1−ν·ε)²,  ν ≈ 0.35  (no hardware)", "cheap; ν drifts in yield"],
-    ["Transverse markers", "+2 dots across width → ε_w;  A ≈ A₀(1+ε_w)²", "reuses blob-DIC; gives Poisson"],
-    ["+ edge camera", "2nd view → thickness strain;  A = w·t", "rigorous; FDM is orthotropic"],
-    ["Full-field speckle", "fine random speckle + subset DIC", "strain field + necking; new pipeline"],
-]
-ovm = {(2, c): {'bg': GREEN_PASS, 'bold': c == 0} for c in range(3)}      # recommended row
-table(s, 6.75, 1.70, 6.25, 2.5, meth, cw=[1.35, 2.7, 1.6], hf=10, bf=9.5, ov=ovm)
-tb(s, 6.75, 4.32, 6.25, 1.05,
-   "Same speckle style (spray dots): just add a transverse dot pair — the current 2-marker tracker "
-   "extends naturally (2 axial + 2 transverse). A finer random speckle enables full-field DIC "
-   "(transverse field + necking) but needs a new analysis pipeline.",
-   fs=10.5, italic=True, colour=GREY_TEXT)
-
-banner(s, 0.4, 5.55, 12.6, 1.02,
-       "RECOMMENDED — a TRANSVERSE marker pair is the IDEAL route: measure width contraction ε_w with the "
-       "existing DIC (bonus: Poisson's ratio), then A(t) = A₀(1+ε_w)²,  σ_cauchy = F / A(t). BUT the current "
-       "specimen gauge is VERY NARROW so transverse dots barely fit → EDGE-WIDTH detection (slide 164) is the "
-       "SECOND-PREFERRED, practical route. Keep ENGINEERING stress as the reported / validated value; report "
-       "Cauchy as the physically-accurate supplement.", fill=LIGHT_BLUE, fg=BLACK, fs=11)
-footer(s, "Current V6 report & plots = engineering stress (nominal 80 mm²). True/Cauchy needs the deforming "
-          "area; post-necking needs full-field DIC or markers at the neck.")
-pageno(s, 163)
-
-# ---- Slide 164: measuring Poisson / true stress WITHOUT transverse dots ----
-s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "MEASURING POISSON'S RATIO & TRUE STRESS — WITHOUT TRANSVERSE DOTS")
-
-header(s, 0.4, 1.28, 6.05, "Why not transverse dots — and the fix")
-tb(s, 0.4, 1.70, 6.05, 4.0,
-   "The mini-dogbone GAUGE is too NARROW to fit a transverse dot pair, and at ~20 px/mm the elastic "
-   "width change is SUB-PIXEL for discrete dots — added markers cannot resolve it.\n\n"
-   "The fix: don't add markers — measure the specimen's OWN EDGES. Track the left & right silhouette "
-   "edges across the gauge and average the width; as it necks, that width shrinks:\n\n"
-   "    ε_w = (W₀ - W)/W₀,   ν = -ε_w/ε_axial,   A = W·t\n\n"
-   "All three routes below return a MEASURED value (no assumed ν) — written to the CSV as real data, "
-   "not an estimate.",
-   fs=11.5, colour=BLACK)
-
-header(s, 6.6, 1.28, 6.4, "Three ways to MEASURE it (no transverse dots)")
-meth = [
-    ["Route", "How it works", "Needs"],
-    ["1  Edge / silhouette\n    width tracking",
-     "find the specimen's L & R edges across the gauge; average width over 100s of rows -> ε_w each frame",
-     "matte-black backdrop;\nreuses THIS camera"],
-    ["2  Full-field\n    speckle DIC",
-     "fine random speckle + subset correlation (Ncorr / muDIC, offline) -> full axial + transverse strain field",
-     "speckle + new\nanalysis pipeline"],
-    ["3  Hardware probe",
-     "2nd side camera (thickness), laser micrometer, or clip-on transverse extensometer",
-     "extra hardware;\nlab-grade"],
-]
-ovm = {(1, c): {'bg': GREEN_PASS, 'bold': c == 0} for c in range(3)}      # recommended row
-table(s, 6.6, 1.70, 6.4, 2.7, meth, cw=[1.7, 3.0, 1.7], hf=10, bf=9, ov=ovm)
-tb(s, 6.6, 4.5, 6.4, 1.0,
-   "Why #1 works at 20 px/mm: one edge is sub-pixel, but averaging the width along the whole gauge "
-   "(100s of rows) cuts the noise ~10x to ~0.01 px — the ~0.5 px elastic width change is then well "
-   "resolved. It only needs CRISP edges = a dark background behind the specimen.",
-   fs=10.5, italic=True, colour=GREY_TEXT)
-
-banner(s, 0.4, 5.6, 12.6, 1.02,
-       "RECOMMENDED — EDGE-WIDTH TRACKING + a matte-black backdrop (e.g. spray-painted MDF a few cm behind "
-       "the gauge): the only route that MEASURES Poisson's ratio & true Cauchy stress while reusing THIS "
-       "camera and specimen. Matte finish avoids LED glare; the gap softens cast shadows. Keep ENGINEERING "
-       "stress as the reported / validated basis — Cauchy as the measured supplement.",
-       fill=LIGHT_BLUE, fg=BLACK, fs=11)
-footer(s, "Supersedes the transverse-marker idea on the previous slide: the narrow gauge + camera resolution "
-          "rule out a transverse dot pair. Measure the specimen's own edges (or full-field speckle) instead.")
-pageno(s, 164)
 
 # =====================================================================================
 # ROADMAP PROGRESS — advanced features & ease of use (slides 165-168)
@@ -741,7 +659,7 @@ banner(s, 0.4, 6.18, 12.55, 0.92,
        fill=LIGHT_BLUE, fg=BLACK, fs=11)
 footer(s, "All analysis logic is unit-tested / sim-validated offline; the app feature set is now snapshot-committed "
           "(main.py a3b187f) after the full rig-test campaign — see ROADMAP.md / TESTING_TODO.md.")
-pageno(s, 165)
+pageno(s, 163)
 
 # ---- Slide 166: DONE — built & committed ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -773,7 +691,7 @@ tb(s, 6.75, 1.72, 6.2, 3.9,
    fs=12, colour=BLACK)
 footer(s, "Modules committed & regression-checked against the deck numbers; the UI feature set is now "
           "snapshot-committed (main.py a3b187f) after full rig validation.")
-pageno(s, 166)
+pageno(s, 164)
 
 # ---- Slide 167: TO BE TESTED — rig / camera ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -804,7 +722,7 @@ banner(s, 0.4, 5.5, 12.55, 1.05,
        fill=GREEN_PASS, fg=BLACK, fs=11.5)
 footer(s, "Full step-by-step results: Software/UTM_PyQt6/TESTING_TODO.md; thresholds confirmed (fracture arm "
           "30% / collapse 50%, travel cap 30 mm, stall guard 0.05 mm / 6 s).")
-pageno(s, 167)
+pageno(s, 165)
 
 # ---- Slide 168: PLANNED NEXT — measured Poisson (edge-width / MDF) + remaining automation ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -837,7 +755,7 @@ banner(s, 0.4, 6.5, 12.55, 0.72,
        "HARDWARE LIMIT — motor torque ceiling ~2.6 kN (variable; driver Vref / thermal / PSU) blocks 100% "
        "full-area fracture; use 50% / smaller specimens until resolved.   ORDER — wire remaining modes → "
        "edge-width Poisson → UX layer.", fill=YELLOW_WARN, fg=BLACK, fs=10.5)
-pageno(s, 168)
+pageno(s, 166)
 
 # =====================================================================================
 # NEW FEATURE SLIDES (169-182) — SF 1-8 overview, proof slides IN FEATURE ORDER, then context
@@ -870,7 +788,7 @@ banner(s, 0.4, 5.6, 12.55, 0.95,
        "freeze.  Engine ready to add 4 more modes: cyclic · staircase · relaxation · creep.",
        fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
 footer(s, "Details: Software/UTM_PyQt6/ROADMAP.md · TESTING_TODO.md. App wiring snapshot-committed (main.py a3b187f).")
-pageno(s, 169)
+pageno(s, 167)
 
 # ---- Slide 170: SF 1 · DIC health HUD — modes  [content unchanged, was slide 176] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -890,7 +808,7 @@ table(s, 0.4, 2.8, 12.55, 2.65, modes, cw=[1.7, 1.4, 5.9, 3.55], hf=11, bf=10.5,
 banner(s, 0.4, 5.75, 12.55, 0.9,
        "Recorded per-frame in the CSV (DIC_Blobs column) — so you know DIC was reliable, and can PROVE it after the test.",
        fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
-pageno(s, 170)
+pageno(s, 168)
 
 # ---- Slide 171: SF 1 · DIC-driven safety halt — proof (S17)  [content unchanged, was slide 177] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -906,7 +824,7 @@ tb(s, 7.9, 3.98, 5.05, 1.9,
    fs=11.5, colour=BLACK)
 banner(s, 0.4, 6.35, 12.55, 0.72, "S17 — covered a marker mid-test → DIC went BAD → motor auto-halted. No runaway on blind data.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
-pageno(s, 171)
+pageno(s, 169)
 
 # ---- Slide 172: SF 2 · Prepare specimen  [NEW] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -927,7 +845,7 @@ tb(s, 0.4, 3.6, 12.55, 1.6,
 banner(s, 0.4, 5.55, 12.55, 0.9, "Rig-validated — position + force + DIC all zeroed, consoles + stress-strain plot cleared, from one press.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
 footer(s, "Feature in Software/UTM_PyQt6/main.py (Prepare specimen button). Validated 2026-07-28.")
-pageno(s, 172)
+pageno(s, 170)
 
 # ---- Slide 173: SF 3 & 4 · Report + Settings  [content unchanged, was slide 178] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -944,7 +862,7 @@ tb(s, 6.95, 2.65, 6.0, 3.1,
    "•  Report reads the CSV header → KPIs + 4 plots + validation",
    fs=11.5, colour=BLACK)
 footer(s, "Report shown is the REAL S16 one-pager (auto-generated). Settings image = the live Motor-Control controls.")
-pageno(s, 173)
+pageno(s, 171)
 
 # ---- Slide 174: SF 5 · auto-stop at fracture — proof  [content unchanged, was slide 170] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -960,7 +878,7 @@ tb(s, 8.0, 4.62, 4.95, 1.0, "Fires in ONE sample after the load collapses — no
    fs=11.5, italic=True, colour=GREY_TEXT)
 banner(s, 0.4, 6.35, 12.55, 0.72, "The rig detects its OWN fracture and halts — arm at 30% of peak, fire at 50% collapse.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
-pageno(s, 174)
+pageno(s, 172)
 
 # ---- Slide 175: SF 6 · strain-rate fracture — results & why  [content unchanged, was slide 171] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -979,7 +897,7 @@ tb(s, 8.0, 4.38, 4.95, 1.9,
 banner(s, 0.4, 6.35, 12.55, 0.72,
        "Held 0.00051 /s (target 0.0005) while HALVING crosshead speed 0.10 → 0.05 mm/s — a fixed-speed pull cannot.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
-pageno(s, 175)
+pageno(s, 173)
 
 # ---- Slide 176: SF 6 · strain-rate — report plots (S19, 50%)  [content unchanged, was slide 172] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -990,7 +908,7 @@ kpi(s, 0.4, 5.46, 3.9, "TARGET RATE", "0.0005 /s")
 kpi(s, 4.55, 5.46, 3.9, "MIN SPEED", "0.005 mm/s")
 kpi(s, 8.7, 5.46, 4.25, "MAX SPEED (cap)", "0.20 mm/s")
 footer(s, "S19 (50%) fractures ~1.4 kN — under the motor ceiling. The loop varied crosshead speed 0.005–0.20 mm/s to hold 0.0005 /s to fracture.")
-pageno(s, 176)
+pageno(s, 174)
 
 # ---- Slide 177: SF 7 · safety guards & limits (stall guard)  [content unchanged, was slide 173] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1009,7 +927,7 @@ banner(s, 0.4, 5.5, 12.55, 1.0,
        "Any breach → Stop + E-Stop.",
        fill=YELLOW_WARN, fg=BLACK, fs=12)
 footer(s, "Layered so a driven test (preload · fracture · strain-rate) can't run away — protects the motor, the printed grips and the 3 t load cell.")
-pageno(s, 177)
+pageno(s, 175)
 
 # ---- Slide 178: SF 8 · Release preload  [NEW] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1030,7 +948,7 @@ kpi(s, 10.06, 3.9, 2.9, "TIMEOUT", "180 s")
 banner(s, 0.4, 5.15, 12.55, 0.95, "Rig-validated — eases tension off the specimen + grips; live-SetSpeed only (no re-latch runaway); stops on target / rise-cap / timeout.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
 footer(s, "Feature in Software/UTM_PyQt6/main.py (Release preload button). Validated 2026-07-28.")
-pageno(s, 178)
+pageno(s, 176)
 
 # ---- Slide 179: two fracture methods — when to use which  [content unchanged, was slide 174] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1046,7 +964,7 @@ header(s, 0.4, 4.9, 12.55, "Suggestion")
 flow(s, 0.4, 5.37, 6.2, 1.0, "MAX pulling force or a quick UTS?\n→  DIRECT motor speed", fill=LIGHT_BLUE, border=FLOW_BLUE, fs=12.5, bold=True)
 flow(s, 6.75, 5.37, 6.2, 1.0, "Controlled material strain rate (comparable)?\n→  STRAIN-RATE fracture", fill=GREEN_PASS, border=DARK_GREEN, fs=12.5, bold=True, fg=DARK_GREEN)
 footer(s, "Both auto-stop on fracture (same detector) + stall guard. On THIS rig (torque ~2.6 kN today) use 50% / smaller specimens for strain-rate to reach break.")
-pageno(s, 179)
+pageno(s, 177)
 
 # ---- Slide 180: innovation roadmap — workflow  [content unchanged, was slide 175] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1070,7 +988,7 @@ arrow(s, 8.77, 5.45, 8.98, 5.45, width=2)
 flow(s, 9.0, 4.98, 3.95, 0.95, "3 · UX wizard +\nlive overlay", fill=WHITE, border=FLOW_BLUE, fs=11.5, bold=True)
 banner(s, 0.4, 6.2, 12.55, 0.72, "Hardware gate — motor torque ~2.6 kN today; fix driver Vref / cooling to fracture 100% infill.",
        fill=YELLOW_WARN, fg=BLACK, fs=11)
-pageno(s, 180)
+pageno(s, 178)
 
 # ---- Slide 181: specimen register  [content unchanged, was slide 179] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1087,7 +1005,7 @@ Rc = [["Spec", "Infill", "Colour", "Test / result"],
 table(s, 0.4, 1.4, 6.2, 4.95, Lc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
 table(s, 6.75, 1.4, 6.2, 4.95, Rc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
 footer(s, "All spray markers (black dots on PLA). V1_Spray batch = 50% · V2_Spray = 100%. Colour (white/black) + blank cells to be filled by operator.")
-pageno(s, 181)
+pageno(s, 179)
 
 # ---- Slide 180: buck-converter enclosure CAD ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1106,11 +1024,94 @@ tb(s, 7.35, 5.28, 5.55, 1.4,
    "•  Open top + side slots for wiring / mounting",
    fs=11.5, colour=BLACK)
 footer(s, "CAD for a PLA-printed part. Callout arrows mark the PCB locating pins (floor posts) and the LED-switch extrusion (side tube).")
+pageno(s, 180)
+
+
+# =====================================================================================
+# SEGMENT (moved to end): MEASURING CAUCHY (TRUE) STRESS
+# =====================================================================================
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "MEASURING CAUCHY (TRUE) STRESS")
+tb(s, 0.4, 2.9, 12.55, 1.7, "Getting the DEFORMING cross-section for TRUE / Cauchy stress + Poisson ratio "
+   "- a separate future work-stream: edge-width tracking on a matte-black backdrop.", fs=16, bold=True, colour=DARK_GREEN)
+pageno(s, 181)
+
+# ===== SLIDE 23 — Engineering vs true (Cauchy) stress + measuring the current area =====
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "ENGINEERING vs TRUE (CAUCHY) STRESS — & MEASURING THE AREA")
+
+header(s, 0.4, 1.28, 6.1, "Why we REPORT engineering stress")
+s.shapes.add_picture("feat_eng_vs_true.png", Inches(0.4), Inches(1.66), width=Inches(6.15))
+tb(s, 0.4, 4.32, 6.15, 1.15,
+   "σ_eng = F / A₀  (REPORTED)      σ_true = F / A  (not tracked, ~2–5% higher)\n\n"
+   "Basis: ISO 527 · Chacón · datasheet all use ENGINEERING → apples-to-apples for our k-factors.  E & σ_y ~unchanged.",
+   fs=11, colour=BLACK)
+
+header(s, 6.75, 1.28, 6.2, "Measuring the CURRENT area → true stress (future)")
+meth = [
+    ["Method", "How", "Note"],
+    ["Poisson estimate", "A = A₀(1−ν·ε)²,  ν ≈ 0.35  (no hardware)", "cheap; ν drifts in yield"],
+    ["Transverse markers", "+2 dots across width → ε_w;  A ≈ A₀(1+ε_w)²", "reuses blob-DIC; gives Poisson"],
+    ["+ edge camera", "2nd view → thickness strain;  A = w·t", "rigorous; FDM is orthotropic"],
+    ["Full-field speckle", "fine random speckle + subset DIC", "strain field + necking; new pipeline"],
+]
+ovm = {(2, c): {'bg': GREEN_PASS, 'bold': c == 0} for c in range(3)}      # recommended row
+table(s, 6.75, 1.70, 6.25, 2.5, meth, cw=[1.35, 2.7, 1.6], hf=10, bf=9.5, ov=ovm)
+tb(s, 6.75, 4.32, 6.25, 1.05,
+   "Same speckle style (spray dots): just add a transverse dot pair — the current 2-marker tracker "
+   "extends naturally (2 axial + 2 transverse). A finer random speckle enables full-field DIC "
+   "(transverse field + necking) but needs a new analysis pipeline.",
+   fs=10.5, italic=True, colour=GREY_TEXT)
+
+banner(s, 0.4, 5.65, 12.6, 0.72,
+       "TRANSVERSE markers = ideal, but the gauge is too NARROW → EDGE-WIDTH detection (next slide) is the practical route. Keep ENGINEERING stress as the validated basis.",
+       fill=LIGHT_BLUE, fg=BLACK, fs=12)
+footer(s, "Current V6 report & plots = engineering stress (nominal 80 mm²). True/Cauchy needs the deforming "
+          "area; post-necking needs full-field DIC or markers at the neck.")
 pageno(s, 182)
+
+# ---- Slide 164: measuring Poisson / true stress WITHOUT transverse dots ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "MEASURING POISSON'S RATIO & TRUE STRESS — WITHOUT TRANSVERSE DOTS")
+
+header(s, 0.4, 1.28, 6.05, "The fix — track the specimen's OWN edges")
+s.shapes.add_picture("feat_edgewidth.png", Inches(0.4), Inches(1.66), width=Inches(6.05))
+tb(s, 0.4, 4.28, 6.05, 1.2,
+   "Gauge too NARROW for transverse dots (sub-pixel at 20 px/mm) → track the L & R edges instead.\n\n"
+   "ε_w = (W₀−W)/W₀     ν = −ε_w/ε_axial     A = W·t     → MEASURED (no assumed ν), written to the CSV.",
+   fs=11, colour=BLACK)
+
+header(s, 6.6, 1.28, 6.4, "Three ways to MEASURE it (no transverse dots)")
+meth = [
+    ["Route", "How it works", "Needs"],
+    ["1  Edge / silhouette\n    width tracking",
+     "find the specimen's L & R edges across the gauge; average width over 100s of rows -> ε_w each frame",
+     "matte-black backdrop;\nreuses THIS camera"],
+    ["2  Full-field\n    speckle DIC",
+     "fine random speckle + subset correlation (Ncorr / muDIC, offline) -> full axial + transverse strain field",
+     "speckle + new\nanalysis pipeline"],
+    ["3  Hardware probe",
+     "2nd side camera (thickness), laser micrometer, or clip-on transverse extensometer",
+     "extra hardware;\nlab-grade"],
+]
+ovm = {(1, c): {'bg': GREEN_PASS, 'bold': c == 0} for c in range(3)}      # recommended row
+table(s, 6.6, 1.70, 6.4, 2.7, meth, cw=[1.7, 3.0, 1.7], hf=10, bf=9, ov=ovm)
+tb(s, 6.6, 4.5, 6.4, 1.0,
+   "Why #1 works at 20 px/mm: one edge is sub-pixel, but averaging the width along the whole gauge "
+   "(100s of rows) cuts the noise ~10x to ~0.01 px — the ~0.5 px elastic width change is then well "
+   "resolved. It only needs CRISP edges = a dark background behind the specimen.",
+   fs=10.5, italic=True, colour=GREY_TEXT)
+
+banner(s, 0.4, 5.65, 12.6, 0.72,
+       "EDGE-WIDTH TRACKING + a matte-black backdrop = the only route that MEASURES Poisson & true Cauchy, reusing THIS camera & specimen. Keep ENGINEERING stress as the validated basis.",
+       fill=LIGHT_BLUE, fg=BLACK, fs=12)
+footer(s, "Supersedes the transverse-marker idea on the previous slide: the narrow gauge + camera resolution "
+          "rule out a transverse dot pair. Measure the specimen's own edges (or full-field speckle) instead.")
+pageno(s, 183)
 
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print("Saved: V6a_8_6_20_slides.pptx (42 slides, pages 141-182)")
+    print("Saved: V6a_8_6_20_slides.pptx (43 slides, pages 141-183)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (42 slides)")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (43 slides)")
