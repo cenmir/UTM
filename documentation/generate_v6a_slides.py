@@ -1026,6 +1026,40 @@ tb(s, 7.35, 5.28, 5.55, 1.4,
 footer(s, "CAD for a PLA-printed part. Callout arrows mark the PCB locating pins (floor posts) and the LED-switch extrusion (side tube).")
 pageno(s, 180)
 
+# ---- Motor torque ceiling (hardware limit) ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "MOTOR TORQUE CEILING — THE 100% FRACTURE LIMIT")
+header(s, 0.4, 1.28, 12.55, "Same crosshead speed (0.10 mm/s), different MAX force")
+kpi(s, 0.4, 1.75, 4.0, "WEAK DAY (S15 · today)", "~2.6 kN")
+kpi(s, 4.6, 1.75, 4.0, "STRONG DAY (V6 · S16)", "3.2–3.8 kN")
+kpi(s, 8.8, 1.75, 4.15, "100% FULL-AREA NEEDS", "~3.7 kN")
+header(s, 0.4, 3.05, 12.55, "Why — torque capacity, NOT speed or software")
+tb(s, 0.4, 3.5, 6.2, 1.5, "•  Driver current (Vref) set low\n\n•  PSU voltage sag under load", fs=12, colour=BLACK)
+tb(s, 6.75, 3.5, 6.2, 1.5, "•  Driver THERMAL derating (the chip, not motor)\n\n•  Mechanical binding (screw / rails)", fs=12, colour=BLACK)
+banner(s, 0.4, 5.25, 12.55, 1.0,
+       "WORKAROUND — use 50% / smaller-cross-section specimens (fracture < 2.6 kN) until the torque is restored (check Vref · cooling · PSU).",
+       fill=YELLOW_WARN, fg=BLACK, fs=12.5)
+footer(s, "At the SAME 0.10 mm/s: S15 stalled 2.6 kN but S16 fractured 3.8 kN — the ceiling varies day-to-day. See TEST_FAILURES.md (S15).")
+pageno(s, 181)
+
+# ---- Motor jitter = stall warning ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "MOTOR JITTER = STALL WARNING  (a failed test)")
+s.shapes.add_picture("feat_motor_jitter.png", Inches(0.35), Inches(1.55), width=Inches(7.4))
+header(s, 8.0, 1.28, 4.95, "What happened")
+tb(s, 8.0, 1.72, 4.95, 1.6,
+   "At the force ceiling the crosshead FROZE and the whole machine SHOOK — a stalled stepper skipping steps.\n\n"
+   "S15: had to Stop by hand.",
+   fs=11.5, colour=BLACK)
+header(s, 8.0, 3.5, 4.95, "Why")
+tb(s, 8.0, 3.94, 4.95, 1.8,
+   "•  Motor at / beyond its torque limit\n\n•  Strain-rate loop then oscillated, chasing a motor that can't move",
+   fs=11.5, colour=BLACK)
+banner(s, 0.4, 6.3, 12.55, 0.78,
+       "WARNING — jitter = STALL. STOP, don't force 100% full-area. The stall guard now auto-halts (< 0.05 mm in 6 s under load).",
+       fill=RED_FAIL, fg=BLACK, fs=12.5)
+pageno(s, 182)
+
 
 # =====================================================================================
 # SEGMENT (moved to end): MEASURING CAUCHY (TRUE) STRESS
@@ -1034,7 +1068,7 @@ s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "MEASURING CAUCHY (TRUE) STRESS")
 tb(s, 0.4, 2.9, 12.55, 1.7, "Getting the DEFORMING cross-section for TRUE / Cauchy stress + Poisson ratio "
    "- a separate future work-stream: edge-width tracking on a matte-black backdrop.", fs=16, bold=True, colour=DARK_GREEN)
-pageno(s, 181)
+pageno(s, 183)
 
 # ===== SLIDE 23 — Engineering vs true (Cauchy) stress + measuring the current area =====
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1068,7 +1102,7 @@ banner(s, 0.4, 5.65, 12.6, 0.72,
        fill=LIGHT_BLUE, fg=BLACK, fs=12)
 footer(s, "Current V6 report & plots = engineering stress (nominal 80 mm²). True/Cauchy needs the deforming "
           "area; post-necking needs full-field DIC or markers at the neck.")
-pageno(s, 182)
+pageno(s, 184)
 
 # ---- Slide 164: measuring Poisson / true stress WITHOUT transverse dots ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1107,11 +1141,11 @@ banner(s, 0.4, 5.65, 12.6, 0.72,
        fill=LIGHT_BLUE, fg=BLACK, fs=12)
 footer(s, "Supersedes the transverse-marker idea on the previous slide: the narrow gauge + camera resolution "
           "rule out a transverse dot pair. Measure the specimen's own edges (or full-field speckle) instead.")
-pageno(s, 183)
+pageno(s, 185)
 
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print("Saved: V6a_8_6_20_slides.pptx (43 slides, pages 141-183)")
+    print("Saved: V6a_8_6_20_slides.pptx (45 slides, pages 141-185)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (43 slides)")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (45 slides)")
