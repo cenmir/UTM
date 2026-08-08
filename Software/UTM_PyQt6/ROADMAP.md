@@ -42,13 +42,13 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
 ---
 
 ## 2. Partial / in progress
-- 🟡 **Closed-loop test modes (Phase B):** strain-rate ✅ done & validated. The other four — **cyclic, staircase, relaxation, creep** — are engine-ready (`control_policies.py`, sim-validated) but **not yet wired into the app**. The rig facts that gated them are now confirmed → **unblocked to wire next.**
+- 🟡 **Closed-loop test modes (Phase B):** strain-rate ✅ done & validated. The other four — **cyclic, staircase, relaxation, creep** — are now **🟢 WIRED into the app** ("Advanced test modes" segment in Motor Control: a Test-type dropdown + per-mode settings + Start test), sharing the same `_policy_step` loop + safety net. `_policy_step` was extended to drive **tension / compression / hold** (not just the tension-only strain-rate pull), with **phase-aware guards** (stall guard silent during an intentional hold; dead-DIC guard only for DIC-steered modes). FSM sim-checked (cyclic reverses & counts, staircase steps+dwells, relaxation/creep hold+finish). **Pending: rig validation** on scrap specimens (relaxation+creep first, then staircase, then cyclic).
 - 🟡 **Multi-marker Poisson / true Cauchy:** math ready in `utm_dic.py`; needs a 4-marker specimen preset + camera wiring. Also limited by the current mini-dogbone (narrow gauge, sub-pixel transverse change) → see §4.
 
 ---
 
 ## 3. Remaining / planned  (checklist)
-- ⬜ **Wire the 4 remaining control modes** (cyclic / staircase / relaxation / creep) into the Motor-Control UI + recipes.
+- 🟢 **Wire the 4 remaining control modes** (cyclic / staircase / relaxation / creep) into the Motor-Control UI — **DONE** ("Advanced test modes" segment); ⬜ still to do: expose them in **recipes** (save/reload mode + params) and **rig-validate** on scrap specimens.
 - ⬜ **Multi-marker Poisson** — 4-marker preset in the dropdown, `detect_blobs`/`tare_dic`/`calculate_dic_strain` for 4 markers, new CSV columns (lateral strain / ν / current area / Cauchy), live ν readout. Needs a matte-black backdrop and/or a gauge-zoomed camera.
 - ⬜ **Phase D — UX layer:** guided Connect→Calibrate→Mount→Prepare→Recipe→Run→Save wizard; live analysis overlay (live E / predicted UTS / fracture flag); glanceable dashboard + audio cue on fracture; event-annotation hotkey.
 - ⬜ **DIC auto-calibrate (Phase C remainder):** auto-exposure/threshold sweep on Start Camera; auto-follow ROI (shift offset to keep markers centred through ductile draw).
