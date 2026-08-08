@@ -15,6 +15,7 @@ Design contract (keeps hardware I/O and safety in the app, logic here):
 Validate every policy in `control_sim.py` (replay a CSV, or a spring plant) BEFORE any rig run.
 No PyQt / hardware / matplotlib imports here — just logic, so it is unit-testable and safe.
 """
+import math
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple
 
@@ -133,11 +134,22 @@ class StrainRatePolicy(ControlPolicy):
 
 
 class CyclicPolicy(ControlPolicy):
-    """Load–unload between two FORCE bounds for N cycles (hysteresis / stiffness degradation)."""
+    """Load–unload between two FORCE bounds for N cycles (hysteresis / stiffness degradation).
+
+    `waveform`:
+      • 'triangle' — constant-speed ramps up and down (sharp velocity reversal at each peak).
+      • 'sine'     — the speed is eased by the load fraction, spd = speed·sin(π·frac), so it slows to
+                     a crawl approaching each bound and is fastest at mid-load. This rounds the peaks
+                     (no velocity kink) → smooth, sine-shaped cycles, better for viscoelastic
+                     hysteresis loops. LOW frequency only — the rig can't do fatigue-rate cycling.
+    Both respect the Low/High bounds EXACTLY (same reversal logic); the period is emergent (set by
+    speed + specimen stiffness), as with the triangle."""
     name = "cyclic"
 
-    def __init__(self, f_low: float, f_high: float, cycles: int, speed: float = 0.1):
+    def __init__(self, f_low: float, f_high: float, cycles: int, speed: float = 0.1,
+                 waveform: str = "triangle"):
         self.f_low, self.f_high, self.cycles, self.speed = f_low, f_high, cycles, speed
+        self.waveform = waveform
         self.dir = "tension"
         self.done_cycles = 0
 
@@ -149,10 +161,15 @@ class CyclicPolicy(ControlPolicy):
             self.done_cycles += 1
             if self.done_cycles >= self.cycles:
                 return Command(0, "hold", done=True, message=f"{self.cycles} cycles complete")
-        return Command(self.speed, self.dir, message=f"cycle {self.done_cycles + 1}/{self.cycles}")
+        spd = self.speed
+        if self.waveform == "sine":
+            frac = (s.load - self.f_low) / max(1e-6, self.f_high - self.f_low)
+            frac = min(1.0, max(0.0, frac))
+            spd = max(0.01, self.speed * math.sin(math.pi * frac))   # ease to a crawl at each bound
+        return Command(spd, self.dir, message=f"cycle {self.done_cycles + 1}/{self.cycles}")
 
     def start_message(self) -> str:
-        return f"Cyclic {self.f_low:.0f}-{self.f_high:.0f} N x{self.cycles} @ {self.speed:.3f} mm/s"
+        return f"Cyclic {self.waveform} {self.f_low:.0f}-{self.f_high:.0f} N x{self.cycles} @ {self.speed:.3f} mm/s"
 
 
 class StaircasePolicy(ControlPolicy):

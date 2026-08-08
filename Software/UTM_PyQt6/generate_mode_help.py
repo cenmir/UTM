@@ -47,15 +47,20 @@ def cyclic():
     t = 0
     for _ in range(ncyc):
         xs += [t + 1, t + 2]; ys += [hi, lo]; t += 2
-    ax.plot(xs, ys, color=RED, lw=2.4, label="Crosshead force")
+    ax.plot(xs, ys, color=RED, lw=2.4, label="Triangle")
+    # sine waveform between the same bounds (eases at each peak)
+    tg = np.linspace(0, t, 500)
+    mid = (lo + hi) / 2; amp = (hi - lo) / 2
+    sine = mid - amp * np.cos(np.pi * tg)      # starts at Low, peaks at High each half-period
+    ax.plot(tg, sine, color="#8e44ad", lw=2.2, ls="--", label="Sine (smooth peaks)")
     _hline(ax, hi, 0, t, "High  (N)", RED)
     _hline(ax, lo, 0, t, "Low  (N)", BLUE)
-    ax.legend(loc="lower right", fontsize=9, framealpha=0.9)
+    ax.legend(loc="lower right", fontsize=9, framealpha=0.9, ncol=2)
     # one cycle bracket
     ax.annotate("", xy=(0, hi + 0.5), xytext=(2, hi + 0.5),
                 arrowprops=dict(arrowstyle="<->", color="#0b5", lw=1.6))
     ax.text(1, hi + 0.62, "1 cycle", ha="center", color="#0b5", fontsize=11, fontweight="bold")
-    ax.text(t / 2, lo - 0.9, "repeat  ×  Cycles", ha="center", **PARAM)
+    ax.text(0.2, lo - 0.9, "repeat × Cycles", ha="left", **PARAM)
     ax.annotate("slope = Speed", xy=(0.5, (lo + hi) / 2), xytext=(0.7, hi + 0.1),
                 color=GREY, fontsize=9, arrowprops=dict(arrowstyle="->", color=GREY))
     ax.set_ylim(lo - 1.3, hi + 1.2)
