@@ -657,11 +657,11 @@ tb(s, 6.75, 4.32, 6.25, 1.05,
    fs=10.5, italic=True, colour=GREY_TEXT)
 
 banner(s, 0.4, 5.55, 12.6, 1.02,
-       "RECOMMENDED — add a TRANSVERSE marker pair (green row): measure width contraction ε_w with the "
-       "existing DIC (bonus: Poisson's ratio). Then A(t) = A₀(1+ε_w)²,  σ_cauchy = F / A(t),  plotted vs "
-       "true strain ln(1+ε). Keep ENGINEERING stress as the reported / validated value (datasheet & journal "
-       "basis); report Cauchy as the physically-accurate supplement. Add an edge camera for through-thickness "
-       "if FDM orthotropy matters.", fill=LIGHT_BLUE, fg=BLACK, fs=11)
+       "RECOMMENDED — a TRANSVERSE marker pair is the IDEAL route: measure width contraction ε_w with the "
+       "existing DIC (bonus: Poisson's ratio), then A(t) = A₀(1+ε_w)²,  σ_cauchy = F / A(t). BUT the current "
+       "specimen gauge is VERY NARROW so transverse dots barely fit → EDGE-WIDTH detection (slide 164) is the "
+       "SECOND-PREFERRED, practical route. Keep ENGINEERING stress as the reported / validated value; report "
+       "Cauchy as the physically-accurate supplement.", fill=LIGHT_BLUE, fg=BLACK, fs=11)
 footer(s, "Current V6 report & plots = engineering stress (nominal 80 mm²). True/Cauchy needs the deforming "
           "area; post-necking needs full-field DIC or markers at the neck.")
 pageno(s, 163)
