@@ -177,13 +177,29 @@ class StaircasePolicy(ControlPolicy):
     stress-relaxation at that step) before advancing. Automates the manual V4b/V4c staircases."""
     name = "staircase"
 
-    def __init__(self, levels: List[float], dwell_s: float, speed: float = 0.1):
+    def __init__(self, levels: List[float], dwell_s: float, speed: float = 0.1,
+                 ramp_shape: str = "linear"):
         self.levels = list(levels)
         self.dwell = dwell_s
         self.speed = speed
+        self.ramp_shape = ramp_shape
         self.i = 0
         self.holding = False
         self.hold_start = 0.0
+
+    def _ramp_speed(self, load: float) -> float:
+        """Constant speed for 'linear'; for 'smooth' ease to a crawl as the load nears the target
+        level (spd = speed·sin(π·frac) between the previous and target level) so each level is
+        approached gently — less overshoot past the target and a cleaner start-of-hold."""
+        if self.ramp_shape != "smooth":
+            return self.speed
+        target = self.levels[self.i]
+        prev = self.levels[self.i - 1] if self.i > 0 else 0.0
+        span = target - prev
+        if span <= 1e-6:
+            return self.speed
+        frac = min(1.0, max(0.0, (load - prev) / span))
+        return max(0.01, self.speed * math.sin(math.pi * frac))
 
     def step(self, s: Signals) -> Command:
         if self.i >= len(self.levels):
@@ -194,17 +210,18 @@ class StaircasePolicy(ControlPolicy):
                 self.holding = True
                 self.hold_start = s.t
                 return Command(0, "hold", message=f"hold level {self.i + 1} @ {target:.0f} N")
-            return Command(self.speed, "tension", message=f"ramp to level {self.i + 1} ({target:.0f} N)")
+            return Command(self._ramp_speed(s.load), "tension",
+                           message=f"ramp to level {self.i + 1} ({target:.0f} N)")
         if s.t - self.hold_start >= self.dwell:
             self.i += 1
             if self.i >= len(self.levels):
                 return Command(0, "hold", done=True, message="staircase complete")
             self.holding = False
-            return Command(self.speed, "tension", message=f"ramp to level {self.i + 1}")
+            return Command(self._ramp_speed(s.load), "tension", message=f"ramp to level {self.i + 1}")
         return Command(0, "hold", message=f"dwell {s.t - self.hold_start:.0f}/{self.dwell:.0f} s")
 
     def start_message(self) -> str:
-        return f"Staircase {self.levels} N, dwell {self.dwell:.0f} s"
+        return f"Staircase {self.ramp_shape} {self.levels} N, dwell {self.dwell:.0f} s"
 
 
 class RelaxationPolicy(ControlPolicy):

@@ -78,7 +78,16 @@ def staircase():
         lvl = start + i * step
         x += ramp; xs.append(x); ys.append(lvl)      # ramp up
         x += dwell; xs.append(x); ys.append(lvl)      # dwell (flat)
-    ax.plot(xs, ys, color=RED, lw=2.4, label="Crosshead force")
+    ax.plot(xs, ys, color=RED, lw=2.4, label="Linear ramp")
+    # smooth (eased) ramp overlay: smoothstep between levels, flats unchanged
+    sx, sy = [], []
+    xx, prev = 0.0, 0.0
+    for i in range(nlev):
+        lvl = start + i * step
+        tt = np.linspace(0, 1, 24); ss = 3 * tt ** 2 - 2 * tt ** 3
+        sx += list(xx + tt * ramp); sy += list(prev + (lvl - prev) * ss); xx += ramp
+        sx += [xx, xx + dwell]; sy += [lvl, lvl]; xx += dwell; prev = lvl
+    ax.plot(sx, sy, color="#8e44ad", lw=2.0, ls="--", label="Smooth ramp")
     ax.legend(loc="upper left", fontsize=9, framealpha=0.9)
     # Start level
     _hline(ax, start, 0, xs[-1], "", BLUE)
