@@ -47,9 +47,10 @@ def cyclic():
     t = 0
     for _ in range(ncyc):
         xs += [t + 1, t + 2]; ys += [hi, lo]; t += 2
-    ax.plot(xs, ys, color=RED, lw=2.4)
+    ax.plot(xs, ys, color=RED, lw=2.4, label="Crosshead force")
     _hline(ax, hi, 0, t, "High  (N)", RED)
     _hline(ax, lo, 0, t, "Low  (N)", BLUE)
+    ax.legend(loc="lower right", fontsize=9, framealpha=0.9)
     # one cycle bracket
     ax.annotate("", xy=(0, hi + 0.5), xytext=(2, hi + 0.5),
                 arrowprops=dict(arrowstyle="<->", color="#0b5", lw=1.6))
@@ -72,7 +73,8 @@ def staircase():
         lvl = start + i * step
         x += ramp; xs.append(x); ys.append(lvl)      # ramp up
         x += dwell; xs.append(x); ys.append(lvl)      # dwell (flat)
-    ax.plot(xs, ys, color=RED, lw=2.4)
+    ax.plot(xs, ys, color=RED, lw=2.4, label="Crosshead force")
+    ax.legend(loc="upper left", fontsize=9, framealpha=0.9)
     # Start level
     _hline(ax, start, 0, xs[-1], "", BLUE)
     ax.annotate("Start (N)", xy=(0.05, start), xytext=(0.1, start + 0.3),
@@ -101,9 +103,11 @@ def relaxation():
     T = np.linspace(0, 8, 400)
     eps = np.where(T < tr, (T / tr), 1.0)                          # strain: ramp then flat
     F = np.where(T < tr, (T / tr), np.exp(-(T - tr) / 2.5))        # force: rise then decay
-    ax.plot(T, eps, color=BLUE, lw=2.4, label="Strain  (held)")
-    ax2 = ax.twinx(); ax2.plot(T, F, color=RED, lw=2.4, label="Force  (relaxes)")
+    ax.plot(T, eps, color=BLUE, lw=2.4, label="Strain (held fixed)")
+    ax2 = ax.twinx(); ax2.plot(T, F, color=RED, lw=2.4, label="Force (relaxes)")
     ax2.set_yticks([])
+    l1, la1 = ax.get_legend_handles_labels(); l2, la2 = ax2.get_legend_handles_labels()
+    ax.legend(l1 + l2, la1 + la2, loc="upper right", fontsize=9, framealpha=0.9)
     _hline(ax, 1.0, 0, 8, "Hold strain", BLUE)
     # Duration bracket over the hold
     ax.annotate("", xy=(tr, -0.13), xytext=(8, -0.13),
@@ -124,9 +128,11 @@ def creep():
     F = np.where(T < tr, (T / tr), 1.0)                                   # force: ramp then flat
     eps = np.where(T < tr, (T / tr) * 0.6, 0.6 + 0.4 * (1 - np.exp(-(T - tr) / 3.0)))  # strain creeps up
     ax.plot(T, eps, color=BLUE, lw=2.4, label="Strain (creeps)")
-    ax2 = ax.twinx(); ax2.plot(T, F, color=RED, lw=2.4)
+    ax2 = ax.twinx(); ax2.plot(T, F, color=RED, lw=2.4, label="Force (held fixed)")
     ax2.set_ylim(0, 1.3); ax2.set_yticks([])
     ax2.plot([0, 8], [1.0, 1.0], "--", color=RED, lw=1.2)
+    l1, la1 = ax.get_legend_handles_labels(); l2, la2 = ax2.get_legend_handles_labels()
+    ax.legend(l1 + l2, la1 + la2, loc="center right", fontsize=9, framealpha=0.9)
     ax2.text(8, 1.0, "  Load (N)", va="center", color=RED, fontsize=10)
     ax.annotate("", xy=(tr, -0.13), xytext=(8, -0.13),
                 arrowprops=dict(arrowstyle="<->", color="#0b5", lw=1.6))
