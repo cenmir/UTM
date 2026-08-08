@@ -261,14 +261,26 @@ class CreepPolicy(ControlPolicy):
     name = "creep"
 
     def __init__(self, target_load: float, duration_s: float, ramp_speed: float = 0.1,
-                 hold_speed: float = 0.01, tol_N: float = 5.0):
+                 hold_speed: float = 0.01, tol_N: float = 5.0, ease_frac: float = 0.25):
         self.target_load = target_load
         self.duration = duration_s
         self.ramp_speed = ramp_speed
         self.hold_speed = hold_speed
         self.tol = tol_N
+        self.ease_frac = ease_frac
         self.phase = "ramp"
         self.hold_start = 0.0
+
+    def _approach_speed(self, load: float) -> float:
+        """Full ramp speed until (1 - ease_frac)x target, then taper toward the crawl. The crosshead
+        needs ~1 s to decelerate, so a full-speed arrival coasts past the target: rig run T1 asked for
+        400 N and peaked at 448 N (+12%) before nudging back. Easing the last stretch removes that."""
+        if self.ease_frac <= 0 or self.target_load <= 0:
+            return self.ramp_speed
+        r = load / self.target_load
+        if r <= 1.0 - self.ease_frac:
+            return self.ramp_speed
+        return max(self.hold_speed, self.ramp_speed * max(0.0, (1.0 - r) / self.ease_frac))
 
     def step(self, s: Signals) -> Command:
         if self.phase == "ramp":
@@ -276,7 +288,7 @@ class CreepPolicy(ControlPolicy):
                 self.phase = "hold"
                 self.hold_start = s.t
             else:
-                return Command(self.ramp_speed, "tension", message="ramp to creep load")
+                return Command(self._approach_speed(s.load), "tension", message="ramp to creep load")
         if s.t - self.hold_start >= self.duration:
             return Command(0, "hold", done=True, message="creep complete")
         if s.load < self.target_load - self.tol:
