@@ -627,18 +627,12 @@ pageno(s, 162)
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "ENGINEERING vs TRUE (CAUCHY) STRESS — & MEASURING THE AREA")
 
-header(s, 0.4, 1.28, 6.1, "Why the report & plots use ENGINEERING stress")
-tb(s, 0.4, 1.70, 6.15, 3.7,
-   "σ_eng = F / A₀   (A₀ = 80 mm², fixed) — what we compute & report.\n"
-   "σ_true (Cauchy) = F / A_current — the real stress on the shrinking cross-section; NOT measured "
-   "here (the deforming area is never tracked).\n\n"
-   "Link (uniform, pre-neck):   σ_true = σ_eng·(1+ε),    ε_true = ln(1+ε).\n\n"
-   "WHY engineering: ISO 527, Chacón (2017) and the add:north datasheet all report ENGINEERING stress "
-   "— so it is the apples-to-apples basis for our k-factors / PASS–FAIL. True stress reads higher and "
-   "would break that comparison.\n\n"
-   "Gap for our PLA (small strains): ~2–3 % higher at UTS (46.2 → ~47 MPa), ~5 % near fracture; "
-   "E and σ_y essentially unchanged.",
-   fs=11.5, colour=BLACK)
+header(s, 0.4, 1.28, 6.1, "Why we REPORT engineering stress")
+s.shapes.add_picture("feat_eng_vs_true.png", Inches(0.4), Inches(1.66), width=Inches(6.15))
+tb(s, 0.4, 4.32, 6.15, 1.15,
+   "σ_eng = F / A₀  (REPORTED)      σ_true = F / A  (not tracked, ~2–5% higher)\n\n"
+   "Basis: ISO 527 · Chacón · datasheet all use ENGINEERING → apples-to-apples for our k-factors.  E & σ_y ~unchanged.",
+   fs=11, colour=BLACK)
 
 header(s, 6.75, 1.28, 6.2, "Measuring the CURRENT area → true stress (future)")
 meth = [
