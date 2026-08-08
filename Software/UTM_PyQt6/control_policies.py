@@ -178,20 +178,24 @@ class StaircasePolicy(ControlPolicy):
     name = "staircase"
 
     def __init__(self, levels: List[float], dwell_s: float, speed: float = 0.1,
-                 ramp_shape: str = "linear"):
+                 ramp_shape: str = "linear", ease_frac: float = 0.25):
         self.levels = list(levels)
         self.dwell = dwell_s
         self.speed = speed
         self.ramp_shape = ramp_shape
+        self.ease_frac = ease_frac
         self.i = 0
         self.holding = False
         self.hold_start = 0.0
 
     def _ramp_speed(self, load: float) -> float:
-        """Constant speed for 'linear'; for 'smooth' ease to a crawl as the load nears the target
-        level (spd = speed·sin(π·frac) between the previous and target level) so each level is
-        approached gently — less overshoot past the target and a cleaner start-of-hold."""
-        if self.ramp_shape != "smooth":
+        """Constant speed for 'linear'. For 'smooth', run at full speed until the load is within
+        `ease_frac` of the target level, then taper toward the crawl so the level is approached
+        gently (same scheme as CreepPolicy). The crosshead needs ~1 s to decelerate, so a full-speed
+        arrival coasts past the level: rig run T3 overshot 300/600/900 N by 45/47/53 N, while an
+        eased arrival (T4) cut that to 6/5/8 N. Only the TOP of the ramp is tapered — easing the
+        start buys no accuracy and doubled the ramp time in T4."""
+        if self.ramp_shape != "smooth" or self.ease_frac <= 0:
             return self.speed
         target = self.levels[self.i]
         prev = self.levels[self.i - 1] if self.i > 0 else 0.0
@@ -199,7 +203,9 @@ class StaircasePolicy(ControlPolicy):
         if span <= 1e-6:
             return self.speed
         frac = min(1.0, max(0.0, (load - prev) / span))
-        return max(0.01, self.speed * math.sin(math.pi * frac))
+        if frac <= 1.0 - self.ease_frac:
+            return self.speed
+        return max(0.01, self.speed * (1.0 - frac) / self.ease_frac)
 
     def step(self, s: Signals) -> Command:
         if self.i >= len(self.levels):
