@@ -109,8 +109,25 @@ T6 showed a **stepped, non-sinusoidal** wave and loose bounds. Three fixes lande
 2. Velocity law `sin(pi*frac)` → **`2*sqrt(frac(1-frac))`** = a true sine in time (old law ~2× too slow near the bounds).
 3. **Adaptive predictive reversal** — reverses early by `rate x decel`, with `decel` self-tuned per direction from the observed violation. Seeded at zero lead + gain 0.7 so it converges from below (seeding it high made cycles 1–3 reverse far too early; full gain rang).
 - Sim (T5/T6-calibrated plant): settled bound error sine **3.2 → 1.2 N** high, **21.7 → 10.1 N** low; cycle time 17.0 → 12.1 s. Shape only 10.8 → 9.7 % RMS — the residual is the *mechanical* reversal, not the law.
-- [ ] **T6.2** — same settings as T6 (Low 100 / High 500 / 5 cycles / 0.1 / **Sine**). Save as `_T6.2_Sine`.
-  - Check: flanks visibly smoother (less stepped) · peaks near 500 · troughs closer to 100 than T6's 78 · still 5 cycles / no stall.
+- [x] **T6.2** — RAN 2026-08-09 (S20). 5 cycles, no stall. **Mixed: low bound fixed, high bound worse, and flat bottoms appeared.**
+
+| | T6 | T6.2 |
+|---|---|---|
+| high bound | +7.9 N | **+15.6 N** ❌ not converging (511/520/512/516/519) |
+| low bound | −19.2 N | **−2.8 N** ✅ converging (−39.6 → −19.8 → +9.9 → +2.6) |
+| duration | 127 s | **95 s** ✅ |
+
+  - ❌ **Flat bottoms** (visible in the plot as a long dwell between humps). Root cause found: the sine law clamped `frac` to the nominal bounds, so **below f_low it returned 0 and the 0.01 mm/s floor took over**. Every reversal undershoots past f_low, so every cycle fell into that dead zone. Proof from the CSV: commanded **0.0159 mm/s below the bound vs 0.0635 above**, and climb-out **10.4 / 10.6 s** for troughs that dipped below vs **5.8 / 6.4 s** for troughs that stayed above.
+  - ❌ **High bound could not converge** — the lead was scaled by the load rate, but with a sine the rate → 0 *exactly at* the bound, so the lead vanished right when needed. Structural; no amount of adapted decel fixes it.
+  - ❌ Run ended at a **133 N** trough because the low-side lead had grown that large and tripped the cycle-complete test early.
+
+### T6.3 — cyclic Sine RE-RUN #2  ⬜ TODO (validates the two structural fixes)
+1. **Waveform shaped over the ACHIEVED extremes** (`_lo_seen`/`_hi_seen` + 5 % margin) instead of the nominal bounds → **no dead zone, no flat bottoms**; floor raised 0.01 → 0.02 mm/s.
+2. **Lead adapted in FORCE units, not rate×time** — we backed off by `lead_used` and still ran `over` past the bound, so the true coast is `lead_used + over` = the next lead. Rate-independent → converges for any waveform. Gain 0.85. Final trough stops at the true bound with no lead.
+- Sim (5 cycles): sine peaks **518/522/512/502/493**, troughs **71/56/66/87** (vs no-lead 518/528/534/533/535 and 71/48/34/28); crawl-at-floor **1.8 s**; **55 s** vs T6.2's measured 82 s.
+- [ ] **T6.3** — same settings (Low 100 / High 500 / 5 cycles / 0.1 / **Sine**). Save as `_T6.3_Sine`.
+  - Check: **no flat dwell between humps** · peaks trending toward 500 · troughs trending up toward 100 · duration well under 95 s · 5 cycles, no stall.
+  - ⚠️ Bounds converge over cycles 1→5 by design (sim still shows ~−13 N low error at cycle 5), so judge the **trend**, not cycle 1.
 - [ ] **Release load** (renamed from "Release preload") — now drives past tared 0 to **−(tared-away load)** = true zero absolute force, so the specimen can be unclamped. Safety floor made relative (`target − 50 N`); the old fixed −50 N would have aborted the release. Quick non-destructive check before T6.2.
 
 - **After T6.2:** build the deck slides for the 4 control modes (results + why each mode matters).
