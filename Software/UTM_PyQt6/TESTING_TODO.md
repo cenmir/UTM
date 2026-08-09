@@ -125,12 +125,64 @@ T6 showed a **stepped, non-sinusoidal** wave and loose bounds. Three fixes lande
 1. **Waveform shaped over the ACHIEVED extremes** (`_lo_seen`/`_hi_seen` + 5 % margin) instead of the nominal bounds → **no dead zone, no flat bottoms**; floor raised 0.01 → 0.02 mm/s.
 2. **Lead adapted in FORCE units, not rate×time** — we backed off by `lead_used` and still ran `over` past the bound, so the true coast is `lead_used + over` = the next lead. Rate-independent → converges for any waveform. Gain 0.85. Final trough stops at the true bound with no lead.
 - Sim (5 cycles): sine peaks **518/522/512/502/493**, troughs **71/56/66/87** (vs no-lead 518/528/534/533/535 and 71/48/34/28); crawl-at-floor **1.8 s**; **55 s** vs T6.2's measured 82 s.
-- [ ] **T6.3** — same settings (Low 100 / High 500 / 5 cycles / 0.1 / **Sine**). Save as `_T6.3_Sine`.
-  - Check: **no flat dwell between humps** · peaks trending toward 500 · troughs trending up toward 100 · duration well under 95 s · 5 cycles, no stall.
-  - ⚠️ Bounds converge over cycles 1→5 by design (sim still shows ~−13 N low error at cycle 5), so judge the **trend**, not cycle 1.
-- [ ] **Release load** (renamed from "Release preload") — now drives past tared 0 to **−(tared-away load)** = true zero absolute force, so the specimen can be unclamped. Safety floor made relative (`target − 50 N`); the old fixed −50 N would have aborted the release. Quick non-destructive check before T6.2.
+- [x] **T6.3 — PASS 2026-08-09.** Both bounds now CONVERGE onto target, and the flat bottoms are gone.
 
-- **After T6.2:** build the deck slides for the 4 control modes (results + why each mode matters).
+| cycle | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| peaks (target 500) | 528.0 | 529.2 | 515.6 | 505.1 | **499.6 (−0.4)** |
+| troughs (target 100) | 50.5 | 75.3 | 94.3 | **100.3 (+0.3)** | 74.0 (final Stop, no lead) |
+
+  - **Dead zone eliminated** — climb-out from a *below-Low* trough: T6.2 **10.4 / 10.6 s** → T6.3 **7.1 / 5.6 / 5.3 s**. Commanded speed below the bound **0.0159 → 0.0281 mm/s**. T6.3 climbs out of a 94 N trough in 5.3 s where T6.2 needed 5.8 s starting from 110 N (already *above* the bound).
+  - **Duration 127 s (T6) → 95 s (T6.2) → 65 s (T6.3).**
+  - ⚠️ Don't read the "mean bound error" — it averages cycle 1's deliberate transient with cycle 5's near-zero. The lead seeds at 0 and grows by design; judge the **trend**.
+  - Leftover (cosmetic): the final trough lands at 74 N (−26) because the last trough uses no lead and the Stop still coasts. Traded T6.2's +33 for −26. Half-lead on the final trough would split it.
+- [x] **Release load** — renamed, drives past tared 0 to −(tared-away load) = true zero. Safety floor made relative. Speed **0.30 → 0.20 mm/s** (0.30 felt too fast on the rig).
+
+---
+
+## 8. Fracture protocols (destructive) — T7 / T8  ⬜ TODO
+
+The plain **Fracture test** button = a **monotonic (quasi-static) uniaxial tensile test to failure** (ASTM D638 / ISO 527): one continuous pull to load collapse → one E, one σ_y, one UTS. T7/T8 reach the same fracture but interrogate the specimen on the way, so **one specimen yields a curve instead of a point**. Both are in the advanced-mode dropdown behind a destructive-test confirmation.
+
+**Motor note:** measured peaks in `8.6.20/` are **S16 3374.6 · V6a 3350.7 · V6c 3275.0 · V6d 3218.4 · V6e 3162.2 · V6b 3109.7 N** — six 100 % infill specimens over 3.1 kN, all fractured. Normal ceiling **3.2–3.4 kN**; the ~2.6 kN figure is a *thermally derated* session, NOT a hard limit. 100 % infill at the full 80 mm² fractures fine.
+
+### Common to both
+1. Mount specimen → preload **300 N** → **Prepare specimen** (now clears BOTH plots).
+2. Tick **Advanced test modes**, pick the type, set params, **Start test** → confirm the destructive dialog.
+3. At the end the console prints a **summary table** (per level / per cycle).
+4. ⏸️ **Let the motor cool between T7 and T8** — back-to-back high-force runs are what produced the derated ~2.6 kN sessions.
+5. A stall-guard trip is a *motor* result, not a protocol failure.
+
+### T7 — Staircase → FRACTURE
+| param | 100 % infill | 50 % infill |
+|---|---|---|
+| Start | **400 N** | 200 N |
+| Step | **300 N** | 150 N |
+| Dwell | **10 s** | 10 s |
+| Speed | **0.100 mm/s** | 0.100 |
+| Ramp | **Smooth** | Smooth |
+
+~11 levels, **≈4–5 min**. Save as `_T7_StaircaseFracture`.
+- **Dwell = 10 s is sufficient** (measured): 10 s captured **77 % / 67 %** of the full ~18 s drop in the T3 dwells. Enough for *yield detection*, where only consistency between levels matters and the 6–12 N drop is ~5× load-cell noise. NOT enough for quantitative viscoelastic work — use the dedicated Relaxation mode for that (10 s = only 41 % of an 81 s hold).
+- **Keep Ramp = Smooth.** In Linear T3 the drop was 11.7 N at 345 N but only 6.3 N at 937 N — backwards for true relaxation. That is the 45–53 N arrival overshoot decaying during the dwell and masquerading as relaxation; Smooth cuts overshoot to 5–8 N.
+- **Watch:** the `relax-drop` column — small and roughly linear while elastic, then an **abrupt jump** once a level passes yield. That is the yield-onset signature this protocol exists for.
+- If late levels **crawl**, that's expected (the Smooth taper is calibrated for elastic stiffness; the specimen is far softer past yield) → switch to **Linear**.
+
+### T8 — Progressive cyclic → FRACTURE
+| param | 100 % infill | 50 % infill |
+|---|---|---|
+| 1st peak | **600 N** | 300 N |
+| Peak step | **300 N** | 150 N |
+| Unload to | **150 N** | 100 N |
+| Speed | **0.100 mm/s** | 0.100 |
+
+~10 cycles, **≈5–7 min**. Save as `_T8_ProgressiveCyclic`.
+- 🔴 **Primary risk to watch:** if it stops after **cycle 1 or 2** announcing FRACTURE, the per-rising-stroke collapse watch has false-fired on the *intentional* unload — the exact failure mode this design guards against (armed only past halfway to the current target). **Stop, send the CSV, do not retry.**
+- **Watch:** `unload-K` per cycle (stiffness degradation `D = 1 − Eᵢ/E₀`) and the rising trough position (permanent set).
+
+**Sim status (elastic-plastic plant: yield 2900, break 3300, K 1210):** T7 fractures level 9 @222 s, relax-drop grows 2.8 → 26.0 N; T8 fractures cycle 8 @peak 3300 N after 7 clean cycles, peaks within ~5 N of target, trough position jumps 0.40 → 0.65 mm at yield. Three policy bugs already found and fixed by that sim (`self.step` shadowing `step()`; logged peak was the trigger not the true post-coast peak; fracture record mutated + duplicated the last row).
+
+- **After T7/T8:** build the deck slides for all the control modes + fracture protocols.
 
 ---
 
