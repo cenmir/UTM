@@ -31,6 +31,9 @@ def read_csv(path):
                 "ec": float(p[idx["DIC_Cauchy"]]),
                 "et": float(p[idx["DIC_True"]]) if "DIC_True" in idx else 0.0,
                 "lpx": float(p[idx["L_px"]]) if "L_px" in idx else 0.0,
+                # commanded crosshead speed — the reliable way to spot an intentional HOLD
+                # (see find_dwells); older CSVs may not have it, hence the NaN default.
+                "spd": float(p[idx["Speed_mm_s"]]) if "Speed_mm_s" in idx else float("nan"),
             })
         except (ValueError, IndexError, KeyError):
             continue
@@ -214,3 +217,61 @@ class LiveFractureDetector:
             self.fired = True
         self._prev_ec, self._prev_lpx = ec, lpx
         return self.fired
+
+
+def find_dwells(data, min_s=5.0, min_load=50.0, upto_peak=True):
+    """Locate the intentional HOLDs in a staircase / staircase-to-fracture run and measure the
+    stress relaxation at each.
+
+    Detect on the COMMANDED speed (`spd == 0`), not on a position-gradient threshold. A tapered
+    approach crawls at 0.02 mm/s, which a gradient cut-off cannot separate from a true hold: on
+    rig run T7.2 a `|d(pos)/dt| < 0.004` rule silently missed 3 of the 8 levels — and those were
+    the levels that carried the yield signal. Falls back to the gradient rule only for older CSVs
+    with no Speed_mm_s column.
+
+    Returns a list of dicts: level (1-based), t_start, dwell_s, arrive (N), end (N),
+    drop (N), drop_pct — the drop as a % of the arrival load.
+
+    Reading it: drop_pct FALLS through the elastic region, reaches a minimum, then CLIMBS once a
+    level passes yield. That turning point is the yield onset (T7.2: min 1.60 % at 694 N tared,
+    rising to 3.23 % by 1165 N)."""
+    if not data:
+        return []
+    peak_i = max(range(len(data)), key=lambda i: data[i]["F"]) if upto_peak else len(data) - 1
+    have_spd = any(d.get("spd") == d.get("spd") for d in data)      # any non-NaN
+    if have_spd:
+        held = [i for i in range(peak_i + 1)
+                if data[i].get("spd") == 0.0 and data[i]["F"] > min_load]
+    else:
+        held = []
+        for i in range(1, peak_i + 1):
+            dt = data[i]["t"] - data[i - 1]["t"]
+            if dt > 0 and abs(data[i]["pos"] - data[i - 1]["pos"]) / dt < 0.004 \
+                    and data[i]["F"] > min_load:
+                held.append(i)
+    out, run = [], []
+    for i in held + [None]:
+        if run and (i is None or i != run[-1] + 1):
+            a, b = run[0], run[-1]
+            dur = data[b]["t"] - data[a]["t"]
+            if dur >= min_s:
+                arrive, end = data[a]["F"], data[b]["F"]
+                out.append({"level": len(out) + 1, "t_start": data[a]["t"], "dwell_s": dur,
+                            "arrive": arrive, "end": end, "drop": arrive - end,
+                            "drop_pct": (100.0 * (arrive - end) / arrive) if arrive else 0.0})
+            run = []
+        if i is not None:
+            run.append(i)
+    return out
+
+
+def yield_onset(dwells):
+    """The level at which drop_pct stops falling and starts climbing = yield onset.
+    Returns that dwell dict, or None if there are too few levels / it never turns."""
+    if len(dwells) < 3:
+        return None
+    pcts = [d["drop_pct"] for d in dwells]
+    lo = min(range(len(pcts)), key=lambda i: pcts[i])
+    if lo == 0 or lo == len(pcts) - 1:
+        return None                     # monotonic -> no resolvable knee in this range
+    return dwells[lo]
