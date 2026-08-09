@@ -1,0 +1,91 @@
+UTM DIC — Command Cheat Sheet
+==============================
+
+All commands run from the app folder (this file's directory):
+  <repo>\Software\UTM_PyQt6
+
+
+CAMERA SETUP CHECK  (run after any camera/specimen/lighting change)
+-------------------------------------------------------------------
+Interactive prompt (asks white/black):
+    python camera_setup.py
+
+For current specimen (white dots on dark body):
+    python camera_setup.py --mode black
+
+For light specimen (dark dots on white paper):
+    python camera_setup.py --mode white
+
+More frames for stability check:
+    python camera_setup.py --mode black --frames 60
+
+Output:
+  * Terminal verdict: PASS / FAIL with suggestions
+  * setup_output/camera_setup.png -> annotated frame with blob markers
+
+
+ALL SETUP/DIAGNOSTIC IMAGES LAND IN:  setup_output/
+  camera_setup.py    -> setup_output/camera_setup.png
+  check_blobs.py     -> setup_output/check_blobs.png
+  grab_full_frame.py -> setup_output/full_frame.png
+  grid_full_frame.py -> setup_output/full_frame_grid.png   (reads full_frame.png)
+The folder is created automatically; add to .gitignore if desired.
+
+
+ROI DIAGNOSIS  (when dots not detected or camera moved)
+--------------------------------------------------------
+Full step-by-step playbook:  RECALIBRATE_ROI.md
+
+Quick chain:
+1. Grab full sensor image:
+    python grab_full_frame.py
+
+2. Add coordinate grid for reading positions:
+    python grid_full_frame.py
+
+3. Compute new ROI from dot centers (see RECALIBRATE_ROI.md for math),
+   edit camera_manager.py lines ~36 and ~57.
+
+4. Verify:
+    python camera_setup.py --mode black
+
+5. (Optional) 30-frame blob stability check:
+    python check_blobs.py
+
+
+HARDWARE TEST ANALYSIS  (after running 8.6.5 / 8.6.10 / noise-floor session)
+-----------------------------------------------------------------------------
+    python analyze_hardware_tests.py UTM_Test_YYYYMMDD_HHMMSS.csv
+
+
+SOFTWARE TEST SUITE  (run to confirm nothing is broken)
+--------------------------------------------------------
+All 41 tests:
+    python -m unittest test_phase_8_6 -v
+
+Pytest format (colorized, with percentages):
+    python -m pytest test_phase_8_6.py -v
+
+
+MAIN APPLICATION
+----------------
+    python main.py
+
+
+TYPICAL WORKFLOW FOR A NEW TEST SESSION
+----------------------------------------
+1. Position camera + specimen, turn on lights
+2. python camera_setup.py --mode black          (verify setup)
+3. If PASS -> python main.py                    (launch GUI)
+4. Camera: Connect -> Start -> Tare DIC
+5. Load cell: Connect, zero
+6. Start acquisition, run motor, Stop, Export CSV
+7. python analyze_hardware_tests.py <csv>       (score the run)
+
+
+NOTES
+-----
+* On Windows cmd.exe, '#' is NOT a comment marker - type only the command, nothing after '#'
+* --mode black -> LIGHT dots on DARK specimen (current setup)
+* --mode white -> DARK dots on LIGHT specimen
+* Exit code 0 from any script = OK; exit code 1 = something to fix
