@@ -140,7 +140,7 @@ T6 showed a **stepped, non-sinusoidal** wave and loose bounds. Three fixes lande
 
 ---
 
-## 8. Fracture protocols (destructive) — T7 ✅ / T7.2 ✅ PASS / T8 ⬜ TODO
+## 8. Fracture protocols (destructive) — T7 ✅ / T7.2 ✅ PASS / T8 ✅ PASS
 
 The plain **Fracture test** button = a **monotonic (quasi-static) uniaxial tensile test to failure** (ASTM D638 / ISO 527): one continuous pull to load collapse → one E, one σ_y, one UTS. T7/T8 reach the same fracture but interrogate the specimen on the way, so **one specimen yields a curve instead of a point**. Both are in the advanced-mode dropdown behind a destructive-test confirmation.
 
@@ -181,6 +181,46 @@ The plain **Fracture test** button = a **monotonic (quasi-static) uniaxial tensi
 - **Watch:** `unload-K` per cycle (stiffness degradation `D = 1 − Eᵢ/E₀`) and the rising trough position (permanent set).
 
 **Sim status (elastic-plastic plant: yield 2900, break 3300, K 1210):** T7 fractures level 9 @222 s, relax-drop grows 2.8 → 26.0 N; T8 fractures cycle 8 @peak 3300 N after 7 clean cycles, peaks within ~5 N of target, trough position jumps 0.40 → 0.65 mm at yield. Three policy bugs already found and fixed by that sim (`self.step` shadowing `step()`; logged peak was the trigger not the true post-coast peak; fracture record mutated + duplicated the last row).
+
+### T8 RESULT — ✅ PASS 2026-08-09 (S21, 50 % infill, 300 N preload, step 150 N, unload 100 N, 0.100 mm/s)
+
+**8 clean cycles, then fracture on rising stroke 9** (target 1500 N never reached; peak 1396.8 N).
+**No cycle-1/2 false-fire** — the per-rising-stroke collapse watch (armed only past halfway to target)
+held through all 8 intentional unloads, which was the one real design risk in this mode.
+
+| cy | peak N | target | err | E_unload | dissipated |
+|---|---|---|---|---|---|
+| 1 | 333.0 | 300 | **+33.0** | — | 31.7 % |
+| 2 | 455.2 | 450 | +5.2 | — | 12.4 % |
+| 3 | 595.2 | 600 | −4.8 | — | 10.8 % |
+| 4 | 755.7 | 750 | +5.7 | 2.32 GPa | 11.4 % |
+| 5 | 893.4 | 900 | −6.6 | 2.12 GPa | **9.6 % (min)** |
+| 6 | 1046.0 | 1050 | −4.0 | 1.97 GPa | 15.2 % |
+| 7 | 1197.5 | 1200 | −2.5 | 1.85 GPa | 19.6 % |
+| 8 | 1338.0 | 1350 | −12.0 | 1.73 GPa | **29.6 %** |
+
+- **Peak tracking:** cycle 1 overshoots **+33 N** because the adaptive reversal lead is seeded at 0 and
+  converges *from below* (deliberate — seeding at the measured decel time over-led and rang, see T6).
+  From cycle 2 on, |err| ≤ 12 N (mean 5.8 N) = 0.4–1.3 % of target. Troughs held 97.9–116.4 N vs 100 N.
+- **Damage curve (the science):** unload modulus from **DIC** strain falls **2.32 → 1.73 GPa over cycles
+  4→8 = 25 % stiffness loss**, monotonic. Robust to the fit window (top-55 % vs top-30 % of the unload
+  both give 21–26 %). Hysteresis dissipation bottoms at **9.6 % (cycle 5)** then accelerates to 29.6 %.
+  Residual DIC strain per-cycle increment jumps 5× at cycle 8 (+0.00163 vs ~0.0003 typical).
+- ⚠️ **Cycles 1–3 unusable for modulus** (R² 0.17–0.82, cycle 1 even negative): the DIC strain *change*
+  during those small unloads is below the noise floor. The metric only becomes trustworthy once the peak
+  exceeds ~750 N. Dissipation (an energy integral over a large position range) does NOT have this
+  problem and is the better damage metric on this rig.
+- 🔴 **Crosshead stiffness trends the WRONG WAY:** 613 → 777 N/mm, *increasing* monotonically as rig slack
+  is squeezed out, while the specimen is genuinely softening. **Without DIC this test would have concluded
+  the specimen was stiffening.** Strongest single argument for the DIC channel yet — put it in the deck.
+- **Fracture:** peak 1396.8 N nominal (17.46 MPa) at t=262.8 s, ~9 s of plateau/necking, collapse at
+  t=272.0 s (961 N in one sample). Detector correctly stayed silent through the plateau.
+  **Auto-halt 1.33 s** after collapse (T7.2 was 1.09 s).
+- **Anchor 313.2 N** (tail sd 0.22 N) → **true UTS 21.38 MPa**.
+- ✅ **Cross-protocol validation:** T7.2 staircase gave **21.19 MPa** (anchor 307.4 N) on the same specimen
+  type — **0.9 % apart**. Two independent interrogation protocols, same answer. Yield onset is bracketed
+  700–900 N tared (≈12.6–15.1 MPa true) by T7.2's relaxation-drop knee and T8's dissipation minimum.
+- **Recipe feature's first real use** — "T8 Progressive cyclic 50%" loaded the mode + all 4 params correctly.
 
 - **After T7/T8:** build the deck slides for all the control modes + fracture protocols.
 
