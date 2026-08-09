@@ -134,106 +134,107 @@ class StrainRatePolicy(ControlPolicy):
 
 
 class CyclicPolicy(ControlPolicy):
-    """Load–unload between two FORCE bounds for N cycles (hysteresis / stiffness degradation).
+    """Load-unload between two FORCE bounds for N cycles (hysteresis / stiffness degradation).
 
     `waveform`:
-      • 'triangle' — constant-speed ramps up and down (sharp velocity reversal at each peak).
-      • 'sine'     — the speed is eased by the load fraction, spd = speed·sin(π·frac), so it slows to
-                     a crawl approaching each bound and is fastest at mid-load. This rounds the peaks
-                     (no velocity kink) → smooth, sine-shaped cycles, better for viscoelastic
-                     hysteresis loops. LOW frequency only — the rig can't do fatigue-rate cycling.
-    Both respect the Low/High bounds EXACTLY (same reversal logic); the period is emergent (set by
-    speed + specimen stiffness), as with the triangle."""
+      - 'triangle' - constant-speed ramps up and down (sharp velocity reversal at each peak).
+      - 'sine'     - speed follows 2*sqrt(frac*(1-frac)), the profile that makes the FORCE a true
+                     sine in time. Smooth, rounded cycles; better hysteresis loops. LOW frequency
+                     only -- the rig cannot do fatigue-rate cycling.
+
+    Bound accuracy: the crosshead needs 1-2 s to turn round, so a reversal commanded AT the bound
+    always coasts past it. `predictive` reverses early by a FORCE offset that is adapted from the
+    overshoot actually observed (see `_adapt`). Rig runs T5/T6/T6.2 drove both design choices here.
+    """
     name = "cyclic"
 
     def __init__(self, f_low: float, f_high: float, cycles: int, speed: float = 0.1,
-                 waveform: str = "triangle", predictive: bool = True, decel_s: float = 0.0,
-                 min_speed: float = 0.01, adapt_gain: float = 0.7):
+                 waveform: str = "triangle", predictive: bool = True,
+                 min_speed: float = 0.02, adapt_gain: float = 0.85, shape_margin: float = 0.05):
         self.f_low, self.f_high, self.cycles, self.speed = f_low, f_high, cycles, speed
         self.waveform = waveform
         self.predictive = predictive
         self.min_speed = min_speed
+        self.adapt_gain = adapt_gain
+        self.shape_margin = shape_margin
         self.span = max(1e-6, f_high - f_low)
         self.dir = "tension"
         self.done_cycles = 0
-        self.adapt_gain = adapt_gain
-        # Coast time per direction, ADAPTED from the bound violation actually observed. Seeded at 0
-        # (no lead) on purpose: the lead then grows from below, so early cycles merely overshoot as
-        # they always did and converge onto the bound. Seeding it high instead made cycles 1-3
-        # reverse far too early (sim: peaks 426/456/475) — worse than no lead over a 5-cycle run.
-        self._decel = {"tension": decel_s, "compression": decel_s * 1.5}
-        self._hist: List[Tuple[float, float]] = []
-        self._pend: Optional[Tuple[str, float, float, float]] = None   # coast in progress
-        self._started = False        # the initial ramp-in to f_low has finished
-
-    def _rate(self, s: Signals) -> float:
-        """Signed dF/dt over a ~0.5 s window — drives the predictive reversal lead."""
-        self._hist.append((s.t, s.load))
-        self._hist = [(t, l) for (t, l) in self._hist if t >= s.t - 0.5]
-        if len(self._hist) >= 2 and self._hist[-1][0] > self._hist[0][0]:
-            return (self._hist[-1][1] - self._hist[0][1]) / (self._hist[-1][0] - self._hist[0][0])
-        return 0.0
+        # Reversal lead as a FORCE offset per direction, seeded at 0 so it grows from below.
+        # (T6.2 showed a rate-scaled lead cannot work for a sine: the rate -> 0 exactly at the
+        # bound, so the lead vanishes right when it is needed and the loop never converges.
+        # A force-domain lead is rate-independent and converges for any waveform.)
+        self._lead = {"tension": 0.0, "compression": 0.0}
+        self._pend: Optional[Tuple[str, float, float]] = None   # (bound, extreme, lead_used)
+        self._started = False                # the initial ramp-in to f_low has finished
+        # Actual travel achieved. The waveform is shaped over THIS range, not the nominal bounds,
+        # so there is no dead zone. (T6.2: troughs undershot to 60-80 N; below f_low the clamped
+        # frac made the law return 0 and the speed floor took over -> the flat bottoms, and a
+        # climb-out of 10.5 s vs 6.1 s for troughs that stayed above the bound.)
+        self._lo_seen = f_low
+        self._hi_seen = f_high
 
     def _adapt(self, s: Signals) -> None:
-        """After each reversal the crosshead coasts past the bound. Once it has turned round, convert
-        the violation into a better coast-time estimate: overshoot = rate x (true_decel - lead_used),
-        so true_decel = lead_used + overshoot/rate. Self-tunes in 1-2 cycles, no need to know the
-        specimen stiffness or the firmware's decel ramp."""
+        """Once the crosshead has turned round, fold the observed bound violation into the lead.
+        We backed off by `lead_used` and still ran `over` past the bound, so the true coast is
+        `lead_used + over` -- which is exactly the lead to use next time. Damped by `adapt_gain`
+        (converges ~C, 0.7C, 0.91C, 0.97C ... of the true coast). Also records the achieved
+        extreme so the waveform is shaped over the real travel."""
         if self._pend is None:
             return
-        bound, extreme, lead_t, rate0 = self._pend
+        bound, extreme, lead_used = self._pend
         if bound == "high":
             extreme = max(extreme, s.load)
             turned = s.load < extreme - 0.02 * self.span
-            over = extreme - self.f_high
+            over, d = extreme - self.f_high, "tension"
         else:
             extreme = min(extreme, s.load)
             turned = s.load > extreme + 0.02 * self.span
-            over = self.f_low - extreme
-        self._pend = (bound, extreme, lead_t, rate0)
+            over, d = self.f_low - extreme, "compression"
+        self._pend = (bound, extreme, lead_used)
         if turned:
-            d = "tension" if bound == "high" else "compression"
-            if abs(rate0) > 1e-6:
-                want = lead_t + over / abs(rate0)
-                # DAMPED update — applying the full correction each reversal over-corrects and the
-                # bound rings (sim: peaks alternating 499/471/497/469). Partial steps settle instead.
-                g = self.adapt_gain
-                self._decel[d] = min(4.0, max(0.0, (1.0 - g) * self._decel[d] + g * want))
+            g = self.adapt_gain
+            want = lead_used + over
+            self._lead[d] = min(0.45 * self.span, max(0.0, (1.0 - g) * self._lead[d] + g * want))
+            if bound == "high":
+                self._hi_seen = extreme
+            else:
+                self._lo_seen = extreme
             self._pend = None
 
     def _wave_speed(self, load: float) -> float:
-        """Triangle = constant speed. Sine = the velocity profile that makes the FORCE a true sine in
-        time: for F = mid - amp*cos(wt), dF/dt ~ 2*sqrt(frac*(1-frac)) with frac the load fraction.
-        (The earlier sin(pi*frac) law was ~2x too slow near the bounds, which flattened the shoulders
-        and straightened the flanks.)"""
+        """Triangle = constant speed. Sine = 2*sqrt(frac*(1-frac)) over the ACHIEVED range, widened
+        by `shape_margin` so the profile never bottoms out onto the floor at the turnarounds."""
         if self.waveform != "sine":
             return self.speed
-        frac = min(1.0, max(0.0, (load - self.f_low) / self.span))
+        m = self.shape_margin * max(1e-6, self._hi_seen - self._lo_seen)
+        lo, hi = self._lo_seen - m, self._hi_seen + m
+        frac = min(1.0, max(0.0, (load - lo) / max(1e-6, hi - lo)))
         return max(self.min_speed, self.speed * 2.0 * math.sqrt(frac * (1.0 - frac)))
 
     def step(self, s: Signals) -> Command:
-        rate = self._rate(s)
         self._adapt(s)
-        # Initial ramp-in: below the low bound there is nothing to shape, so run at full speed
-        # instead of crawling at the sine's floor (T6 wasted ~16 s doing exactly that).
+        # Initial ramp-in: below the low bound there is no waveform to shape yet, so run at full
+        # speed rather than crawling (T6 wasted ~16 s doing that).
         if not self._started:
             if s.load >= self.f_low:
                 self._started = True
             else:
                 return Command(self.speed, "tension", message="ramp-in to low bound")
-        lead = 0.0
-        if self.predictive:
-            approach = rate if self.dir == "tension" else -rate
-            lead = min(max(0.0, approach) * self._decel[self.dir], 0.45 * self.span)
+        lead = min(self._lead[self.dir], 0.45 * self.span) if self.predictive else 0.0
         if self.dir == "tension" and s.load >= self.f_high - lead:
             self.dir = "compression"
-            self._pend = ("high", s.load, self._decel["tension"], rate)
-        elif self.dir == "compression" and s.load <= self.f_low + lead:
-            self.dir = "tension"
-            self._pend = ("low", s.load, self._decel["compression"], rate)
-            self.done_cycles += 1
-            if self.done_cycles >= self.cycles:
-                return Command(0, "hold", done=True, message=f"{self.cycles} cycles complete")
+            self._pend = ("high", s.load, lead)
+        elif self.dir == "compression":
+            # The final trough only has to STOP, not reverse, so it needs no lead - using one made
+            # T6.2 finish at 133 N instead of ~100 N.
+            final = (self.done_cycles + 1) >= self.cycles
+            if s.load <= self.f_low + (0.0 if final else lead):
+                self.dir = "tension"
+                self._pend = ("low", s.load, lead)
+                self.done_cycles += 1
+                if self.done_cycles >= self.cycles:
+                    return Command(0, "hold", done=True, message=f"{self.cycles} cycles complete")
         return Command(self._wave_speed(s.load), self.dir,
                        message=f"cycle {self.done_cycles + 1}/{self.cycles}")
 
