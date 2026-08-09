@@ -1,0 +1,36 @@
+# UTM PyQt6 Application Requirements
+#     pip install -r requirements.txt
+# Verified 2026-08-09 against the actual imports in this folder.
+
+# Core GUI
+PyQt6>=6.6.0
+PyQt6-Qt6>=6.6.0
+
+# Serial communication to the MCU  (QtSerialPort ships with PyQt6; pyserial is used
+# for non-blocking port probing)  -- main.py, serial_manager.py
+pyserial>=3.5
+
+# Camera + DIC vision  -- camera_manager.py, camera_setup.py, roi_tool.py, main.py
+opencv-python>=4.8.0
+# Basler camera SDK. Hardware-specific: needed to RUN the rig, not to run the
+# offline analysis/deck scripts.  -- camera_manager.py, roi_tool.py
+pypylon>=3.0.0
+
+# Numerics  -- camera_manager.py, roi_tool.py, main.py, analysis scripts
+numpy>=1.24.0
+
+# Plotting  -- main.py (live plots), utm_report.py, generate_mode_help.py
+matplotlib>=3.7.0
+
+# Used only by the standalone hardware-test/analysis scripts
+# (analyze_hardware_tests.py, test_phase_8_6.py), not by the app itself.
+pandas>=2.0.0
+
+# --- build only (not needed to run the app) -----------------------------------
+# Packaging into a Windows .exe  -- build_exe.py
+# pyinstaller>=6.0.0
+
+# NOTE: scipy was listed here previously but nothing imports it. Removed.
+# The core analysis modules (utm_analysis.py, control_policies.py, utm_recipes.py,
+# utm_registry.py, utm_dic.py) are deliberately dependency-free stdlib-only, so the
+# offline analysis runs without the camera stack installed.
