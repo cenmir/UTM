@@ -84,15 +84,74 @@ def find(name, directory=RECIPES_DIR):
     return None
 
 
+DEFAULT_100 = "Default 100% infill"
+DEFAULT_50 = "Default 50% infill"
+
+
+def _starter_recipes():
+    """The two profiles the app always offers, one per specimen type.
+
+    Every force parameter is sized from the rig-validated runs so that a fracture protocol reaches
+    failure in ~10 levels/cycles: 100 % infill breaks near 3.2-3.4 kN, 50 % near 1.4 kN tared.
+    Both carry params for EVERY mode, so switching the Test type after a Load still gives sane
+    values instead of leftovers from the previous recipe.
+
+    The dropdown is name-sorted and "1" sorts before "5", so DEFAULT_100 lands on top.
+    """
+    common = dict(material="PLA", specimen_mode="White", area_mm2=80.0, gauge_mm=80.0,
+                  test_speed_mm_s=0.1, mode="manual", strain_rate=0.0005, auto_stop_fracture=True)
+    return [
+        TestRecipe(
+            name=DEFAULT_100, infill_pct=100.0, preload_N=470.0, **common,
+            mode_params={
+                "Cyclic": {"low": 200.0, "high": 1500.0, "cycles": 5, "speed": 0.1,
+                           "waveform": "Sine"},
+                "Staircase": {"start": 500.0, "step": 400.0, "levels": 4, "dwell": 30.0,
+                              "speed": 0.1, "ramp": "Smooth"},
+                "Relaxation": {"strain": 0.004, "duration": 120.0, "speed": 0.1},
+                "Creep": {"load": 1200.0, "duration": 120.0, "speed": 0.1},
+                "Staircase → FRACTURE": {"start": 500.0, "step": 300.0, "dwell": 10.0,
+                                         "speed": 0.1, "ramp": "Smooth"},
+                "Progressive cyclic → FRACTURE": {"first_peak": 600.0, "peak_step": 300.0,
+                                                  "unload_to": 200.0, "speed": 0.1},
+            },
+            notes="100 % infill starter. Non-destructive modes stay well below yield (~45 MPa). "
+                  "Fracture protocols step to ~3.2 kN in ~10 levels/cycles. WARNING: a thermally "
+                  "derated session stalls before 100 % infill fractures (T7 on S20 stalled at "
+                  "2355 N tared) — let the motor cool, or use the 50 % profile."),
+        TestRecipe(
+            name=DEFAULT_50, infill_pct=50.0, preload_N=300.0, **common,
+            mode_params={
+                "Cyclic": {"low": 100.0, "high": 500.0, "cycles": 5, "speed": 0.1,
+                           "waveform": "Sine"},
+                "Staircase": {"start": 200.0, "step": 200.0, "levels": 4, "dwell": 30.0,
+                              "speed": 0.1, "ramp": "Smooth"},
+                "Relaxation": {"strain": 0.004, "duration": 120.0, "speed": 0.1},
+                "Creep": {"load": 500.0, "duration": 120.0, "speed": 0.1},
+                "Staircase → FRACTURE": {"start": 200.0, "step": 120.0, "dwell": 10.0,
+                                         "speed": 0.1, "ramp": "Smooth"},
+                "Progressive cyclic → FRACTURE": {"first_peak": 300.0, "peak_step": 150.0,
+                                                  "unload_to": 100.0, "speed": 0.1},
+            },
+            notes="50 % infill starter. Both fracture protocols are the exact settings validated "
+                  "2026-08-09: staircase 200/120/10 s = T7.2 on S18 (yield knee 694 N, 21.19 MPa) "
+                  "and progressive cyclic 300/150/100 = T8 on S21 (8 cycles, 21.38 MPa). Safe "
+                  "choice when the motor has been working hard."),
+    ]
+
+
 def ensure_default(directory=RECIPES_DIR):
-    """Guarantee a 'Default' settings profile exists (created from the dataclass defaults if
-    missing). The dropdown then always has at least 'Default'; users Save... their own on top.
-    Idempotent — if the user has customised 'Default', it is left untouched."""
-    d = find("Default", directory)
-    if d is None:
-        d = TestRecipe(name="Default", notes="Baseline setup — Save... your own settings on top.")
-        d.save(directory)
-    return d
+    """Guarantee both starter profiles exist, creating only the ones that are missing.
+    Idempotent — a profile the user has customised is left untouched. Returns the 100 % one
+    (the app's initial selection)."""
+    made = []
+    for r in _starter_recipes():
+        cur = find(r.name, directory)
+        if cur is None:
+            r.save(directory)
+            cur = r
+        made.append(cur)
+    return made[0]
 
 
 def main():

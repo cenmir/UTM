@@ -158,6 +158,141 @@ def creep():
     fig.tight_layout(); fig.savefig(os.path.join(OUT, "creep.png"), dpi=110); plt.close(fig)
 
 
+# ---------------- Staircase -> FRACTURE ----------------
+def staircase_to_fracture():
+    """Two panels: what you SET (left) and what you GET (right). The right panel is the real payoff
+    of this protocol — the dwell relaxation-drop is flat while the specimen is elastic and turns up
+    sharply once a level passes yield, which is how T7.2 located the knee at 694 N."""
+    fig, (ax, bx) = plt.subplots(1, 2, figsize=(9.4, 4.0), gridspec_kw={"width_ratios": [1.55, 1]})
+
+    start, step, ramp_t, dwell_t = 1.0, 0.5, 0.42, 0.62
+    drops = [0.03, 0.033, 0.038, 0.075, 0.16]          # relaxation drop per level: flat then knee
+    T, F = [0.0], [0.0]
+    for i, d in enumerate(drops):
+        top = start + i * step
+        T.append(T[-1] + ramp_t); F.append(top)                      # ramp to the level
+        tt = np.linspace(0, dwell_t, 40)                             # dwell: force decays a little
+        for k, s in enumerate(tt[1:]):
+            T.append(T[-1] + (tt[1] - tt[0])); F.append(top - d * step * (1 - np.exp(-4 * s / dwell_t)))
+    ax.plot(T, F, color=RED, lw=2.3)
+    tb = T[-1]
+    ax.plot([tb, tb + ramp_t * 0.85], [F[-1], start + len(drops) * step], color=RED, lw=2.3)
+    xf = tb + ramp_t * 0.85; yf = start + len(drops) * step
+    ax.plot([xf, xf + 0.10], [yf, 0.12], color=RED, lw=2.3)          # fracture: load collapses
+    ax.plot([xf], [yf], "x", color="k", ms=11, mew=2.5)
+    ax.text(xf + 0.16, yf * 0.86, "FRACTURE\n(auto-halt)", color="k", fontsize=10,
+            fontweight="bold", va="top")
+
+    xr = xf + 1.05
+    ax.plot([0, xr], [start, start], "--", color="#0b5", lw=1.1)
+    ax.text(xr, start, "  Start", va="center", ha="left", **PARAM)
+    x2 = ramp_t * 2 + dwell_t * 1.05
+    ax.annotate("", xy=(x2, start), xytext=(x2, start + step), arrowprops=dict(arrowstyle="<->", color="#0b5", lw=1.6))
+    ax.text(x2 + 0.07, start + step * 0.42, "Step", **PARAM)
+    xd0 = ramp_t; xd1 = ramp_t + dwell_t
+    ax.annotate("", xy=(xd0, start * 1.06), xytext=(xd1, start * 1.06),
+                arrowprops=dict(arrowstyle="<->", color="#0b5", lw=1.6))
+    ax.text((xd0 + xd1) / 2, start * 1.13, "Dwell", ha="center", **PARAM)
+    ax.annotate("slope = Speed", xy=(0.21, 0.50), xytext=(0.62, 0.22), fontsize=9, color=GREY,
+                arrowprops=dict(arrowstyle="->", color=GREY, lw=1.2))
+    ax.text(0.12, yf * 1.17, "keeps adding steps until it breaks — no Levels setting",
+            color=GREY, fontsize=9.5, style="italic")
+    ax.set_ylim(-0.05, yf * 1.30); ax.set_xlim(-0.1, xr + 1.0)
+    _base(ax, "Staircase → FRACTURE — set")
+
+    lv = np.arange(1, 10)
+    dp = np.array([3.8, 3.2, 2.6, 1.6, 1.7, 1.8, 2.5, 3.2, 4.6])     # T7.2-shaped knee
+    bx.plot(lv, dp, "o-", color=BLUE, lw=2.2, ms=6)
+    bx.plot([4], [1.6], "o", color=RED, ms=13, mfc="none", mew=2.4)
+    bx.annotate("yield onset\n(drop stops falling,\nstarts growing)", xy=(4.15, 1.65), xytext=(4.5, 3.5),
+                fontsize=9.5, color=RED, ha="center",
+                arrowprops=dict(arrowstyle="->", color=RED, lw=1.5))
+    bx.set_xlabel("Level", fontsize=11); bx.set_ylabel("Dwell force drop (%)", fontsize=11)
+    bx.set_title("→ what you get", fontsize=12, fontweight="bold", pad=10)
+    bx.set_xticks(lv); bx.set_yticks([])
+    for s in ("top", "right"):
+        bx.spines[s].set_visible(False)
+    fig.tight_layout()
+    fig.savefig(os.path.join(OUT, "staircase_to_fracture.png"), dpi=105)
+    plt.close(fig)
+
+
+# ---------------- Progressive cyclic -> FRACTURE ----------------
+def progressive_cyclic_to_fracture():
+    """Left: the rising-peak load-unload schedule and its three parameters. Right: the stress-strain
+    loops those unloads produce — the slope of each unload is the modulus at that damage state, and
+    it visibly flattens, which is the stiffness-degradation curve this protocol exists to measure."""
+    fig, (ax, bx) = plt.subplots(1, 2, figsize=(9.4, 4.0), gridspec_kw={"width_ratios": [1.55, 1]})
+
+    first, pstep, floor = 1.0, 0.5, 0.32
+    peaks = [first + i * pstep for i in range(5)]
+    T, F, tp = [0.0], [0.0], []
+    for p in peaks:
+        T.append(T[-1] + 0.5 + (p - floor) * 0.30); F.append(p)       # rising stroke
+        tp.append(T[-1])                                              # remember each apex time
+        T.append(T[-1] + 0.42 + (p - floor) * 0.22); F.append(floor)  # unload to the floor
+    ax.plot(T, F, color=RED, lw=2.3)
+    yf = peaks[-1] + pstep
+    xf = T[-1] + 0.5 + (yf - floor) * 0.30
+    ax.plot([T[-1], xf], [floor, yf], color=RED, lw=2.3)
+    ax.plot([xf, xf + 0.12], [yf, 0.12], color=RED, lw=2.3)
+    ax.plot([xf], [yf], "x", color="k", ms=11, mew=2.5)
+    ax.text(xf + 0.18, yf * 0.88, "FRACTURE\n(auto-halt)", color="k", fontsize=10,
+            fontweight="bold", va="top")
+
+    xr = xf + 1.15
+    ax.plot([0, xr], [floor, floor], "--", color="#0b5", lw=1.1)
+    ax.text(xr, floor, "  Unload to", va="center", ha="left", **PARAM)
+    ax.annotate("", xy=(0.06, 0), xytext=(0.06, first), arrowprops=dict(arrowstyle="<->", color="#0b5", lw=1.6))
+    ax.text(0.06, first + 0.10, "1st peak", ha="left", va="bottom", **PARAM)
+    # Step arrow goes in the WIDE valley between the last two peaks — the early cycles are bunched
+    # into the left ~15 % of the axis, so labelling there collides with "1st peak".
+    xp = (tp[-2] + tp[-1]) / 2
+    for y in (peaks[-2], peaks[-1]):
+        ax.plot([xp - 0.75, xp + 0.75], [y, y], "--", color="#0b5", lw=1.0)
+    ax.annotate("", xy=(xp, peaks[-2]), xytext=(xp, peaks[-1]), arrowprops=dict(arrowstyle="<->", color="#0b5", lw=1.6))
+    ax.text(xp, peaks[-1] + 0.10, "Peak step", ha="center", va="bottom", **PARAM)
+    ax.text(0.15, -0.17, "ramp slope (both directions) = Speed", color=GREY, fontsize=9, style="italic")
+    ax.set_ylim(-0.28, yf * 1.15); ax.set_xlim(-0.1, xr + 1.5)
+    _base(ax, "Progressive cyclic → FRACTURE — set")
+
+    # Real nested loops: a saturating backbone, each unload a straight line whose SLOPE is the
+    # modulus at that damage state. Softening 3.9 -> 2.3 makes the flattening visible while still
+    # letting the permanent set accumulate left-to-right (a faster decay would cancel it out).
+    A, B, sfloor = 3.4, 1.15, 0.15
+    env = lambda e: A * (1 - np.exp(-B * e))
+    inv = lambda s: -np.log(1 - s / A) / B
+    E0 = A * B
+    speaks = [1.0, 1.5, 2.0, 2.5, 3.0]
+    ee = np.linspace(0, inv(speaks[-1]) * 1.04, 200)
+    bx.plot(ee, env(ee), ":", color=GREY, lw=1.1)
+    res = 0.0
+    for i, p in enumerate(speaks):
+        Ei = E0 * (1 - 0.10 * i)
+        ep = inv(p)
+        if i == 0:
+            e0 = np.linspace(0, ep, 60); bx.plot(e0, env(e0), color=BLUE, lw=1.5)
+        else:
+            bx.plot([res, ep], [sfloor, p], color=BLUE, lw=1.5)       # reload to the new peak
+        r = ep - (p - sfloor) / Ei
+        bx.plot([ep, r], [p, sfloor], color=RED, lw=2.3)              # unload — slope = E at damage i
+        res = r
+    bx.annotate("each unload slope\n= E at that damage state", xy=(0.30, 1.03), xytext=(0.04, 2.62),
+                fontsize=9.5, color=RED, arrowprops=dict(arrowstyle="->", color=RED, lw=1.5))
+    bx.text(1.40, 0.38, "slopes flatten\n→ D = 1 − Eᵢ/E₀", color=RED, fontsize=9.5,
+            fontweight="bold", ha="center")
+    bx.set_xlim(-0.05, inv(speaks[-1]) * 1.08); bx.set_ylim(0, A * 0.98)
+    bx.set_xlabel("Strain", fontsize=11); bx.set_ylabel("Stress", fontsize=11)
+    bx.set_title("→ what you get", fontsize=12, fontweight="bold", pad=10)
+    bx.set_xticks([]); bx.set_yticks([])
+    for s in ("top", "right"):
+        bx.spines[s].set_visible(False)
+    fig.tight_layout()
+    fig.savefig(os.path.join(OUT, "progressive_cyclic_to_fracture.png"), dpi=105)
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     cyclic(); staircase(); relaxation(); creep()
+    staircase_to_fracture(); progressive_cyclic_to_fracture()
     print("Wrote:", ", ".join(sorted(os.listdir(OUT))))
