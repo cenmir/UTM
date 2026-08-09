@@ -44,13 +44,42 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
 ## 2. Partial / in progress
 - 🟡 **Closed-loop test modes (Phase B):** strain-rate ✅ done & validated. The other four — **cyclic, staircase, relaxation, creep** — are **🟢 WIRED** ("Advanced test modes" segment: enable checkbox → Test-type dropdown + per-mode settings + **?** help diagram + Start test), sharing the same `_policy_step` loop + safety net. `_policy_step` drives **tension / compression / hold** with **phase-aware guards** (stall guard silent during an intentional hold; dead-DIC guard only for DIC-steered modes) + adaptive timeout.
   - ✅ **Rig-validated 2026-08-08 (scrap #1, 100 % infill):** **creep** (held ~400 N, 80 s) · **relaxation** (ε 0.010 → force decayed 2145→2040 N at fixed strain) · **staircase Linear vs Smooth** (3 levels, 20 s dwells; Smooth cut arrival overshoot **45/47/53 N → 6/5/8 N**). Stall guard silent through all 8 intentional holds. Two overshoot fixes landed (creep + staircase now taper the last 25 % of each approach). See `TESTING_TODO.md` §7.
-  - ⬜ **Remaining: Session 3 — cyclic** (T5 Triangle, T6 Sine — the only reversal-heavy mode), then **deck slides** for the 4 modes.
+  - ✅ **Session 3 — cyclic DONE** (T5 Triangle, T6 Sine → T6.3 after the sine/reversal fixes). All six modes are now rig-validated; only the **deck slides** remain (§3a).
 - 🟡 **Multi-marker Poisson / true Cauchy:** math ready in `utm_dic.py`; needs a 4-marker specimen preset + camera wiring. Also limited by the current mini-dogbone (narrow gauge, sub-pixel transverse change) → see §4.
 
 ---
 
 ## 3. Remaining / planned  (checklist)
-- 🟢 **Wire the control modes into the Motor-Control UI — DONE** ("Advanced test modes" segment, 6 modes incl. the two fracture protocols). ✅ **Recipes now store the mode + every mode's params** (`TestRecipe.mode` + `mode_params`, 2026-08-09) — one `_mode_widget_map()` drives both save and load. ✅ **All 6 modes rig-validated:** creep · relaxation · staircase · cyclic (T6.3) · staircase→fracture (T7.2) · **progressive-cyclic→fracture (T8, 2026-08-09 — 8 clean cycles, no false-fire, 25 % stiffness loss resolved, true UTS 21.38 MPa vs T7.2's 21.19 = 0.9 % apart)**. ⬜ Remaining: **deck slides**.
+
+### 3a. Near-term deliverables  ⭐ next up
+- ⬜ **POSTER — "Smart features of the UTM" (one page).** A single visual summary of everything the rig
+  now does automatically, for the lab wall / open days / conference. Reuse the **SF1–SF8** feature
+  numbering already established in the V6a deck so poster and deck agree. Should cover: DIC health HUD ·
+  Prepare specimen · recipes (2 starter profiles) · one-click report · auto-stop at fracture ·
+  strain-rate closed loop · the **6 control modes** · the **3-layer safety net** (load-collapse detector ·
+  stall guard · 10 kN/30 mm backstop · dead-DIC guard). One proof plot per feature — all of them already
+  exist as `feat_*.png` / the new `ui_help/*.png` diagrams. Decide size (A0 vs A1) before laying out.
+- ⬜ **DECK — bring `documentation/V6a_8_6_20_slides.pptx` up to current progress.** It stops at the
+  2026-07-29 state (40 slides); everything since is unslided. Needs:
+  - **The 6 control modes** — one slide each, using the `ui_help/*.png` schematics as the figure.
+  - **Session 1–2 (2026-08-08, S20):** creep · relaxation · staircase Linear vs Smooth (arrival
+    overshoot 45/47/53 N → 6/5/8 N after the last-25 % taper).
+  - **Cyclic T5/T6 → T6.3:** the true-sine velocity law (`2·√(frac(1−frac))`, the old `sin(π·frac)` was
+    ~2× too slow near the bounds) and the **force-domain adaptive reversal lead** — including why the
+    rate-scaled version is structurally broken for a sine and why the lead is seeded at 0.
+  - **T7.2 (S18) staircase→fracture:** the dwell force-drop vs level curve, yield knee at 694 N.
+  - **T8 (S21) progressive cyclic→fracture:** the damage curve (E 2.32→1.73 GPa, 25 % loss), hysteresis
+    dissipation 9.6 %→29.6 %, and **the headline — crosshead stiffness rose 613→777 N/mm while the
+    specimen softened, so without DIC the test reads as stiffening.**
+  - **Cross-protocol result:** T7.2 21.19 vs T8 21.38 MPa = 0.9 %, stated with the different-specimen
+    caveat (that spread contains specimen scatter too; n=2 can't separate them).
+  - **Motor torque ceiling:** variable 3.2–3.4 kN, T7 on S20 stalled at 2355 N tared — hardware, not software.
+  - **Workflow slides:** recipes (2 starter profiles), destructive-test confirmation, speed-scaled stall guard.
+- ⬜ **BLACK-SPECIMEN DIC TEST — rig run, not just research.** Tracked in §5 below; repeated here so it is
+  not lost among the reading tasks. Every specimen to date is WHITE; the "Black" DIC preset has never been
+  exercised on the rig.
+
+- 🟢 **Wire the control modes into the Motor-Control UI — DONE** ("Advanced test modes" segment, 6 modes incl. the two fracture protocols). ✅ **Recipes now store the mode + every mode's params** (`TestRecipe.mode` + `mode_params`, 2026-08-09) — one `_mode_widget_map()` drives both save and load. ✅ **All 6 modes rig-validated:** creep · relaxation · staircase · cyclic (T6.3) · staircase→fracture (T7.2) · **progressive-cyclic→fracture (T8, 2026-08-09 — 8 clean cycles, no false-fire, 25 % stiffness loss resolved, true UTS 21.38 MPa vs T7.2's 21.19 = 0.9 % apart)**. ⬜ Remaining: **deck slides** — scoped in §3a above.
 - ⬜ **Multi-marker Poisson** — 4-marker preset in the dropdown, `detect_blobs`/`tare_dic`/`calculate_dic_strain` for 4 markers, new CSV columns (lateral strain / ν / current area / Cauchy), live ν readout. Needs a matte-black backdrop and/or a gauge-zoomed camera.
 - ⬜ **Phase D — UX layer:** guided Connect→Calibrate→Mount→Prepare→Recipe→Run→Save wizard; live analysis overlay (live E / predicted UTS / fracture flag); glanceable dashboard + audio cue on fracture; event-annotation hotkey.
 - ⬜ **DIC auto-calibrate (Phase C remainder):** auto-exposure/threshold sweep on Start Camera; auto-follow ROI (shift offset to keep markers centred through ductile draw).
@@ -76,7 +105,7 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
 - ⬜ **Chacón reference — measurement basis:** confirm whether Chacón et al. measured PLA properties on a **printed specimen** or on **raw filament / bulk material** — decides whether our (infill-corrected) values are directly comparable.
 - ⬜ **Moisture effect:** check whether specimen / ambient **moisture** shifts strength or stiffness vs literature (PLA is mildly hygroscopic) — dry / condition specimens and compare.
 - ⬜ **Camera-parameter sensitivity:** enumerate every camera parameter controlled in software (exposure, gain, threshold, ROI, px/mm, …) and study how varying each affects the DIC results and the **noise floor**.
-- ⬜ **Black-specimen DIC check (100% infill):** every specimen tested so far is WHITE (black dots, DIC "White" mode). Print/mark a **BLACK** specimen (white dots, DIC "Black" mode) and confirm the camera tracks strain just as reliably.
+- ⬜ **Black-specimen DIC check (100% infill):** every specimen tested so far is WHITE (black dots, DIC "White" mode). Print/mark a **BLACK** specimen (white dots, DIC "Black" mode) and confirm the camera tracks strain just as reliably. **Done = ** a full pull with 2/2 markers held to fracture, tracking % and L_px jitter no worse than a white specimen, and E/UTS within the white-specimen scatter. Needs a `camera_setup.py --mode white` pre-flight (the flag names the DOT colour, not the body). Also unblocks the matte-black backdrop that multi-marker Poisson wants (§3).
 - ⬜ **UTM instruction manual (for students):** short, crisp usage guide with clear photos of the rig + UI screenshots — Connect → Calibrate → Mount → Prepare → Run → Save → Report.
 
 ---
