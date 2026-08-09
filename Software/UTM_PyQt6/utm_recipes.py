@@ -7,7 +7,7 @@ and saves a new recipe. Recipes live in Software/UTM_PyQt6/recipes/*.json (track
     python utm_recipes.py list
     python utm_recipes.py show "V6 100% infill tensile"
 """
-from dataclasses import dataclass, asdict, fields
+from dataclasses import dataclass, asdict, field, fields
 import json, os, sys
 
 RECIPES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recipes")
@@ -23,8 +23,16 @@ class TestRecipe:
     gauge_mm: float = 80.0
     preload_N: float = 470.0
     test_speed_mm_s: float = 0.1
-    mode: str = "manual"                  # manual | strain-rate | cyclic | staircase | relaxation | creep
-    strain_rate: float = 0.0005           # used when mode == strain-rate (1/s)
+    # "manual", or the EXACT advanced-test-mode dropdown label ("Cyclic", "Staircase",
+    # "Relaxation", "Creep", "Staircase → FRACTURE", "Progressive cyclic → FRACTURE").
+    # Storing the label verbatim keeps load/save a straight lookup with no translation table.
+    mode: str = "manual"
+    strain_rate: float = 0.0005           # used by the strain-rate fracture test (1/s)
+    # Per-mode settings, keyed by that same label:
+    #   {"Cyclic": {"low": 100.0, "high": 500.0, "cycles": 5, "speed": 0.1, "waveform": "Sine"}, ...}
+    # A dict rather than flat fields so a new mode needs no schema change, and so EVERY mode's
+    # params round-trip (not just the selected one) — switching mode after a load keeps sane values.
+    mode_params: dict = field(default_factory=dict)
     auto_stop_fracture: bool = True       # auto-halt the pull on load collapse
     notes: str = ""
 
@@ -102,6 +110,9 @@ def main():
     for r in rs:
         print(f"  • {r.name}: {r.infill_pct:.0f}% infill · preload {r.preload_N:.0f} N · "
               f"{r.test_speed_mm_s:.3f} mm/s · mode={r.mode} · DIC={r.specimen_mode}")
+        p = r.mode_params.get(r.mode) if isinstance(r.mode_params, dict) else None
+        if p:
+            print("      " + " · ".join(f"{k}={v}" for k, v in p.items()))
     return 0
 
 
