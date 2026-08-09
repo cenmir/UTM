@@ -256,6 +256,7 @@ class StaircasePolicy(ControlPolicy):
         self.speed = speed
         self.ramp_shape = ramp_shape
         self.ease_frac = ease_frac
+        self.min_ramp_speed = 0.02
         self.i = 0
         self.holding = False
         self.hold_start = 0.0
@@ -277,7 +278,10 @@ class StaircasePolicy(ControlPolicy):
         frac = min(1.0, max(0.0, (load - prev) / span))
         if frac <= 1.0 - self.ease_frac:
             return self.speed
-        return max(0.01, self.speed * (1.0 - frac) / self.ease_frac)
+        # Floor at 0.02 mm/s, NOT 0.01: at 0.01 the crosshead covers only 0.06 mm in the stall
+        # guard's 6 s window vs its 0.05 mm bar -- a 1.2x margin that a healthy motor can trip
+        # on rounding alone (seen on rig run T7). 0.02 gives 0.12 mm = 2.4x.
+        return max(self.min_ramp_speed, self.speed * (1.0 - frac) / self.ease_frac)
 
     def step(self, s: Signals) -> Command:
         if self.i >= len(self.levels):
@@ -413,6 +417,7 @@ class StaircaseToFracturePolicy(ControlPolicy):
         self.speed = speed
         self.ramp_shape = ramp_shape
         self.ease_frac = ease_frac
+        self.min_ramp_speed = 0.02
         self.max_levels = max_levels
         self.level = start_N
         self.n = 0
@@ -438,7 +443,10 @@ class StaircaseToFracturePolicy(ControlPolicy):
         frac = min(1.0, max(0.0, (load - prev) / span))
         if frac <= 1.0 - self.ease_frac:
             return self.speed
-        return max(0.01, self.speed * (1.0 - frac) / self.ease_frac)
+        # Floor at 0.02 mm/s, NOT 0.01: at 0.01 the crosshead covers only 0.06 mm in the stall
+        # guard's 6 s window vs its 0.05 mm bar -- a 1.2x margin that a healthy motor can trip
+        # on rounding alone (seen on rig run T7). 0.02 gives 0.12 mm = 2.4x.
+        return max(self.min_ramp_speed, self.speed * (1.0 - frac) / self.ease_frac)
 
     def step(self, s: Signals) -> Command:
         if self._det.update(s.load):
