@@ -86,11 +86,34 @@ Same specimen + identical settings (300 N start / 300 N step / 3 levels / 20 s d
 - ⚠️ Smooth **doubled ramp time** (25.3 s vs 12.7 s) because `sin(π·frac)` also eased the ramp *start*, which buys no accuracy. **FIX:** taper only the top `ease_frac` (matches creep). Sim on a T3/T4-calibrated plant (850 N/mm, 1.24 s decel): overshoot stays ≤1 N, ramp **27.0 s → 18.0 s** (linear 11.2 s).
 - **Verdict:** Smooth is the better default — ~85–90 % less overshoot for ~60 % more ramp time.
 
-### Session 3 — cyclic  ⬜ TODO (the only reversal-heavy mode)
-- [ ] **T5 Cyclic Triangle** — Low 100 / High 500 N / 3 cycles / 0.1. Watch the FIRST reversal; check reversal count + bounds respected.
-- [ ] **T6 Cyclic Sine** — identical but Waveform = Sine. Compare turnaround overshoot + hysteresis loops.
-- Loads ≤500 N (6.25 MPa, ~14 % of yield) — no fracture/stall risk. Save as `_T5_Triangle` / `_T6_Sine`.
-- **After Session 3:** build the deck slides for the 4 control modes (results + why each mode matters).
+### Session 3 — cyclic  ✅ PASS 2026-08-09 (specimen S20, 100 % infill, folder `8.7/`)
+Low 100 / High 500 N / **5 cycles** / 0.1 mm/s, 300 N preload → Prepare. Both runs: **5 cycles, 10 reversals, no stall, clean finish.**
+
+| | peaks (target 500 N) | troughs (target 100 N) |
+|---|---|---|
+| **T5 Triangle** | 556/566/573/574/588 → **+71.5 N** | 24/34/24/24 → **−73.6 N** |
+| **T6 Sine** | 502/506/513/512/507 → **+7.9 N** | 78/79/79/74 → **−22.7 N** |
+
+- Triangle really cycled ~26↔572 N; Sine ~78↔508 N. **Sine 9× tighter at the top, 3× at the bottom.**
+- ⚠️ **Asymmetric turnaround:** unload→load takes **~2.0 s** vs **~1.3 s** load→unload, in both waveforms — that is why the low bound is always the worse one.
+- **Stiffness stable** all 5 cycles (1204/1273/1212/1251/1246 N/mm) → no fatigue damage. Cycle 1 reads 760–780 N/mm = slack take-up (same engaged-regime effect as V4b/V4c).
+- **Hysteresis ≈ 19–21 mJ/cycle** steady (includes rig friction → upper bound on material damping).
+- **Shakedown** visible in T6: peak-position drift 0.027 → 0.012 → 0.005 → 0.001 mm.
+- 🆕 **Dynamic modulus:** DIC resolved the small-amplitude strain on 8 strokes → **E_cyclic = 3.7–3.8 GPa** vs monotonic secant **2.60 GPa** (≈1.45×, classic unrelaxed > relaxed for a viscoelastic polymer). Stroke 1 (2.2 GPa) is slack-contaminated; ±8 % from ~1.3 px of travel.
+- Sine's predicted ~16 s start crawl was real; durations 67 s (T5) vs 127 s (T6).
+- Stall guard did **not** false-trip on the sine's low-speed zones.
+
+### T6.2 — cyclic Sine RE-RUN  ⬜ TODO (validates the waveform/reversal fixes)
+T6 showed a **stepped, non-sinusoidal** wave and loose bounds. Three fixes landed (`control_policies.py`, and the deadband in `main.py`) — **T6.2 is the rig check**:
+1. SetSpeed deadband **0.01 → 0.002 mm/s** for waveform modes (sine was quantised to only ~10 velocity steps — the visible faceting).
+2. Velocity law `sin(pi*frac)` → **`2*sqrt(frac(1-frac))`** = a true sine in time (old law ~2× too slow near the bounds).
+3. **Adaptive predictive reversal** — reverses early by `rate x decel`, with `decel` self-tuned per direction from the observed violation. Seeded at zero lead + gain 0.7 so it converges from below (seeding it high made cycles 1–3 reverse far too early; full gain rang).
+- Sim (T5/T6-calibrated plant): settled bound error sine **3.2 → 1.2 N** high, **21.7 → 10.1 N** low; cycle time 17.0 → 12.1 s. Shape only 10.8 → 9.7 % RMS — the residual is the *mechanical* reversal, not the law.
+- [ ] **T6.2** — same settings as T6 (Low 100 / High 500 / 5 cycles / 0.1 / **Sine**). Save as `_T6.2_Sine`.
+  - Check: flanks visibly smoother (less stepped) · peaks near 500 · troughs closer to 100 than T6's 78 · still 5 cycles / no stall.
+- [ ] **Release load** (renamed from "Release preload") — now drives past tared 0 to **−(tared-away load)** = true zero absolute force, so the specimen can be unclamped. Safety floor made relative (`target − 50 N`); the old fixed −50 N would have aborted the release. Quick non-destructive check before T6.2.
+
+- **After T6.2:** build the deck slides for the 4 control modes (results + why each mode matters).
 
 ---
 
