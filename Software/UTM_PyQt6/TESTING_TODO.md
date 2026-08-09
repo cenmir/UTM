@@ -142,6 +142,12 @@ T6 showed a **stepped, non-sinusoidal** wave and loose bounds. Three fixes lande
 
 ## 8. Fracture protocols (destructive) — T7 ✅ / T7.2 ✅ PASS / T8 ✅ PASS
 
+**Specimen map (2026-08-09 session).** `S20` = **100 %** infill, carried every non-destructive mode
+(creep · relaxation · staircase Linear/Smooth · cyclic Triangle/Sine) and then **T7**, where the motor
+stalled — specimen survived intact. `S18` = **50 %** infill → **T7.2** (staircase→fracture).
+`S21` = **50 %** infill → **T8** (progressive-cyclic→fracture). T7.2 and T8 are therefore **different
+specimens**, which matters for how the cross-protocol agreement below is read.
+
 The plain **Fracture test** button = a **monotonic (quasi-static) uniaxial tensile test to failure** (ASTM D638 / ISO 527): one continuous pull to load collapse → one E, one σ_y, one UTS. T7/T8 reach the same fracture but interrogate the specimen on the way, so **one specimen yields a curve instead of a point**. Both are in the advanced-mode dropdown behind a destructive-test confirmation.
 
 **Motor note:** measured peaks in `8.6.20/` are **S16 3374.6 · V6a 3350.7 · V6c 3275.0 · V6d 3218.4 · V6e 3162.2 · V6b 3109.7 N** — six 100 % infill specimens over 3.1 kN, all fractured. Normal ceiling **3.2–3.4 kN**; the ~2.6 kN figure is a *thermally derated* session, NOT a hard limit. 100 % infill at the full 80 mm² fractures fine.
@@ -182,7 +188,7 @@ The plain **Fracture test** button = a **monotonic (quasi-static) uniaxial tensi
 
 **Sim status (elastic-plastic plant: yield 2900, break 3300, K 1210):** T7 fractures level 9 @222 s, relax-drop grows 2.8 → 26.0 N; T8 fractures cycle 8 @peak 3300 N after 7 clean cycles, peaks within ~5 N of target, trough position jumps 0.40 → 0.65 mm at yield. Three policy bugs already found and fixed by that sim (`self.step` shadowing `step()`; logged peak was the trigger not the true post-coast peak; fracture record mutated + duplicated the last row).
 
-### T8 RESULT — ✅ PASS 2026-08-09 (S21, 50 % infill, 300 N preload, step 150 N, unload 100 N, 0.100 mm/s)
+### T8 RESULT — ✅ PASS 2026-08-09 (specimen **S21**, 50 % infill, 300 N preload, step 150 N, unload 100 N, 0.100 mm/s)
 
 **8 clean cycles, then fracture on rising stroke 9** (target 1500 N never reached; peak 1396.8 N).
 **No cycle-1/2 false-fire** — the per-rising-stroke collapse watch (armed only past halfway to target)
@@ -217,9 +223,15 @@ held through all 8 intentional unloads, which was the one real design risk in th
   t=272.0 s (961 N in one sample). Detector correctly stayed silent through the plateau.
   **Auto-halt 1.33 s** after collapse (T7.2 was 1.09 s).
 - **Anchor 313.2 N** (tail sd 0.22 N) → **true UTS 21.38 MPa**.
-- ✅ **Cross-protocol validation:** T7.2 staircase gave **21.19 MPa** (anchor 307.4 N) on the same specimen
-  type — **0.9 % apart**. Two independent interrogation protocols, same answer. Yield onset is bracketed
-  700–900 N tared (≈12.6–15.1 MPa true) by T7.2's relaxation-drop knee and T8's dissipation minimum.
+- ✅ **Cross-protocol agreement — 0.9 %:** T7.2 (staircase, **S18**) gave **21.19 MPa** (anchor 307.4 N);
+  T8 (progressive cyclic, **S21**) gave **21.38 MPa** (anchor 313.2 N).
+  ⚠️ **These are two different specimens**, so the 0.9 % spans *both* the protocol difference *and*
+  specimen-to-specimen scatter — the two cannot be separated from n=2. Read it as "protocol choice does
+  not shift UTS by more than the specimen scatter, and that combined spread is ≤1 %", which is the useful
+  claim and is stronger than a same-specimen repeat would be. A true protocol-only comparison would need
+  both protocols on specimens from one print batch, n≥3 each.
+  Yield onset is bracketed **700–900 N tared (≈12.6–15.1 MPa true)** by T7.2's relaxation-drop knee and
+  T8's dissipation minimum — different physics, so a bracket rather than a single value.
 - **Recipe feature's first real use** — "T8 Progressive cyclic 50%" loaded the mode + all 4 params correctly.
 
 - **After T7/T8:** build the deck slides for all the control modes + fracture protocols.

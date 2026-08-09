@@ -169,5 +169,48 @@
     "tough_kJm3": 2527,
     "anchor_N": 418,
     "note": "auto-stop caught fracture + stall-guard validation (first post-stall-guard fracture)"
+  },
+  {
+    "csv": "8.7/Specimen_S18_V1_Spray_Staircase-Fracture/UTM_Test_20260809_154041_T7.2_Staircase-Failure.csv",
+    "specimen": "S18",
+    "test": null,
+    "date": "2026-08-09 15:37:17",
+    "material": "PLA",
+    "infill_pct": 50.0,
+    "area_mm2": 80.0,
+    "gauge_mm": 80.0,
+    "comment": null,
+    "UTS_MPa": 21.19,
+    "sy_MPa": null,
+    "E_GPa": null,
+    "ef": 0.031,
+    "tough_kJm3": null,
+    "anchor_N": 307,
+    "protocol": "T7.2 staircase→fracture",
+    "note": "Interrogation protocol (11 ramp+dwell levels), NOT a monotonic pull. E_GPa/sy_MPa/tough_kJm3 nulled: the monotonic analyser fits an elastic region across the stepped loading path, so those numbers were not physical (it reported E=1.399 GPa). UTS/ef/anchor ARE valid (peak- and fracture-based). Yield knee from the dwell relaxation-drop minimum: ~694 N tared."
+  },
+  {
+    "csv": "8.7/Specimen_S21_V1_Spray_ProgressiveCyclic-Fracture/UTM_Test_20260809_173857_T8_Progressive-Fracture.csv",
+    "specimen": "S21",
+    "test": null,
+    "date": "2026-08-09 17:34:04",
+    "material": "PLA",
+    "infill_pct": 50.0,
+    "area_mm2": 80.0,
+    "gauge_mm": 80.0,
+    "comment": null,
+    "UTS_MPa": 21.38,
+    "sy_MPa": null,
+    "E_GPa": null,
+    "ef": 0.0331,
+    "tough_kJm3": null,
+    "anchor_N": 313,
+    "protocol": "T8 progressive-cyclic→fracture",
+    "note": "Interrogation protocol (8 load-unload cycles), NOT a monotonic pull. E_GPa/sy_MPa/tough_kJm3 nulled: the monotonic analyser fitted straight across the cycles and reported E=0.609 GPa / sy=5.75 MPa, both artifacts; toughness 1185 also double-counted the cycling work. UTS/ef/anchor ARE valid. Real stiffness = unload slopes vs DIC strain: 2.32 GPa (cy4) -> 1.73 GPa (cy8), 25% damage. Dissipation min 9.6% (cy5) -> 29.6% (cy8).",
+    "E_unload_GPa": {
+      "cycle4": 2.32,
+      "cycle8": 1.73,
+      "damage_D": 0.257
+    }
   }
 ]
