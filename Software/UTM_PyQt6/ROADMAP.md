@@ -50,7 +50,7 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
 ---
 
 ## 3. Remaining / planned  (checklist)
-- 🟢 **Wire the 4 remaining control modes** (cyclic / staircase / relaxation / creep) into the Motor-Control UI — **DONE** ("Advanced test modes" segment); ⬜ still to do: expose them in **recipes** (save/reload mode + params) and **rig-validate** on scrap specimens.
+- 🟢 **Wire the control modes into the Motor-Control UI — DONE** ("Advanced test modes" segment, 6 modes incl. the two fracture protocols). ✅ **Recipes now store the mode + every mode's params** (`TestRecipe.mode` + `mode_params`, 2026-08-09) — one `_mode_widget_map()` drives both save and load. ✅ Rig-validated: creep · relaxation · staircase · cyclic (T6.3) · staircase→fracture (T7.2). ⬜ Remaining: **T8 progressive cyclic**.
 - ⬜ **Multi-marker Poisson** — 4-marker preset in the dropdown, `detect_blobs`/`tare_dic`/`calculate_dic_strain` for 4 markers, new CSV columns (lateral strain / ν / current area / Cauchy), live ν readout. Needs a matte-black backdrop and/or a gauge-zoomed camera.
 - ⬜ **Phase D — UX layer:** guided Connect→Calibrate→Mount→Prepare→Recipe→Run→Save wizard; live analysis overlay (live E / predicted UTS / fracture flag); glanceable dashboard + audio cue on fracture; event-annotation hotkey.
 - ⬜ **DIC auto-calibrate (Phase C remainder):** auto-exposure/threshold sweep on Start Camera; auto-follow ROI (shift offset to keep markers centred through ductile draw).
@@ -58,7 +58,7 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
 - ⬜ **Deferred script migration:** `v6a_plots.py` / `v6a_analyze.py` → shared `utm_analysis` (when it grows a live-plotting return).
 
 ### Repo / version-control housekeeping
-- ⬜ **Track the untracked app source modules** — these core files were never committed: `camera_manager.py`, `serial_manager.py`, `camera_setup.py`, `roi_tool.py`, `widgets.py`, `build_exe.py`, `requirements.txt`. Add them so the app is fully version-controlled.
+- ✅ **App source fully version-controlled (2026-08-09).** The 7 missing modules are now tracked: `camera_manager.py`, `serial_manager.py`, `camera_setup.py`, `roi_tool.py`, `widgets.py`, `build_exe.py`, `requirements.txt`. Verified every module the app imports is in git. `requirements.txt` was also wrong — **opencv-python** and **pypylon** were missing entirely (the app could not be installed from it) and **scipy** was listed but unused; each entry now names the modules that need it. `main.py` stays uncommitted between explicit named snapshots, by choice.
 - ⬜ **Add a `.gitignore`** so data / binaries stop showing as untracked: `8.6.20 - Tensile test to Failure/` (test CSVs), `*.mp4`, test/binary PNGs, `reports/`, `__pycache__/`, `recipes/` (user-local). Keep the deck plot-PNGs tracked.
 
 ---
