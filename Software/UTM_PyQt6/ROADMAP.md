@@ -80,6 +80,7 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
   exercised on the rig.
 
 - 🟢 **Wire the control modes into the Motor-Control UI — DONE** ("Advanced test modes" segment, 6 modes incl. the two fracture protocols). ✅ **Recipes now store the mode + every mode's params** (`TestRecipe.mode` + `mode_params`, 2026-08-09) — one `_mode_widget_map()` drives both save and load. ✅ **All 6 modes rig-validated:** creep · relaxation · staircase · cyclic (T6.3) · staircase→fracture (T7.2) · **progressive-cyclic→fracture (T8, 2026-08-09 — 8 clean cycles, no false-fire, 25 % stiffness loss resolved, true UTS 21.38 MPa vs T7.2's 21.19 = 0.9 % apart)**. ⬜ Remaining: **deck slides** — scoped in §3a above.
+### 3b. Longer-range features
 - ⬜ **Multi-marker Poisson** — 4-marker preset in the dropdown, `detect_blobs`/`tare_dic`/`calculate_dic_strain` for 4 markers, new CSV columns (lateral strain / ν / current area / Cauchy), live ν readout. Needs a matte-black backdrop and/or a gauge-zoomed camera.
 - ⬜ **Phase D — UX layer:** guided Connect→Calibrate→Mount→Prepare→Recipe→Run→Save wizard; live analysis overlay (live E / predicted UTS / fracture flag); glanceable dashboard + audio cue on fracture; event-annotation hotkey.
 - ⬜ **DIC auto-calibrate (Phase C remainder):** auto-exposure/threshold sweep on Start Camera; auto-follow ROI (shift offset to keep markers centred through ductile draw).
