@@ -103,7 +103,7 @@ Low 100 / High 500 N / **5 cycles** / 0.1 mm/s, 300 N preload → Prepare. Both 
 - Sine's predicted ~16 s start crawl was real; durations 67 s (T5) vs 127 s (T6).
 - Stall guard did **not** false-trip on the sine's low-speed zones.
 
-### T6.2 — cyclic Sine RE-RUN  ⬜ TODO (validates the waveform/reversal fixes)
+### T6.2 — cyclic Sine RE-RUN  ✅ RAN 2026-08-09 (mixed: low bound fixed, high bound worse, flat bottoms)
 T6 showed a **stepped, non-sinusoidal** wave and loose bounds. Three fixes landed (`control_policies.py`, and the deadband in `main.py`) — **T6.2 is the rig check**:
 1. SetSpeed deadband **0.01 → 0.002 mm/s** for waveform modes (sine was quantised to only ~10 velocity steps — the visible faceting).
 2. Velocity law `sin(pi*frac)` → **`2*sqrt(frac(1-frac))`** = a true sine in time (old law ~2× too slow near the bounds).
@@ -121,7 +121,7 @@ T6 showed a **stepped, non-sinusoidal** wave and loose bounds. Three fixes lande
   - ❌ **High bound could not converge** — the lead was scaled by the load rate, but with a sine the rate → 0 *exactly at* the bound, so the lead vanished right when needed. Structural; no amount of adapted decel fixes it.
   - ❌ Run ended at a **133 N** trough because the low-side lead had grown that large and tripped the cycle-complete test early.
 
-### T6.3 — cyclic Sine RE-RUN #2  ⬜ TODO (validates the two structural fixes)
+### T6.3 — cyclic Sine RE-RUN #2  ✅ PASS 2026-08-09 (both bounds converge, dead zone gone)
 1. **Waveform shaped over the ACHIEVED extremes** (`_lo_seen`/`_hi_seen` + 5 % margin) instead of the nominal bounds → **no dead zone, no flat bottoms**; floor raised 0.01 → 0.02 mm/s.
 2. **Lead adapted in FORCE units, not rate×time** — we backed off by `lead_used` and still ran `over` past the bound, so the true coast is `lead_used + over` = the next lead. Rate-independent → converges for any waveform. Gain 0.85. Final trough stops at the true bound with no lead.
 - Sim (5 cycles): sine peaks **518/522/512/502/493**, troughs **71/56/66/87** (vs no-lead 518/528/534/533/535 and 71/48/34/28); crawl-at-floor **1.8 s**; **55 s** vs T6.2's measured 82 s.
@@ -140,7 +140,7 @@ T6 showed a **stepped, non-sinusoidal** wave and loose bounds. Three fixes lande
 
 ---
 
-## 8. Fracture protocols (destructive) — T7 / T8  ⬜ TODO
+## 8. Fracture protocols (destructive) — T7 ✅ / T7.2 ✅ PASS / T8 ⬜ TODO
 
 The plain **Fracture test** button = a **monotonic (quasi-static) uniaxial tensile test to failure** (ASTM D638 / ISO 527): one continuous pull to load collapse → one E, one σ_y, one UTS. T7/T8 reach the same fracture but interrogate the specimen on the way, so **one specimen yields a curve instead of a point**. Both are in the advanced-mode dropdown behind a destructive-test confirmation.
 
