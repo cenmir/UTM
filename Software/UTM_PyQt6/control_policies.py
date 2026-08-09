@@ -377,3 +377,213 @@ class CreepPolicy(ControlPolicy):
 
     def start_message(self) -> str:
         return f"Creep: hold {self.target_load:.0f} N for {self.duration:.0f} s"
+
+
+# ==========================================================================================
+#  FRACTURE PROTOCOLS — non-monotonic routes to failure.
+#
+#  The plain "Fracture test" button runs a MONOTONIC (quasi-static) uniaxial tensile test to
+#  failure: one continuous pull at constant crosshead speed until load collapse (ASTM D638 /
+#  ISO 527). It yields ONE modulus, ONE yield point, ONE UTS. The two policies below reach the
+#  same fracture but interrogate the specimen repeatedly on the way, so a single specimen
+#  yields a CURVE of properties instead of a single point.
+#
+#  Fracture detection here is LOAD-COLLAPSE ONLY (the DIC lpx-jump test misfires on ductile
+#  draw — see the V6 campaign). Crucially it must never confuse an INTENTIONAL unload with a
+#  fracture, which is why the watch is armed per rising-stroke rather than globally.
+# ==========================================================================================
+
+
+class StaircaseToFracturePolicy(ControlPolicy):
+    """(Protocol B) Step the load up in equal increments, dwelling at each level, and KEEP
+    STEPPING until the specimen fractures. Incremental step loading.
+
+    Versus a monotonic pull, one specimen gives you:
+      • modulus re-measured on every step        -> stiffness vs load (damage accumulation)
+      • a mini stress-relaxation at every level  -> viscoelastic response mapped across stress
+      • sharp YIELD ONSET: the dwell drop is small and flat while elastic, then grows abruptly
+        once the level passes yield -- far better resolved than a 0.2% offset on one curve.
+
+    `log` accumulates one dict per completed level for the app/analysis to write out."""
+    name = "staircase-fracture"
+
+    def __init__(self, start_N: float, step_N: float, dwell_s: float, speed: float = 0.1,
+                 ramp_shape: str = "smooth", ease_frac: float = 0.25, max_levels: int = 60):
+        self.start_N, self.step_N, self.dwell = start_N, step_N, dwell_s
+        self.speed = speed
+        self.ramp_shape = ramp_shape
+        self.ease_frac = ease_frac
+        self.max_levels = max_levels
+        self.level = start_N
+        self.n = 0
+        self.holding = False
+        self.hold_start = 0.0
+        self.log: List[dict] = []
+        self._cur: dict = {}
+        # Shared detector (utm_analysis) -- correct here because the load never intentionally
+        # falls: the only drops are the few-% relaxation during a dwell, far above its 50%
+        # collapse threshold. Imported lazily so this module stays import-light.
+        from utm_analysis import LiveFractureDetector
+        self._det = LiveFractureDetector()
+
+    def _ramp_speed(self, load: float) -> float:
+        """Taper only the TOP of each step, exactly as StaircasePolicy (rig T3/T4: eased arrival
+        cut level overshoot from 45-53 N to 5-8 N without doubling the ramp time)."""
+        if self.ramp_shape != "smooth" or self.ease_frac <= 0:
+            return self.speed
+        prev = self.level - self.step_N
+        span = self.level - prev
+        if span <= 1e-6:
+            return self.speed
+        frac = min(1.0, max(0.0, (load - prev) / span))
+        if frac <= 1.0 - self.ease_frac:
+            return self.speed
+        return max(0.01, self.speed * (1.0 - frac) / self.ease_frac)
+
+    def step(self, s: Signals) -> Command:
+        if self._det.update(s.load):
+            self.log.append({"event": "fracture", "level": self.n + 1,
+                             "level_N": self.level, "load": s.load, "pos": s.pos,
+                             "strain": s.strain, "t": s.t})
+            return Command(0, "hold", done=True,
+                           message=f"FRACTURE on level {self.n + 1} ({self.level:.0f} N)")
+        if self.n >= self.max_levels:
+            return Command(0, "hold", done=True,
+                           message=f"{self.n} levels reached without fracture (cap)")
+        if not self.holding:
+            if s.load >= self.level:
+                self.holding = True
+                self.hold_start = s.t
+                self._cur = {"level": self.n + 1, "level_N": self.level, "arrive_load": s.load,
+                             "arrive_pos": s.pos, "arrive_strain": s.strain, "t": s.t}
+                return Command(0, "hold", message=f"hold {self.level:.0f} N")
+            return Command(self._ramp_speed(s.load), "tension",
+                           message=f"level {self.n + 1} -> {self.level:.0f} N")
+        if s.t - self.hold_start >= self.dwell:
+            self._cur.update({"end_load": s.load, "end_pos": s.pos, "end_strain": s.strain,
+                              "relax_drop_N": self._cur.get("arrive_load", s.load) - s.load})
+            self.log.append(self._cur)
+            self.n += 1
+            self.level += self.step_N
+            self.holding = False
+            return Command(self._ramp_speed(s.load), "tension",
+                           message=f"level {self.n + 1} -> {self.level:.0f} N")
+        return Command(0, "hold",
+                       message=f"level {self.n + 1} dwell {s.t - self.hold_start:.0f}/{self.dwell:.0f} s")
+
+    def start_message(self) -> str:
+        return (f"Staircase to FRACTURE: {self.start_N:.0f} N +{self.step_N:.0f} N steps, "
+                f"dwell {self.dwell:.0f} s, {self.ramp_shape} ramp @ {self.speed:.3f} mm/s")
+
+
+class ProgressiveCyclicPolicy(ControlPolicy):
+    """(Protocol A) Load-unload-reload with a RISING peak every cycle, until fracture.
+
+    Each unload is a measurement, not just a return trip -- it gives the UNLOADING MODULUS at
+    that damage state, so one specimen yields:
+      • stiffness degradation  D = 1 - E_i/E_0   (the standard continuum-damage measure) vs stress
+      • permanent set / residual strain per cycle (ratcheting)
+      • hysteresis energy per cycle, evolving toward failure
+
+    Fracture watch: a per-rising-stroke load-collapse check, NOT the always-on shared detector.
+    The deliberate unload to `f_low` drops far below half the running peak and would trip that
+    detector every single cycle. The watch is armed only once the load has climbed past halfway
+    to the current target -- the specimen already survived the previous (lower) peak, so failure
+    can only occur in new territory above it."""
+    name = "progressive-cyclic"
+
+    def __init__(self, start_N: float, step_N: float, f_low: float = 100.0, speed: float = 0.1,
+                 collapse_frac: float = 0.6, max_cycles: int = 40, adapt_gain: float = 0.85):
+        self.start_N, self.step_N, self.f_low = start_N, step_N, f_low
+        self.speed = speed
+        self.collapse_frac = collapse_frac
+        self.max_cycles = max_cycles
+        self.adapt_gain = adapt_gain
+        self.target = start_N
+        self.n = 0
+        self.dir = "tension"
+        # Force-domain adaptive reversal lead, same scheme validated on the rig in T6.3
+        # (peaks converged 528/529/516/505/500 onto a 500 N bound).
+        self._lead = {"tension": 0.0, "compression": 0.0}
+        self._pend: Optional[Tuple[str, float, float, float]] = None
+        self._peak = 0.0            # running peak of the current rising stroke
+        self._armed = False         # collapse watch armed for this stroke
+        self.log: List[dict] = []
+        self._cyc: dict = {}
+
+    def _span(self) -> float:
+        return max(1.0, self.target - self.f_low)
+
+    def _adapt(self, s: Signals) -> None:
+        """Turn the observed bound violation into the next lead (see CyclicPolicy._adapt)."""
+        if self._pend is None:
+            return
+        bound, extreme, lead_used, ref = self._pend
+        if bound == "high":
+            if s.load > extreme:
+                # The crosshead coasts ~150 N past the trigger, so the TRUE peak is only known
+                # once the stroke turns. Overwrite the logged trigger value as it climbs --
+                # the unloading modulus and the damage curve both need the real peak.
+                extreme = s.load
+                self._cyc.update({"peak_load": s.load, "peak_pos": s.pos, "peak_strain": s.strain})
+            turned, over, d = s.load < extreme - 0.02 * self._span(), extreme - ref, "tension"
+        else:
+            if s.load < extreme:
+                extreme = s.load
+                if self.log:
+                    self.log[-1].update({"trough_load": s.load, "trough_pos": s.pos,
+                                         "trough_strain": s.strain})
+            turned, over, d = s.load > extreme + 0.02 * self._span(), ref - extreme, "compression"
+        self._pend = (bound, extreme, lead_used, ref)
+        if turned:
+            g = self.adapt_gain
+            self._lead[d] = min(0.4 * self._span(),
+                                max(0.0, (1.0 - g) * self._lead[d] + g * (lead_used + over)))
+            self._pend = None
+
+    def step(self, s: Signals) -> Command:
+        self._adapt(s)
+        lead = min(self._lead[self.dir], 0.4 * self._span())
+        if self.dir == "tension":
+            if s.load > self._peak:
+                self._peak = s.load
+            if s.load >= self.f_low + 0.5 * (self.target - self.f_low):
+                self._armed = True
+            if self._armed and s.load < self.collapse_frac * self._peak:
+                # A FRESH dict -- `_cyc` is the same object already appended at the last trough,
+                # so updating and re-appending it would rewrite that row and duplicate it.
+                self.log.append({"event": "fracture", "cycle": self.n + 1,
+                                 "target_N": self.target, "fracture_peak": self._peak,
+                                 "pos": s.pos, "strain": s.strain, "t": s.t})
+                return Command(0, "hold", done=True,
+                               message=f"FRACTURE on cycle {self.n + 1} (peak {self._peak:.0f} N)")
+            if s.load >= self.target - lead:
+                self._cyc = {"cycle": self.n + 1, "target_N": self.target, "peak_load": s.load,
+                             "peak_pos": s.pos, "peak_strain": s.strain, "t_peak": s.t}
+                self._pend = ("high", s.load, lead, self.target)
+                self.dir = "compression"
+                return Command(self.speed, "compression",
+                               message=f"cycle {self.n + 1}: unload to {self.f_low:.0f} N")
+            return Command(self.speed, "tension",
+                           message=f"cycle {self.n + 1} -> {self.target:.0f} N")
+        # ---- unloading ----
+        if s.load <= self.f_low + lead:
+            self._cyc.update({"trough_load": s.load, "trough_pos": s.pos,
+                              "trough_strain": s.strain, "t_trough": s.t})
+            self.log.append(self._cyc)
+            self._pend = ("low", s.load, lead, self.f_low)
+            self.n += 1
+            if self.n >= self.max_cycles:
+                return Command(0, "hold", done=True,
+                               message=f"{self.n} cycles without fracture (cap)")
+            self.target += self.step_N
+            self._peak, self._armed = 0.0, False
+            self.dir = "tension"
+            return Command(self.speed, "tension",
+                           message=f"cycle {self.n + 1} -> {self.target:.0f} N")
+        return Command(self.speed, "compression",
+                       message=f"cycle {self.n + 1}: unload to {self.f_low:.0f} N")
+
+    def start_message(self) -> str:
+        return (f"Progressive cyclic to FRACTURE: peaks {self.start_N:.0f} N +{self.step_N:.0f} N, "
+                f"unload to {self.f_low:.0f} N @ {self.speed:.3f} mm/s")
