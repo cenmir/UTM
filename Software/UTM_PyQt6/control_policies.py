@@ -147,29 +147,100 @@ class CyclicPolicy(ControlPolicy):
     name = "cyclic"
 
     def __init__(self, f_low: float, f_high: float, cycles: int, speed: float = 0.1,
-                 waveform: str = "triangle"):
+                 waveform: str = "triangle", predictive: bool = True, decel_s: float = 0.0,
+                 min_speed: float = 0.01, adapt_gain: float = 0.7):
         self.f_low, self.f_high, self.cycles, self.speed = f_low, f_high, cycles, speed
         self.waveform = waveform
+        self.predictive = predictive
+        self.min_speed = min_speed
+        self.span = max(1e-6, f_high - f_low)
         self.dir = "tension"
         self.done_cycles = 0
+        self.adapt_gain = adapt_gain
+        # Coast time per direction, ADAPTED from the bound violation actually observed. Seeded at 0
+        # (no lead) on purpose: the lead then grows from below, so early cycles merely overshoot as
+        # they always did and converge onto the bound. Seeding it high instead made cycles 1-3
+        # reverse far too early (sim: peaks 426/456/475) — worse than no lead over a 5-cycle run.
+        self._decel = {"tension": decel_s, "compression": decel_s * 1.5}
+        self._hist: List[Tuple[float, float]] = []
+        self._pend: Optional[Tuple[str, float, float, float]] = None   # coast in progress
+        self._started = False        # the initial ramp-in to f_low has finished
+
+    def _rate(self, s: Signals) -> float:
+        """Signed dF/dt over a ~0.5 s window — drives the predictive reversal lead."""
+        self._hist.append((s.t, s.load))
+        self._hist = [(t, l) for (t, l) in self._hist if t >= s.t - 0.5]
+        if len(self._hist) >= 2 and self._hist[-1][0] > self._hist[0][0]:
+            return (self._hist[-1][1] - self._hist[0][1]) / (self._hist[-1][0] - self._hist[0][0])
+        return 0.0
+
+    def _adapt(self, s: Signals) -> None:
+        """After each reversal the crosshead coasts past the bound. Once it has turned round, convert
+        the violation into a better coast-time estimate: overshoot = rate x (true_decel - lead_used),
+        so true_decel = lead_used + overshoot/rate. Self-tunes in 1-2 cycles, no need to know the
+        specimen stiffness or the firmware's decel ramp."""
+        if self._pend is None:
+            return
+        bound, extreme, lead_t, rate0 = self._pend
+        if bound == "high":
+            extreme = max(extreme, s.load)
+            turned = s.load < extreme - 0.02 * self.span
+            over = extreme - self.f_high
+        else:
+            extreme = min(extreme, s.load)
+            turned = s.load > extreme + 0.02 * self.span
+            over = self.f_low - extreme
+        self._pend = (bound, extreme, lead_t, rate0)
+        if turned:
+            d = "tension" if bound == "high" else "compression"
+            if abs(rate0) > 1e-6:
+                want = lead_t + over / abs(rate0)
+                # DAMPED update — applying the full correction each reversal over-corrects and the
+                # bound rings (sim: peaks alternating 499/471/497/469). Partial steps settle instead.
+                g = self.adapt_gain
+                self._decel[d] = min(4.0, max(0.0, (1.0 - g) * self._decel[d] + g * want))
+            self._pend = None
+
+    def _wave_speed(self, load: float) -> float:
+        """Triangle = constant speed. Sine = the velocity profile that makes the FORCE a true sine in
+        time: for F = mid - amp*cos(wt), dF/dt ~ 2*sqrt(frac*(1-frac)) with frac the load fraction.
+        (The earlier sin(pi*frac) law was ~2x too slow near the bounds, which flattened the shoulders
+        and straightened the flanks.)"""
+        if self.waveform != "sine":
+            return self.speed
+        frac = min(1.0, max(0.0, (load - self.f_low) / self.span))
+        return max(self.min_speed, self.speed * 2.0 * math.sqrt(frac * (1.0 - frac)))
 
     def step(self, s: Signals) -> Command:
-        if self.dir == "tension" and s.load >= self.f_high:
+        rate = self._rate(s)
+        self._adapt(s)
+        # Initial ramp-in: below the low bound there is nothing to shape, so run at full speed
+        # instead of crawling at the sine's floor (T6 wasted ~16 s doing exactly that).
+        if not self._started:
+            if s.load >= self.f_low:
+                self._started = True
+            else:
+                return Command(self.speed, "tension", message="ramp-in to low bound")
+        lead = 0.0
+        if self.predictive:
+            approach = rate if self.dir == "tension" else -rate
+            lead = min(max(0.0, approach) * self._decel[self.dir], 0.45 * self.span)
+        if self.dir == "tension" and s.load >= self.f_high - lead:
             self.dir = "compression"
-        elif self.dir == "compression" and s.load <= self.f_low:
+            self._pend = ("high", s.load, self._decel["tension"], rate)
+        elif self.dir == "compression" and s.load <= self.f_low + lead:
             self.dir = "tension"
+            self._pend = ("low", s.load, self._decel["compression"], rate)
             self.done_cycles += 1
             if self.done_cycles >= self.cycles:
                 return Command(0, "hold", done=True, message=f"{self.cycles} cycles complete")
-        spd = self.speed
-        if self.waveform == "sine":
-            frac = (s.load - self.f_low) / max(1e-6, self.f_high - self.f_low)
-            frac = min(1.0, max(0.0, frac))
-            spd = max(0.01, self.speed * math.sin(math.pi * frac))   # ease to a crawl at each bound
-        return Command(spd, self.dir, message=f"cycle {self.done_cycles + 1}/{self.cycles}")
+        return Command(self._wave_speed(s.load), self.dir,
+                       message=f"cycle {self.done_cycles + 1}/{self.cycles}")
 
     def start_message(self) -> str:
-        return f"Cyclic {self.waveform} {self.f_low:.0f}-{self.f_high:.0f} N x{self.cycles} @ {self.speed:.3f} mm/s"
+        pred = "predictive" if self.predictive else "no-lead"
+        return (f"Cyclic {self.waveform} ({pred}) {self.f_low:.0f}-{self.f_high:.0f} N "
+                f"x{self.cycles} @ {self.speed:.3f} mm/s")
 
 
 class StaircasePolicy(ControlPolicy):
