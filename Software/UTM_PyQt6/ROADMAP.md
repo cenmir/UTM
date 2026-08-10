@@ -105,6 +105,16 @@ number** — the numbers are IDs, so a status-grouped layout reads correctly wit
 ⚠️ **SF10 (auto-preload) was not in the original SF1–SF8 set** — added here because the poster is meant to
 show *all* smart features and auto-preload is a real, validated one that was simply never carded.
 
+- ⬜ **T6.4 — cyclic hysteresis near yield** (rig run, ~6 min). T5/T6.3 cycled at only **14 % of
+  fracture load**, so there was almost no hysteresis to measure, and what loop there was got
+  fabricated by a **2.1 s reversal lag** (load +97 N while strain −893 µε = backlash being re-taken).
+  DIC is NOT the limit — the centroid resolves 0.1 px steps at ±0.02 px noise.
+  **Settings: 50 % infill · Low 400 N · High 1100 N · 8 cycles · Sine · 0.10 mm/s.**
+  The **400 N floor is the point** — never unload through the slack band, so backlash is crossed once
+  at the start instead of twice every cycle. Gives a **13.1 px strain loop (3.6× T6.3)**; peak is 79 %
+  of fracture and 58 % above the 694 N yield knee, so loop area should GROW cycle-to-cycle if damage
+  accumulates. Arm auto-stop (T8 fractured at 1397 N). Scoped on deck p189.
+
 ### 3b. Longer-range features
 - ⬜ **Multi-marker Poisson** — 4-marker preset in the dropdown, `detect_blobs`/`tare_dic`/`calculate_dic_strain` for 4 markers, new CSV columns (lateral strain / ν / current area / Cauchy), live ν readout. Needs a matte-black backdrop and/or a gauge-zoomed camera.
 - ⬜ **Phase D — UX layer:** guided Connect→Calibrate→Mount→Prepare→Recipe→Run→Save wizard; live analysis overlay (live E / predicted UTS / fracture flag); glanceable dashboard + audio cue on fracture; event-annotation hotkey.

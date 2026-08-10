@@ -1270,9 +1270,40 @@ sf9_result(188, "CYCLIC", "T5 · T6.3", "documentation/sf9_cyclic.png",
                 "FORCE domain. Seeded at zero so it approaches from below — seeding it at the measured "
                 "1.3 s decel over-led and rang (T6, T6.2).")
 
-# ---- 189/190: STAIRCASE ----
+# ---- 189: cyclic hysteresis — what the mode can and cannot deliver ----
+_lt, _ls = SF9["loops_tri"], SF9["loops_sin"]
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF9 · CYCLIC  [T5 · T6.3] — HYSTERESIS: A NEGATIVE RESULT")
+tb(s, 0.5, 1.14, 12.4, 0.36,
+   "The mode promises loop area = energy dissipated and loop-shape change = early damage. Neither is "
+   "measurable from THIS run. It is NOT a DIC resolution problem — the fault is mechanical slack.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_cyclic_hyst.png", 0.45, 1.50, 12.45, 3.40)
+_lag = _ls[1]
+for i, (lab, val) in enumerate([("Cycled at", "%.0f %% of fracture load" % (100 * _ls[0]["peak"] / 3696.0)),
+                                ("Reversal lag", "2.1 s"),
+                                ("…during which", "load +97 N, strain −893 µε"),
+                                ("Crosshead ratchet", "%+.0f µm / cycle" % _lt[0]["ratchet_um"]),
+                                ("DIC is NOT the limit", "0.1 px steps, ±0.02 px")]):
+    kpi(s, 0.45 + i * 2.49, 5.02, 2.37, lab, val, h=0.80, vfs=13,
+        fill=YELLOW_WARN if i in (1, 2, 3) else GREEN_PASS)
+banner(s, 0.45, 5.94, 12.45, 0.58,
+       "Root cause: at every reversal the load climbs 97 N while the strain still FALLS 893 µε — the "
+       "load train is re-taking backlash, not straining the specimen. That fabricated area is most of "
+       "the loop. Cycling at only 14 % of fracture load leaves little real hysteresis to compete with it.",
+       fill=YELLOW_WARN, fg=BLACK, fs=11)
+banner(s, 0.45, 6.58, 12.45, 0.46,
+       "PROPOSED T6.4 — 50 % infill · Low 400 N · High 1100 N · 8 cycles · Sine · 0.10 mm/s  →  "
+       "13.1 px loop (3.6× today), floor stays above the backlash band, peak 79 % of fracture.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
+footer(s, "The 400 N floor is the key: never unload through the slack band, so backlash is crossed "
+          "once at the start instead of twice per cycle. Arm auto-stop — 1100 N is above the 694 N "
+          "yield knee, which is the point, but T8 fractured at 1397 N.")
+pageno(s, 189)
+
+# ---- 190/191: STAIRCASE ----
 sl, sm = SF9["stair_lin"], SF9["stair_smo"]
-sf9_how(189, "STAIRCASE", "T3 · T4", UIH + "staircase.png",
+sf9_how(190, "STAIRCASE", "T3 · T4", UIH + "staircase.png",
         "Steps the load up — Start, Start+Step, Start+2·Step … — and DWELLS at every level.\n\n"
         "• Each dwell is a mini stress-relaxation test\n"
         "• Modulus can be re-measured at every level\n"
@@ -1284,7 +1315,7 @@ sf9_how(189, "STAIRCASE", "T3 · T4", UIH + "staircase.png",
         "Start 0–5000 N · Step 10–2000 N · Levels 1–20 · Dwell 1–600 s · Speed 0.005–0.500 mm/s",
         "Guidance: keep the top level, Start+(Levels−1)·Step, below yield.")
 
-sf9_result(190, "STAIRCASE", "T3 · T4", "documentation/sf9_staircase.png",
+sf9_result(191, "STAIRCASE", "T3 · T4", "documentation/sf9_staircase.png",
            kpis=[("Linear — mean overshoot", "%.0f N" % (sum(l["over"] for l in sl["levels"]) / 3)),
                  ("Smooth — mean overshoot", "%.0f N" % (sum(l["over"] for l in sm["levels"]) / 3)),
                  ("Improvement", "%.0f×" % ((sum(l["over"] for l in sl["levels"]) / 3) /
@@ -1301,9 +1332,34 @@ sf9_result(190, "STAIRCASE", "T3 · T4", "documentation/sf9_staircase.png",
            foot="Overshoot is measured against the COMMANDED level, not the settled value — the settled "
                 "value already contains the dwell relaxation, which would mask the control error.")
 
-# ---- 191/192: RELAXATION ----
+# ---- 192: staircase modulus at every level ----
+_ml, _ms = SF9["mod_lin"], SF9["mod_smo"]
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF9 · STAIRCASE  [T3 · T4] — MODULUS AT EVERY LEVEL")
+tb(s, 0.5, 1.14, 12.4, 0.36,
+   "The mode's claim is that stiffness can be re-measured at every level. Here it is: a modulus "
+   "fitted to the ramp into each level, so E as a function of stress.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_stair_modulus.png", 0.45, 1.52, 12.45, 3.45)
+table(s, 0.45, 5.10, 12.45, 0.27 * 4,
+      [["Ramp into level", "L1 · 0 → 3.8 MPa", "L2 · 3.8 → 7.5 MPa", "L3 · 7.5 → 11.2 MPa"],
+       ["T3 Linear — E (GPa)"] + ["%.2f  (R² %.3f)" % (x["E"] / 1000, x["R2"]) for x in _ml],
+       ["T4 Smooth — E (GPa)"] + ["%.2f  (R² %.3f)" % (x["E"] / 1000, x["R2"]) for x in _ms],
+       ["Literature, FDM PLA", "2.65 – 3.06 GPa", "(solid / high infill)", "Chacón · Chen et al."]],
+      hf=9.5, bf=9.5)
+banner(s, 0.45, 6.28, 12.45, 0.58,
+       "E climbs %.2f → %.2f GPa across the three levels and settles INSIDE the literature band — the "
+       "rise is rig slack being squeezed out at low load, the same artefact that fools the crosshead "
+       "stiffness in T8."
+       % (_ms[0]["E"] / 1000, _ms[-1]["E"] / 1000),
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
+footer(s, "Fit quality improves with the Smooth ramp (R² ≥ 0.986 vs 0.954) because a tapered approach "
+          "spends more samples in steady loading and fewer in the overshoot transient.")
+pageno(s, 192)
+
+# ---- 193/194: RELAXATION ----
 rx = SF9["relax"]
-sf9_how(191, "RELAXATION", "T2", UIH + "relaxation.png",
+sf9_how(193, "RELAXATION", "T2", UIH + "relaxation.png",
         "Ramps to a target STRAIN, then holds the crosshead still and watches the force decay.\n\n"
         "• Measures the viscoelastic stress-relaxation of the polymer\n"
         "• Decay rate and magnitude are material fingerprints\n"
@@ -1314,7 +1370,7 @@ sf9_how(191, "RELAXATION", "T2", UIH + "relaxation.png",
         "Hold strain 0.001–0.200 · Duration 1–3600 s · Speed 0.005–0.500 mm/s · needs DIC green 2/2",
         "Guidance: keep the hold strain below yield (≈0.015 for PLA) for a purely elastic hold.")
 
-sf9_result(192, "RELAXATION", "T2", "documentation/sf9_relax.png",
+sf9_result(194, "RELAXATION", "T2", "documentation/sf9_relax.png",
            kpis=[("Peak load", "%.0f N" % rx["Fpk"]), ("After hold", "%.0f N" % rx["F1"]),
                  ("Stress relaxed", "%.0f N  (%.1f %%)" % (rx["drop"], rx["drop_pct"])),
                  ("Strain held", "%.5f" % rx["eps"])],
@@ -1330,9 +1386,9 @@ sf9_result(192, "RELAXATION", "T2", "documentation/sf9_relax.png",
            foot="Relaxation is the one mode whose dwell is not a zero-speed hold: it keeps nudging the "
                 "crosshead to pin the strain, so the dwell is found from crosshead POSITION going flat.")
 
-# ---- 193/194: CREEP ----
+# ---- 195/196: CREEP ----
 cr = SF9["creep"]
-sf9_how(193, "CREEP", "T1", UIH + "creep.png",
+sf9_how(195, "CREEP", "T1", UIH + "creep.png",
         "Ramps to a target LOAD, then holds that force constant and watches the strain grow.\n\n"
         "• The dual of relaxation: fix stress, measure strain(t)\n"
         "• Reveals time-dependent deformation under sustained service load\n"
@@ -1343,7 +1399,7 @@ sf9_how(193, "CREEP", "T1", UIH + "creep.png",
         "Load 10–5000 N · Duration 1–3600 s · Speed 0.005–0.500 mm/s",
         "Guidance: use ≤60–70 % of UTS — above that, creep runs away and the specimen fails during the hold.")
 
-sf9_result(194, "CREEP", "T1", "documentation/sf9_creep.png",
+sf9_result(196, "CREEP", "T1", "documentation/sf9_creep.png",
            kpis=[("Force held", "%.0f N" % cr["Fmean"]), ("Hold stability", "± %.1f N" % cr["Fsd"]),
                  ("Creep measured", "%+.0f µε  (none)" % cr["de"]), ("DIC noise band", "± %.0f µε" % (cr["e_sd"] * 1e6))],
            tbl=[["Quantity", "Value", "Interpretation"],
@@ -1362,7 +1418,7 @@ sf9_result(194, "CREEP", "T1", "documentation/sf9_creep.png",
            foot="To actually measure PLA creep, raise the hold to 50–70 % of UTS and extend it to "
                 "minutes. See p203 for the literature comparison.")
 
-# ---- 195/196: STAIRCASE → FRACTURE ----
+# ---- 197/198: STAIRCASE → FRACTURE ----
 sf = SF9["sf"]
 _kn = None
 try:
@@ -1370,7 +1426,7 @@ try:
     _kn = _ua.yield_onset(sf["dwells"])
 except Exception:
     pass
-sf9_how(195, "STAIRCASE → FRACTURE", "T7.2", UIH + "staircase_to_fracture.png",
+sf9_how(197, "STAIRCASE → FRACTURE", "T7.2", UIH + "staircase_to_fracture.png",
         "DESTRUCTIVE. Like Staircase, but it keeps adding levels until the specimen breaks.\n\n"
         "• A mini stress-relaxation at EVERY level, right up to failure\n"
         "• Yield onset appears as the dwell drop stops shrinking and starts growing\n"
@@ -1384,7 +1440,7 @@ sf9_how(195, "STAIRCASE → FRACTURE", "T7.2", UIH + "staircase_to_fracture.png"
         note="Destructive modes are behind a confirmation dialog that echoes area, gauge and infill "
              "before arming.")
 
-sf9_result(196, "STAIRCASE → FRACTURE", "T7.2", "documentation/sf9_stair_fracture.png",
+sf9_result(198, "STAIRCASE → FRACTURE", "T7.2", "documentation/sf9_stair_fracture.png",
            kpis=[("Peak load", "%.0f N" % sf["peak"]), ("Force anchor", "%.1f N" % sf["anchor"]),
                  ("TRUE UTS", "%.2f MPa" % sf["uts"]), ("Auto-halt after collapse", "%.2f s" % sf["halt"])],
            tbl=[["Quantity", "Value", "Note"],
@@ -1399,47 +1455,6 @@ sf9_result(196, "STAIRCASE → FRACTURE", "T7.2", "documentation/sf9_stair_fract
                       sf["uts"], sf["halt"]),
            foot="The anchor is the preload the tare removed; recovering it from the settled post-fracture "
                 "tail converts nominal stress to true stress without a second measurement.")
-
-# ---- 197/198: PROGRESSIVE CYCLIC → FRACTURE ----
-pc = SF9["pc"]
-_cy = pc["cycles"]
-_val = [c for c in _cy if c["R2"] > 0.94]
-_dmin = min(_cy[1:], key=lambda z: z["diss_pct"])
-sf9_how(197, "PROGRESSIVE CYCLIC → FRACTURE", "T8", UIH + "progressive_cyclic_to_fracture.png",
-        "DESTRUCTIVE. Load–unload–reload with the peak rising every cycle, until fracture.\n\n"
-        "• EVERY unload measures the modulus at that damage state\n"
-        "• Gives the stiffness-degradation curve D = 1 − Eᵢ/E₀ vs stress\n"
-        "• Hysteresis area per cycle tracks energy going into damage\n"
-        "• Permanent set per cycle shows plasticity accumulating",
-        [["Parameter", "Value"], ["1st peak", "300 N"], ["Peak step", "150 N"],
-         ["Unload to", "100 N"], ["Speed", "0.100 mm/s"], ["Specimen", "S21 · 50 % infill"]],
-        "1st peak 0–5000 N · Peak step 10–2000 N · Unload to 20–2000 N · Speed 0.005–0.500 mm/s · "
-        "max 40 cycles (policy cap)",
-        "Guidance: keep the unload floor ≥20 N so the specimen never goes slack and the grips stay seated.",
-        note="The collapse watch here is PER RISING STROKE and armed only past halfway to target — a "
-             "single always-on detector would trip on every intentional unload.")
-
-sf9_result(198, "PROGRESSIVE CYCLIC → FRACTURE", "T8", "documentation/sf9_prog_cyclic.png",
-           tbl=[["Cycle"] + ["%d" % c["n"] for c in _cy] + ["trend"],
-                ["Peak load (N)"] + ["%.0f" % c["peak"] for c in _cy] + ["target ±12 N"],
-                ["Peak error vs target (N)"] + ["%+.0f" % (c["peak"] - c["target"]) for c in _cy] +
-                ["±%.0f mean" % (sum(abs(c["peak"] - c["target"]) for c in _cy[1:]) / (len(_cy) - 1))],
-                ["DIC unload E (GPa)"] + ["%.2f" % (c["E"] / 1000) if c["R2"] > 0.94 else "—" for c in _cy] +
-                ["%.2f → %.2f" % (_val[0]["E"] / 1000, _val[-1]["E"] / 1000)],
-                ["Crosshead K (N/mm)"] + ["%.0f" % c["K"] for c in _cy] +
-                ["%.0f → %.0f  ↑" % (_cy[0]["K"], _cy[-1]["K"])],
-                ["Hysteresis dissipated (%)"] + ["%.1f" % c["diss_pct"] for c in _cy] +
-                ["min %.1f → %.1f" % (_dmin["diss_pct"], _cy[-1]["diss_pct"])]],
-           verdict="Specimen SOFTENED %.2f → %.2f GPa (%.0f %% stiffness lost) while the crosshead read "
-                   "%.0f → %.0f N/mm — STIFFER. Without DIC this test concludes the opposite of the truth."
-                   % (round(_val[0]["E"] / 1000, 2), round(_val[-1]["E"] / 1000, 2),
-                      100 * (1 - round(_val[-1]["E"] / 1000, 2) / round(_val[0]["E"] / 1000, 2)),
-                      _cy[0]["K"], _cy[-1]["K"]),
-           vfill=YELLOW_WARN,
-           foot="Cycles 1–3 carry no modulus: the DIC strain CHANGE in those small unloads is below the "
-                "noise floor (R² %.2f–%.2f). Dissipation is an energy integral over a large position "
-                "range and has no such floor — on this rig it is the better damage metric."
-                % (min(c["R2"] for c in _cy[:3]), max(c["R2"] for c in _cy[:3])))
 
 # ---- 199: T7 failure analysis ----
 t7 = SF9["t7"]
@@ -1475,7 +1490,48 @@ footer(s, "NOT a hard ceiling: six 100 % specimens fractured at 3.1–3.4 kN. So
           "correct — nothing ran away, and the specimen was released intact and reusable.")
 pageno(s, 199)
 
-# ---- 200: stress-strain for every mode ----
+# ---- 200/201: PROGRESSIVE CYCLIC → FRACTURE ----
+pc = SF9["pc"]
+_cy = pc["cycles"]
+_val = [c for c in _cy if c["R2"] > 0.94]
+_dmin = min(_cy[1:], key=lambda z: z["diss_pct"])
+sf9_how(200, "PROGRESSIVE CYCLIC → FRACTURE", "T8", UIH + "progressive_cyclic_to_fracture.png",
+        "DESTRUCTIVE. Load–unload–reload with the peak rising every cycle, until fracture.\n\n"
+        "• EVERY unload measures the modulus at that damage state\n"
+        "• Gives the stiffness-degradation curve D = 1 − Eᵢ/E₀ vs stress\n"
+        "• Hysteresis area per cycle tracks energy going into damage\n"
+        "• Permanent set per cycle shows plasticity accumulating",
+        [["Parameter", "Value"], ["1st peak", "300 N"], ["Peak step", "150 N"],
+         ["Unload to", "100 N"], ["Speed", "0.100 mm/s"], ["Specimen", "S21 · 50 % infill"]],
+        "1st peak 0–5000 N · Peak step 10–2000 N · Unload to 20–2000 N · Speed 0.005–0.500 mm/s · "
+        "max 40 cycles (policy cap)",
+        "Guidance: keep the unload floor ≥20 N so the specimen never goes slack and the grips stay seated.",
+        note="The collapse watch here is PER RISING STROKE and armed only past halfway to target — a "
+             "single always-on detector would trip on every intentional unload.")
+
+sf9_result(201, "PROGRESSIVE CYCLIC → FRACTURE", "T8", "documentation/sf9_prog_cyclic.png",
+           tbl=[["Cycle"] + ["%d" % c["n"] for c in _cy] + ["trend"],
+                ["Peak load (N)"] + ["%.0f" % c["peak"] for c in _cy] + ["target ±12 N"],
+                ["Peak error vs target (N)"] + ["%+.0f" % (c["peak"] - c["target"]) for c in _cy] +
+                ["±%.0f mean" % (sum(abs(c["peak"] - c["target"]) for c in _cy[1:]) / (len(_cy) - 1))],
+                ["DIC unload E (GPa)"] + ["%.2f" % (c["E"] / 1000) if c["R2"] > 0.94 else "—" for c in _cy] +
+                ["%.2f → %.2f" % (_val[0]["E"] / 1000, _val[-1]["E"] / 1000)],
+                ["Crosshead K (N/mm)"] + ["%.0f" % c["K"] for c in _cy] +
+                ["%.0f → %.0f  ↑" % (_cy[0]["K"], _cy[-1]["K"])],
+                ["Hysteresis dissipated (%)"] + ["%.1f" % c["diss_pct"] for c in _cy] +
+                ["min %.1f → %.1f" % (_dmin["diss_pct"], _cy[-1]["diss_pct"])]],
+           verdict="Specimen SOFTENED %.2f → %.2f GPa (%.0f %% stiffness lost) while the crosshead read "
+                   "%.0f → %.0f N/mm — STIFFER. Without DIC this test concludes the opposite of the truth."
+                   % (round(_val[0]["E"] / 1000, 2), round(_val[-1]["E"] / 1000, 2),
+                      100 * (1 - round(_val[-1]["E"] / 1000, 2) / round(_val[0]["E"] / 1000, 2)),
+                      _cy[0]["K"], _cy[-1]["K"]),
+           vfill=YELLOW_WARN,
+           foot="Cycles 1–3 carry no modulus: the DIC strain CHANGE in those small unloads is below the "
+                "noise floor (R² %.2f–%.2f). Dissipation is an energy integral over a large position "
+                "range and has no such floor — on this rig it is the better damage metric."
+                % (min(c["R2"] for c in _cy[:3]), max(c["R2"] for c in _cy[:3])))
+
+# ---- 202: stress-strain for every mode ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "SF9 — STRESS vs STRAIN, ALL SIX MODES")
 tb(s, 0.5, 1.14, 12.4, 0.36,
@@ -1492,58 +1548,6 @@ banner(s, 0.45, 6.20, 12.45, 0.60,
 footer(s, "ε_f 3.10 % (T7.2) and 3.32 % (T8). A marker-separation plausibility bound is applied: at "
           "fracture L_px jumps 1668→1825 px ONE SAMPLE before the load collapses, which would otherwise "
           "stretch both fracture panels to a fictitious 10 % strain.")
-pageno(s, 200)
-
-# ---- 201: cyclic hysteresis — what the mode can and cannot deliver ----
-_lt, _ls = SF9["loops_tri"], SF9["loops_sin"]
-s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "SF9 · CYCLIC  [T5 · T6.3] — HYSTERESIS: A NEGATIVE RESULT")
-tb(s, 0.5, 1.14, 12.4, 0.36,
-   "The mode description promises loop area = energy dissipated, and loop-shape change = early "
-   "damage. Neither is measurable from THIS run — and the reason is physics, not a rig fault.",
-   fs=11.5, italic=True, colour=GREY_TEXT)
-img_fit(s, "documentation/sf9_cyclic_hyst.png", 0.45, 1.52, 12.45, 3.55)
-for i, (lab, val) in enumerate([("Cycled at", "%.0f %% of fracture load" % (100 * _ls[0]["peak"] / 3696.0)),
-                                ("DIC excursion", "%.1f px" % _ls[0]["px_span"]),
-                                ("DIC resolution", "%.0f µε / px" % _ls[0]["ue_per_px"]),
-                                ("Crosshead ratchet", "%+.0f µm / cycle" % _lt[0]["ratchet_um"]),
-                                ("Loop closes?", "NO → area invalid")]):
-    kpi(s, 0.45 + i * 2.49, 5.22, 2.37, lab, val, h=0.80, vfs=14,
-        fill=YELLOW_WARN if i >= 3 else LIGHT_BLUE)
-banner(s, 0.45, 6.14, 12.45, 0.68,
-       "Cycling at 14 % of fracture load leaves almost no hysteresis to find — correct material "
-       "behaviour for PLA in its elastic range. To measure damage you must cycle NEAR YIELD, which is "
-       "exactly what Progressive cyclic (T8, 78 % of fracture) does — see p198.",
-       fill=YELLOW_WARN, fg=BLACK, fs=11.5)
-footer(s, "To get hysteresis from the fixed-bounds Cyclic mode, re-run with High near yield "
-          "(~2500 N on 100 % infill) instead of 500 N. Two honest failures are shown, not hidden: the "
-          "strain axis is quantisation-limited, and the work loop does not close because the crosshead "
-          "ratchets, which makes the apparent dissipation NEGATIVE.")
-pageno(s, 201)
-
-# ---- 202: staircase modulus at every level ----
-_ml, _ms = SF9["mod_lin"], SF9["mod_smo"]
-s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "SF9 · STAIRCASE  [T3 · T4] — MODULUS AT EVERY LEVEL")
-tb(s, 0.5, 1.14, 12.4, 0.36,
-   "The mode's claim is that stiffness can be re-measured at every level. Here it is: a modulus "
-   "fitted to the ramp into each level, so E as a function of stress.",
-   fs=11.5, italic=True, colour=GREY_TEXT)
-img_fit(s, "documentation/sf9_stair_modulus.png", 0.45, 1.52, 12.45, 3.45)
-table(s, 0.45, 5.10, 12.45, 0.27 * 4,
-      [["Ramp into level", "L1 · 0 → 3.8 MPa", "L2 · 3.8 → 7.5 MPa", "L3 · 7.5 → 11.2 MPa"],
-       ["T3 Linear — E (GPa)"] + ["%.2f  (R² %.3f)" % (x["E"] / 1000, x["R2"]) for x in _ml],
-       ["T4 Smooth — E (GPa)"] + ["%.2f  (R² %.3f)" % (x["E"] / 1000, x["R2"]) for x in _ms],
-       ["Literature, FDM PLA", "2.65 – 3.06 GPa", "(solid / high infill)", "Chacón · Chen et al."]],
-      hf=9.5, bf=9.5)
-banner(s, 0.45, 6.28, 12.45, 0.58,
-       "E climbs %.2f → %.2f GPa across the three levels and settles INSIDE the literature band — the "
-       "rise is rig slack being squeezed out at low load, the same artefact that fools the crosshead "
-       "stiffness in T8."
-       % (_ms[0]["E"] / 1000, _ms[-1]["E"] / 1000),
-       fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
-footer(s, "Fit quality improves with the Smooth ramp (R² ≥ 0.986 vs 0.954) because a tapered approach "
-          "spends more samples in steady loading and fewer in the overshoot transient.")
 pageno(s, 202)
 
 # ---- 203: PLA vs literature ----
@@ -1596,16 +1600,16 @@ _reg = [
     ["T1", "Creep", "S20 100 %", SF9_WHEN("creep"),
      "held %.0f ± %.1f N for %.0f s; creep NOT resolvable (%+.0f µε vs ±%.0f µε noise)"
      % (_cr["Fmean"], _cr["Fsd"], _cr["dur"], _cr["de"], _cr["e_sd"] * 1e6),
-     "193-194 · 200 · 203"],
+     "195-196 · 202 · 203"],
     ["T2", "Relaxation", "S20 100 %", SF9_WHEN("relax"),
      "ε pinned at %.5f; force decayed %.0f → %.0f N (%.1f %%)" % (_rx["eps"], _rx["Fpk"], _rx["F1"], _rx["drop_pct"]),
-     "191-192 · 200 · 203"],
+     "193-194 · 202 · 203"],
     ["T3", "Staircase · Linear ramp", "S20 100 %", SF9_WHEN("stair_lin"),
-     "3 levels / 20 s dwells — arrival overshoot %s N" % _ov(_sl), "189-190 · 202"],
+     "3 levels / 20 s dwells — arrival overshoot %s N" % _ov(_sl), "190-192"],
     ["T4", "Staircase · Smooth ramp", "S20 100 %", SF9_WHEN("stair_smo"),
-     "same levels — overshoot %s N  ▸ the taper fix" % _ov(_sm), "189-190 · 202"],
+     "same levels — overshoot %s N  ▸ the taper fix" % _ov(_sm), "190-192"],
     ["T5", "Cyclic · Triangle", "S20 100 %", SF9_WHEN("cyc_tri"),
-     "5 cycles 100/500 N in %.0f s; peak error %.0f N (no lead yet)" % (_cti["dur"], _cti["pk_mae"]), "187-188 · 201"],
+     "5 cycles 100/500 N in %.0f s; peak error %.0f N (no lead yet)" % (_cti["dur"], _cti["pk_mae"]), "187-189"],
     ["T6", "Cyclic · Sine — 1st try", "S20 100 %", SF9_WHEN("cyc_sin1"),
      "accurate (%.0f N) but took %.0f s — ~2× too slow, flat bottoms ▸ velocity-law bug found"
      % (_c6["pk_mae"], _c6["dur"]), "—"],
@@ -1614,16 +1618,16 @@ _reg = [
      % (_c62["dur"], _c62["pk_mae"]), "—"],
     ["T6.3", "Cyclic · Sine — final", "S20 100 %", SF9_WHEN("cyc_sin"),
      "%.0f s, peak error %.0f N, and peaks CONVERGE %.0f → %.0f N"
-     % (_c63["dur"], _c63["pk_mae"], _c63["peaks"][0], _c63["peaks"][-1]), "187-188 · 201"],
+     % (_c63["dur"], _c63["pk_mae"], _c63["peaks"][0], _c63["peaks"][-1]), "187-189"],
     ["T7", "Staircase → FRACTURE", "S20 100 %", SF9_WHEN("sf_stall"),
      "STALLED at %.0f N (%.0f %% of what was needed) — no fracture, specimen intact"
      % (t7["peak"], t7["pct_of_need"]), "199"],
     ["T7.2", "Staircase → FRACTURE", "S18 50 %", SF9_WHEN("sf"),
      "yield knee %s, TRUE UTS %.2f MPa, auto-halt %.2f s"
-     % (("%.0f N" % _kn["arrive"]) if _kn else "located", sf["uts"], sf["halt"]), "195-196 · 200"],
+     % (("%.0f N" % _kn["arrive"]) if _kn else "located", sf["uts"], sf["halt"]), "197-198 · 202"],
     ["T8", "Progressive cyclic → FRACTURE", "S21 50 %", SF9_WHEN("pc"),
      "8 clean cycles, %.0f %% stiffness lost, TRUE UTS %.2f MPa"
-     % (100 * (1 - round(_val[-1]["E"] / 1000, 2) / round(_val[0]["E"] / 1000, 2)), pc["uts"]), "197-198 · 200"],
+     % (100 * (1 - round(_val[-1]["E"] / 1000, 2) / round(_val[0]["E"] / 1000, 2)), pc["uts"]), "200-202"],
 ]
 _ovr = {}
 for _r, _row in enumerate(_reg):

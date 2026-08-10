@@ -430,28 +430,32 @@ def fig_relax():
     plt = _plt()
     fig, (a, b) = plt.subplots(1, 2, figsize=(12.4, 4.3))
     d = M["relax"]; r = d["r"]
-    a.plot([x["t"] for x in r], [x["F"] for x in r], color=RED, lw=1.7)
+    ok = dic_ok(r)          # dropouts write ec=0.0 and would draw spikes straight down to zero
+    a.plot([x["t"] for x in r], [x["F"] for x in r], color=RED, lw=1.7, label="Load")
     a.set_xlabel("Time (s)"); a.set_ylabel("Load (N)", color=RED); a.tick_params(axis="y", colors=RED)
     a2 = a.twinx(); a2.grid(False)
-    a2.plot([x["t"] for x in r], [x["ec"] for x in r], color=BLUE, lw=1.4)
-    a2.set_ylabel("DIC strain", color=BLUE); a2.tick_params(axis="y", colors=BLUE)
-    a.axvline(r[d["i0"]]["t"], ls=":", color=GREY)
-    a.annotate("ramp", xy=(r[d["ipk"]]["t"] * 0.62, d["Fpk"] * 0.45), fontsize=9, color=GREY)
-    a.annotate("HOLD strain", xy=(r[d["i0"]]["t"] + 8, d["Fpk"] * 0.45), fontsize=9.5,
-               color=GREY, fontweight="bold")
-    a.set_title("Full run — ramp to target strain, then hold the crosshead")
+    a2.plot([x["t"] for x in ok], [x["ec"] for x in ok], color=BLUE, lw=1.6, label="DIC strain")
+    a2.set_ylabel("Engineering strain, DIC", color=BLUE); a2.tick_params(axis="y", colors=BLUE)
+    a2.set_ylim(0, max(x["ec"] for x in ok) * 1.25)
+    a.axvline(r[d["i0"]]["t"], ls=":", color=GREY, lw=1.4)
+    h, l = a.get_legend_handles_labels(); h2, l2 = a2.get_legend_handles_labels()
+    a.legend(h + h2, l + l2, loc="lower right", fontsize=9)
+    _note(a, 0.11, 0.42, "ramp\n(strain rising)", color=GREY, fs=9, ha="center", weight="bold")
+    _note(a, 0.72, 0.42, "HOLD — crosshead frozen\nstrain flat, force decaying",
+          color=GREY, fs=9, ha="center", weight="bold")
+    a.set_title("Full run — ramp to target strain, then hold")
 
     hold = [x for x in r if x["t"] >= r[d["i0"]]["t"]]
     t0 = hold[0]["t"]
-    b.plot([x["t"] - t0 for x in hold], [x["F"] for x in hold], color=RED, lw=2.0)
+    b.plot([x["t"] - t0 for x in hold], [x["F"] for x in hold], color=RED, lw=2.2)
     b.set_xlabel("Time into hold (s)"); b.set_ylabel("Load (N)")
-    b.set_title(f"Stress relaxation — {d['drop']:.0f} N lost ({d['drop_pct']:.1f} %)")
-    b.annotate(f"{d['Fpk']:.0f} N", xy=(0, d["Fpk"]), xytext=(6, d["Fpk"]), fontsize=10,
-               fontweight="bold", color=RED, va="center")
-    b.annotate(f"{d['F1']:.0f} N", xy=(hold[-1]["t"] - t0, d["F1"]),
-               xytext=(hold[-1]["t"] - t0 - 22, d["F1"] - 12), fontsize=10, fontweight="bold", color=RED)
-    b.text(0.5, 0.12, f"strain held {d['eps']:.5f} ± {d['eps_sd']:.6f}\n(σ = {d['eps_sd']/d['eps']*100:.2f} % of the held value)",
-           transform=b.transAxes, ha="center", fontsize=9.5, color=BLUE, fontweight="bold")
+    b.set_title("Stress relaxation — %.0f N lost (%.1f %%)" % (d["drop"], d["drop_pct"]))
+    _note(b, 0.03, 0.95, "%.0f N at hold start" % d["Fpk"], color=RED, fs=10, weight="bold")
+    _note(b, 0.97, 0.62, "%.0f N after %.0f s" % (d["F1"], d["dur"]), color=RED, fs=10,
+          ha="right", weight="bold")
+    _note(b, 0.97, 0.95, "strain held %.5f ± %.6f\n(σ = %.2f %% of the held value)"
+          % (d["eps"], d["eps_sd"], 100 * d["eps_sd"] / d["eps"]),
+          color=BLUE, fs=9.5, ha="right", weight="bold")
     fig.tight_layout()
     return _save(fig, "sf9_relax.png")
 
@@ -460,23 +464,34 @@ def fig_creep():
     plt = _plt()
     fig, (a, b) = plt.subplots(1, 2, figsize=(12.4, 4.3))
     d = M["creep"]; r = d["r"]
-    a.plot([x["t"] for x in r], [x["F"] for x in r], color=RED, lw=1.7)
+    ok = dic_ok(r)
+    a.plot([x["t"] for x in r], [x["F"] for x in r], color=RED, lw=1.7, label="Load")
     a.set_xlabel("Time (s)"); a.set_ylabel("Load (N)", color=RED); a.tick_params(axis="y", colors=RED)
     a2 = a.twinx(); a2.grid(False)
-    a2.plot([x["t"] for x in r], [x["ec"] for x in r], color=BLUE, lw=1.4)
-    a2.set_ylabel("DIC strain", color=BLUE); a2.tick_params(axis="y", colors=BLUE)
-    a.axvline(d["t0"], ls=":", color=GREY); a.axvline(d["t1"], ls=":", color=GREY)
-    a.annotate("HOLD force", xy=(d["t0"] + 4, d["Fmean"] * 0.45), fontsize=9.5, color=GREY,
-               fontweight="bold")
+    a2.plot([x["t"] for x in ok], [x["ec"] for x in ok], color=BLUE, lw=1.6, label="DIC strain")
+    a2.set_ylabel("Engineering strain, DIC", color=BLUE); a2.tick_params(axis="y", colors=BLUE)
+    a2.set_ylim(0, max(x["ec"] for x in ok) * 1.35)
+    a.axvline(d["t0"], ls=":", color=GREY, lw=1.4); a.axvline(d["t1"], ls=":", color=GREY, lw=1.4)
+    h, l = a.get_legend_handles_labels(); h2, l2 = a2.get_legend_handles_labels()
+    a.legend(h + h2, l + l2, loc="lower right", fontsize=9)
+    _note(a, 0.52, 0.30, "HOLD force — %.0f N" % d["Fmean"], color=GREY, fs=9.5,
+          ha="center", weight="bold")
     a.set_title("Full run — ramp to target load, then hold that force")
 
-    hold = [x for x in r if d["t0"] <= x["t"] <= d["t1"]]
+    hold = [x for x in ok if d["t0"] <= x["t"] <= d["t1"]]
     t0 = hold[0]["t"]
-    b.plot([x["t"] - t0 for x in hold], [x["ec"] * 1e6 for x in hold], color=BLUE, lw=2.0)
-    b.set_xlabel("Time into hold (s)"); b.set_ylabel("DIC strain (µε)")
-    b.set_title(f"Creep — strain grows +{d['de']:.0f} µε at constant force")
-    b.text(0.5, 0.12, f"force held {d['Fmean']:.0f} ± {d['Fsd']:.1f} N\n({d['Fsd']/d['Fmean']*100:.2f} % of the held value)",
-           transform=b.transAxes, ha="center", fontsize=9.5, color=RED, fontweight="bold")
+    b.plot([x["t"] - t0 for x in hold], [x["ec"] * 1e6 for x in hold], color=BLUE, lw=1.4,
+           label="DIC strain (valid frames)")
+    m = d["e_mean"] * 1e6; sd = d["e_sd"] * 1e6
+    b.axhline(m, color=GREY, ls="--", lw=1.2)
+    b.axhspan(m - sd, m + sd, color=GREY, alpha=0.20, label="±1σ DIC noise (±%.0f µε)" % sd)
+    b.set_xlabel("Time into hold (s)"); b.set_ylabel("Engineering strain, DIC  (µε)")
+    b.set_ylim(m - 6 * sd, m + 6 * sd)
+    b.legend(fontsize=9, loc="upper right")
+    b.set_title("Creep — drift %+.2f µε/s, i.e. none resolvable" % d["drift_ue_per_s"])
+    _note(b, 0.03, 0.10, "%d of %d rows were DIC dropouts and are excluded —\ndifferencing across "
+                         "one faked +3257 µε of 'creep'" % (d["n_drop"], d["n_drop"] + d["n_valid"]),
+          color=RED, fs=8.5, va="bottom", weight="bold")
     fig.tight_layout()
     return _save(fig, "sf9_creep.png")
 
@@ -492,7 +507,7 @@ def fig_stair_fracture():
                fontsize=9.5, fontweight="bold",
                arrowprops=dict(arrowstyle="->", lw=1.4))
     a.set_xlabel("Time (s)"); a.set_ylabel("Load (N)")
-    a.set_title("T7.2 (S18, 50 %) — steps to failure, 11 levels")
+    a.set_title("T7.2 (S18, 50 %%) — steps to failure, %d dwells of >=5 s" % len(d["dwells"]))
 
     dw = d["dwells"]
     x = list(range(1, len(dw) + 1)); y = [w["drop_pct"] for w in dw]
@@ -652,49 +667,54 @@ def fig_stress_strain():
 
 
 def fig_cyclic_hyst():
-    """What the Cyclic mode CAN and CANNOT deliver. Cycling at ~14 % of fracture load leaves almost
-    no hysteresis to measure, and the DIC strain axis is quantisation-limited there — so the honest
-    result is a negative one, with T8 shown alongside as the protocol that does resolve it."""
+    """Why the Cyclic loop is unusable — and it is NOT a resolution problem. The centroid is
+    sub-pixel (0.1 px steps, ±0.021 px noise ⇒ SNR ≈ 170 on a 3.6 px loop). The loop is wrecked by a
+    ~2 s REVERSAL LAG: at each direction change the load climbs while the strain is still falling,
+    which is machine slack being re-taken, not material hysteresis."""
     plt = _plt()
     fig, (a, b, c) = plt.subplots(1, 3, figsize=(13.0, 4.2))
-    for L, col, lab in ((M["loops_tri"], GREY, "T5 Triangle"), (M["loops_sin"], BLUE, "T6.3 Sine")):
-        for i, l in enumerate(L):
-            pts = l["up"] + l["dn"]
-            a.plot([x["ec"] * 1e6 for x in pts], [x["F"] / AREA for x in pts], color=col, lw=1.3,
+    L = M["loops_sin"][1]; seg = L["up"] + L["dn"]; t0 = seg[0]["t"]
+    a.plot([x["t"] - t0 for x in seg], [x["F"] for x in seg], color=RED, lw=1.8, label="Load")
+    a.set_xlabel("Time into cycle (s)"); a.set_ylabel("Load (N)", color=RED)
+    a.tick_params(axis="y", colors=RED)
+    a2 = a.twinx(); a2.grid(False)
+    a2.plot([x["t"] - t0 for x in seg], [x["ec"] * 1e6 for x in seg], color=BLUE, lw=1.8,
+            label="DIC strain")
+    a2.set_ylabel("Engineering strain, DIC (µε)", color=BLUE); a2.tick_params(axis="y", colors=BLUE)
+    iF = min(range(len(L["up"])), key=lambda i: L["up"][i]["F"])
+    ie = min(range(len(L["up"])), key=lambda i: L["up"][i]["ec"])
+    a.axvline(L["up"][iF]["t"] - t0, color=RED, ls=":", lw=1.5)
+    a.axvline(L["up"][ie]["t"] - t0, color=BLUE, ls=":", lw=1.5)
+    h, l = a.get_legend_handles_labels(); h2, l2 = a2.get_legend_handles_labels()
+    a.legend(h + h2, l + l2, loc="upper center", fontsize=9)
+    _note(a, 0.04, 0.52, "load min and strain min\nare %.1f s APART\nload +%.0f N while strain %+.0f µε"
+          % (L["up"][ie]["t"] - L["up"][iF]["t"], L["up"][ie]["F"] - L["up"][iF]["F"],
+             (L["up"][ie]["ec"] - L["up"][iF]["ec"]) * 1e6),
+          color="#333", fs=8.5, weight="bold")
+    a.set_title("Reversal lag — load rises while\nstrain is still falling", fontsize=10)
+
+    for LL, col, lab in ((M["loops_tri"], GREY, "T5 Triangle"), (M["loops_sin"], BLUE, "T6.3 Sine")):
+        for i, l2_ in enumerate(LL):
+            pts = l2_["up"] + l2_["dn"]
+            b.plot([x["ec"] * 1e6 for x in pts], [x["F"] / AREA for x in pts], color=col, lw=1.3,
                    label=lab if i == 0 else None)
-    px = M["loops_sin"][0]["ue_per_px"]
-    lo_, hi_ = a.get_xlim()
-    for g in range(int(lo_ // px), int(hi_ // px) + 2):
-        a.axvline(g * px, color=RED, lw=0.7, ls=":", alpha=0.55, zorder=0)
-    a.legend(fontsize=9, loc="upper left")
-    _note(a, 0.97, 0.05, "dotted = 1-pixel DIC steps\nloop is only ~%.0f px wide"
-          % (M["loops_sin"][0]["px_span"]), color=RED, ha="right", va="bottom", fs=9, weight="bold")
-    a.set_xlabel("Engineering strain, DIC  (µε)"); a.set_ylabel("Engineering stress  (MPa)")
-    a.set_title("Loops exist — but land inside the\nDIC quantisation grid", fontsize=10)
+    b.legend(fontsize=9, loc="upper left")
+    _note(b, 0.97, 0.05, "loop area here is mostly SLACK,\nnot material hysteresis",
+          color=RED, ha="right", va="bottom", fs=9, weight="bold")
+    b.set_xlabel("Engineering strain, DIC  (µε)"); b.set_ylabel("Engineering stress  (MPa)")
+    b.set_title("Resulting loops — distorted,\nand they never close", fontsize=10)
 
-    names = ["T5\nTriangle", "T6.3\nSine", "T8 cy4", "T8 cy6", "T8 cy8"]
-    peaks = [M["loops_tri"][0]["peak"], M["loops_sin"][0]["peak"],
-             M["pc"]["cycles"][3]["peak"], M["pc"]["cycles"][5]["peak"], M["pc"]["cycles"][7]["peak"]]
-    frac = [3696.0, 3696.0, 1710.0, 1710.0, 1710.0]
-    pct = [100 * p / f for p, f in zip(peaks, frac)]
-    b.bar(range(5), pct, color=[GREY, BLUE, RED, RED, RED])
-    for i, v in enumerate(pct):
-        b.text(i, v + 1.5, "%.0f %%" % v, ha="center", fontsize=9, fontweight="bold")
-    b.set_xticks(range(5)); b.set_xticklabels(names, fontsize=8.5)
-    b.set_ylabel("Peak as % of that specimen's fracture load")
-    b.set_ylim(0, 95)
-    b.set_title("Cyclic runs in the deep elastic range —\nthere is little damage to find", fontsize=10)
-
-    cy = M["pc"]["cycles"]
-    c.plot([x["n"] for x in cy], [x["diss"] for x in cy], "o-", color=RED, lw=2.2, ms=7,
-           label="T8 — closed loops")
-    c.plot([1, 2, 3], [abs(l["diss_mJ"]) for l in M["loops_tri"]], "s--", color=GREY, lw=1.8, ms=6,
-           label="T5 — loop does NOT close")
-    c.legend(fontsize=8.5, loc="upper left")
-    _note(c, 0.97, 0.30, "T5/T6.3 ratchet %+.0f µm per\ncycle → work integral is not\na hysteresis area (came out\nNEGATIVE, so it is excluded)"
-          % M["loops_tri"][0]["ratchet_um"], color=GREY, ha="right", va="top", fs=8.5)
-    c.set_xlabel("Cycle"); c.set_ylabel("Energy dissipated per cycle  (mJ)")
-    c.set_title("Where dissipation IS measurable", fontsize=10)
+    names = ["T5\nTriangle", "T6.3\nSine", "T8 cy4", "T8 cy6", "T8 cy8", "T6.4\nPROPOSED"]
+    pxs = [M["loops_tri"][0]["px_span"], M["loops_sin"][0]["px_span"], 5.2, 9.8, 14.8, 13.1]
+    c.bar(range(6), pxs, color=[GREY, BLUE, RED, RED, RED, GREEN])
+    for i, v in enumerate(pxs):
+        c.text(i, v + 0.35, "%.1f" % v, ha="center", fontsize=9, fontweight="bold")
+    c.axhline(10, ls="--", color=GREEN, lw=1.5)
+    _note(c, 0.03, 0.95, "≥10 px gives a usable loop", color=GREEN, fs=9, weight="bold")
+    c.set_xticks(range(6)); c.set_xticklabels(names, fontsize=8)
+    c.set_ylabel("Strain excursion per cycle  (px)")
+    c.set_ylim(0, 17.5)
+    c.set_title("Signal size — T6.4 would give\n3.6× the current loop", fontsize=10)
     fig.tight_layout()
     return _save(fig, "sf9_cyclic_hyst.png")
 
