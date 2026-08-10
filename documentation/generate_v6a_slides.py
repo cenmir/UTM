@@ -1650,7 +1650,69 @@ footer(s, "Careful: cycle 5 is where MATERIAL damage overtakes the still-fading 
           "yield onset as a BRACKET of 700–900 N rather than one number.")
 pageno(s, 204)
 
-# ---- 205: stress-strain for every mode ----
+# ---- 205: SF3 — what the Settings feature actually saves ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF3 · SETTINGS (RECIPES) — WHAT ONE CLICK RESTORES")
+tb(s, 0.5, 1.16, 12.4, 0.34,
+   "A recipe is the WHOLE test setup, not just a couple of boxes. Pick a profile, press Load, and "
+   "every field below is restored — including the advanced test mode and its parameters.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+
+header(s, 0.5, 1.60, 6.0, "Specimen & rig")
+table(s, 0.5, 1.96, 6.05, 0.27 * 8,
+      [["Field", "Stored as", "Example"],
+       ["Material", "material", "PLA"],
+       ["Infill %", "infill_pct", "50"],
+       ["DIC specimen preset", "specimen_mode", "White / Black"],
+       ["Cross-section area", "area_mm2", "80.0 mm²"],
+       ["Gauge length", "gauge_mm", "80.0 mm"],
+       ["Preload target", "preload_N", "300 N"],
+       ["Test speed", "test_speed_mm_s", "0.100 mm/s"]],
+      cw=[2.1, 1.6, 1.5], hf=9.5, bf=9)
+
+header(s, 6.85, 1.60, 6.0, "Test programme  ← the part people miss")
+table(s, 6.85, 1.96, 6.05, 0.27 * 8,
+      [["Field", "Stored as", "Example"],
+       ["Which advanced mode", "mode", "Progressive cyclic → FRACTURE"],
+       ["ALL SIX modes' parameters", "mode_params", "see below"],
+       ["Strain-rate target", "strain_rate", "0.0005 /s"],
+       ["Auto-stop at fracture", "auto_stop_fracture", "ON"],
+       ["Free-text notes", "notes", "why these settings"],
+       ["— Cyclic", "low/high/cycles/speed/waveform", "100 / 500 N · 5 · Sine"],
+       ["— Progressive cyclic", "first_peak/peak_step/unload_to/speed", "300 / 150 / 100 N"]],
+      cw=[2.1, 2.3, 1.9], hf=9.5, bf=9,
+      ov={(1, c): {"bg": GREEN_PASS, "bold": c == 0} for c in range(3)} |
+         {(2, c): {"bg": GREEN_PASS, "bold": c == 0} for c in range(3)})
+
+banner(s, 0.45, 4.30, 12.45, 0.56,
+       "Every mode's parameters are stored, not just the selected one — so switching Test type AFTER a "
+       "Load gives sane values instead of leftovers from whatever was loaded before. Verified by "
+       "round-trip: save → reload returns byte-identical params for all six modes.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
+
+header(s, 0.5, 5.00, 6.0, "Why it matters")
+tb(s, 0.5, 5.34, 6.05, 1.5,
+   "•  A destructive test is ONE specimen — there is no second chance to get the settings right.\n"
+   "•  Repeat runs are identical by construction, not by memory or a lab notebook.\n"
+   "•  A student can run a validated protocol without knowing how it was tuned.\n"
+   "•  One shared source of truth: `_mode_widget_map()` drives BOTH save and load, so the two can "
+   "never drift apart. Adding a mode means one entry there and nothing else.",
+   fs=10.5)
+
+header(s, 6.85, 5.00, 6.0, "The two profiles that ship")
+table(s, 6.85, 5.34, 6.05, 0.27 * 3,
+      [["Profile", "Infill", "Preload", "Fracture protocols sized for"],
+       ["Default 100% infill", "100 %", "470 N", "~3.2 kN in ~10 levels"],
+       ["Default 50% infill", "50 %", "300 N", "the validated T7.2 / T8 settings"]],
+      cw=[2.0, 0.8, 0.9, 2.3], hf=9.5, bf=9)
+tb(s, 6.85, 6.30, 6.05, 0.5,
+   "Recreated automatically if missing, so a fresh clone always has them. A profile you have "
+   "customised is never overwritten.", fs=10, italic=True, colour=GREY_TEXT)
+footer(s, "Stored as plain JSON in Software/UTM_PyQt6/recipes/ — readable, diffable, and easy to hand "
+          "to someone else. The folder is gitignored as user-local; the two defaults regenerate on launch.")
+pageno(s, 205)
+
+# ---- 206: stress-strain for every mode ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "SF9 — STRESS vs STRAIN, ALL SIX MODES")
 tb(s, 0.5, 1.14, 12.4, 0.36,
@@ -1667,9 +1729,9 @@ banner(s, 0.45, 6.20, 12.45, 0.60,
 footer(s, "ε_f 3.10 % (T7.2) and 3.32 % (T8). A marker-separation plausibility bound is applied: at "
           "fracture L_px jumps 1668→1825 px ONE SAMPLE before the load collapses, which would otherwise "
           "stretch both fracture panels to a fictitious 10 % strain.")
-pageno(s, 205)
+pageno(s, 206)
 
-# ---- 206: PLA vs literature ----
+# ---- 207: PLA vs literature ----
 s = prs.slides.add_slide(BLANK); ju(s)
 from sf9_data import SPEC as _SPEC                                                 # noqa: E402
 _k = lambda spec, ours: spec / ours
@@ -1719,9 +1781,9 @@ tb(s, 5.7, 6.99, 7.0, 0.4,
    "‡ TDS carries no viscoelastic data. Relaxation/creep compared against Materials 15(10) 3509 and "
    "J. Appl. Polym. Sci. e54463 (~11–13 % relaxation, far longer holds). Tg 55–60 °C is from the TDS.",
    fs=9.5, italic=True, colour=GREY_TEXT)
-pageno(s, 206)
+pageno(s, 207)
 
-# ---- 207: campaign register — the T-number ↔ slide-page cross reference ----
+# ---- 208: campaign register — the T-number ↔ slide-page cross reference ----
 from sf9_data import when as SF9_WHEN                                              # noqa: E402
 
 _cti, _c6, _c62, _c63 = SF9["cyc_tri"], SF9["cyc_sin1"], SF9["cyc_sin2"], SF9["cyc_sin"]
@@ -1741,14 +1803,14 @@ _reg = [
     ["T1", "Creep", "S20 100 %", SF9_WHEN("creep"),
      "held %.0f ± %.1f N for %.0f s; creep NOT resolvable (%+.0f µε vs ±%.0f µε noise)"
      % (_cr["Fmean"], _cr["Fsd"], _cr["dur"], _cr["de"], _cr["e_sd"] * 1e6),
-     "195-196 · 205 · 206"],
+     "195-196 · 206 · 207"],
     ["T2", "Relaxation", "S20 100 %", SF9_WHEN("relax"),
      "ε pinned at %.5f; force decayed %.0f → %.0f N (%.1f %%)" % (_rx["eps"], _rx["Fpk"], _rx["F1"], _rx["drop_pct"]),
-     "193-194 · 205 · 206"],
+     "193-194 · 206 · 207"],
     ["T3", "Staircase · Linear ramp", "S20 100 %", SF9_WHEN("stair_lin"),
-     "3 levels / 20 s dwells — arrival overshoot %s N" % _ov(_sl), "190-192 · 205"],
+     "3 levels / 20 s dwells — arrival overshoot %s N" % _ov(_sl), "190-192 · 206"],
     ["T4", "Staircase · Smooth ramp", "S20 100 %", SF9_WHEN("stair_smo"),
-     "same levels — overshoot %s N  ▸ the taper fix" % _ov(_sm), "190-192 · 205"],
+     "same levels — overshoot %s N  ▸ the taper fix" % _ov(_sm), "190-192 · 206"],
     ["T5", "Cyclic · Triangle", "S20 100 %", SF9_WHEN("cyc_tri"),
      "5 cycles 100/500 N in %.0f s; peak error %.0f N (no lead yet)" % (_cti["dur"], _cti["pk_mae"]), "187-189 · 204"],
     ["T6", "Cyclic · Sine — 1st try", "S20 100 %", SF9_WHEN("cyc_sin1"),
@@ -1765,10 +1827,10 @@ _reg = [
      % (t7["peak"], t7["pct_of_need"]), "199-200"],
     ["T7.2", "Staircase → FRACTURE", "S18 50 %", SF9_WHEN("sf"),
      "yield knee %s, TRUE UTS %.2f MPa, auto-halt %.2f s"
-     % (("%.0f N" % _kn["arrive"]) if _kn else "located", sf["uts"], sf["halt"]), "197-199 · 205"],
+     % (("%.0f N" % _kn["arrive"]) if _kn else "located", sf["uts"], sf["halt"]), "197-199 · 206"],
     ["T8", "Progressive cyclic → FRACTURE", "S21 50 %", SF9_WHEN("pc"),
      "8 clean cycles, %.0f %% stiffness lost, TRUE UTS %.2f MPa"
-     % (100 * (1 - round(_val[-1]["E"] / 1000, 2) / round(_val[0]["E"] / 1000, 2)), pc["uts"]), "201-205"],
+     % (100 * (1 - round(_val[-1]["E"] / 1000, 2) / round(_val[0]["E"] / 1000, 2)), pc["uts"]), "201-206"],
 ]
 _ovr = {}
 for _r, _row in enumerate(_reg):
@@ -1795,11 +1857,11 @@ tb(s, 0.5, 6.34, 12.4, 0.62,
    fs=11, colour=GREY_TEXT)
 footer(s, "Raw CSVs: Software/UTM_PyQt6/8.7/<specimen folder>/. Metrics recomputed by "
           "documentation/sf9_data.py — this table is generated, not typed.")
-pageno(s, 207)
+pageno(s, 208)
 
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print("Saved: V6a_8_6_20_slides.pptx (67 slides, pages 141-207)")
+    print("Saved: V6a_8_6_20_slides.pptx (68 slides, pages 141-208)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (67 slides)")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (68 slides)")
