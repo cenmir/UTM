@@ -58,7 +58,7 @@ def _plot_ss(ax, r, uts_d, sy_d, last_d):
     ax.plot(r["sy_ec"], r["sy"], "s", color=GREEN, ms=7, mec="black", mew=0.5, zorder=5, label="σ_y")
     ax.plot(last_d["ecz"] * 100, last_d["sig"], "x", color="black", ms=9, mew=2, zorder=5, label="fracture")
     ax.set_xlim(-0.05, xmax); ax.set_ylim(0, ymax)
-    ax.set_xlabel("DIC Cauchy strain  (%)"); ax.set_ylabel("Engineering stress  (MPa)")
+    ax.set_xlabel("Engineering strain, DIC  (%)"); ax.set_ylabel("Engineering stress  (MPa)")
     ax.set_title("Stress–strain", fontsize=11, fontweight="bold")
     ax.grid(alpha=0.3); ax.legend(fontsize=7.5, loc="lower right")
 
@@ -90,7 +90,7 @@ def _plot_ed(ax, test, gauge, last_d):
     if tr:
         mt = max(tr) * 1.02
         ax.plot([0, mt], [0, mt / gauge], ":", color=GREY, lw=1.2, label="ideal (all travel→gauge)")
-    ax.set_xlabel("Crosshead travel  (mm)"); ax.set_ylabel("DIC Cauchy strain")
+    ax.set_xlabel("Crosshead travel  (mm)"); ax.set_ylabel("Engineering strain, DIC")
     ax.set_title("Gauge strain vs crosshead", fontsize=11, fontweight="bold")
     ax.grid(alpha=0.3); ax.legend(fontsize=7.5, loc="upper left")
 
@@ -136,7 +136,7 @@ def build_report(csv_path, settings=None, out_dir=None, individual_plots=True):
     fig = Figure(figsize=(16, 9)); FigureCanvasAgg(fig); fig.patch.set_facecolor("white")
     spec_id = settings.get("id") or stem
     fig.text(0.5, 0.965, f"UTM TENSILE REPORT — {spec_id}", ha="center", fontsize=18, fontweight="bold")
-    fig.text(0.5, 0.935, "Digital image correlation gauge strain · anchor self-calibration · nominal cross-section",
+    fig.text(0.5, 0.935, "DIC gauge strain (ENGINEERING: ΔL/L₀) · engineering stress (F/A₀) · anchor self-calibration",
              ha="center", fontsize=10.5, color="#666")
 
     kpis = [("UTS", f"{r['uts']:.1f} MPa", RED), ("Yield σ_y", f"{r['sy']:.1f} MPa", GREEN),

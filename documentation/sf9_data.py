@@ -89,13 +89,24 @@ def _anchor(r, fi):
 
 # ---------------------------------------------------------------- per-mode metrics
 def creep():
+    """CAUTION: a DIC dropout writes ec=0.0 / lpx=0 into the row rather than skipping it. Taking the
+    first and last row of the hold blindly can land on a dropout and manufacture a huge fake strain
+    change — it reported +3257 µε of 'creep' when the true change is about -14 µε. Always filter on
+    lpx before differencing DIC strain."""
     r = rd("creep")
     h = max((s for s in _segs(r) if s[0] == "hold"), key=lambda s: s[2] - s[1])
     sg = r[h[1]:h[2] + 1]
     F = [x["F"] for x in sg]
+    ok = [x for x in sg if x["lpx"] > 100]                      # DIC-valid rows only
+    ec = [x["ec"] for x in ok]
+    n_drop = len(sg) - len(ok)
+    # least-squares drift over the hold is more robust than first-vs-last on noisy data
+    slope, _ = _fit([x["t"] for x in ok], ec) if len(ok) > 5 else (float("nan"), 0)
     return dict(r=r, t0=r[h[1]]["t"], t1=r[h[2]]["t"], dur=r[h[2]]["t"] - r[h[1]]["t"],
                 F0=sg[0]["F"], F1=sg[-1]["F"], Fmean=st.mean(F), Fsd=st.pstdev(F),
-                e0=sg[0]["ec"], e1=sg[-1]["ec"], de=(sg[-1]["ec"] - sg[0]["ec"]) * 1e6)
+                e0=ok[0]["ec"], e1=ok[-1]["ec"], de=(ok[-1]["ec"] - ok[0]["ec"]) * 1e6,
+                e_mean=st.mean(ec), e_sd=st.pstdev(ec), drift_ue_per_s=slope * 1e6,
+                n_valid=len(ok), n_drop=n_drop, sigma=st.mean(F) / AREA)
 
 
 def relax():
@@ -195,6 +206,96 @@ def prog_cyclic():
                            if abs(r[i]["spd"]) < 1e-9), float("nan")))
 
 
+def _load_extrema(r, lo, hi):
+    """Peak/trough indices taken from the LOAD signal, not the commanded direction.
+
+    The adaptive reversal lead deliberately flips direction BEFORE the load extreme and lets the
+    crosshead coast into it, so a speed-based split assigns ~1 s of still-rising load to the
+    'unloading' half. That silently corrupted the per-cycle modulus (it returned 0.22 GPa for a
+    specimen that is ~2.5 GPa). Hysteresis band keeps noise from producing phantom extrema."""
+    band = 0.15 * (hi - lo)
+    out, state, best = [], "up", 0
+    for i, x in enumerate(r):
+        if state == "up":
+            if x["F"] > r[best]["F"]:
+                best = i
+            elif x["F"] < r[best]["F"] - band:
+                out.append(("peak", best)); state = "down"; best = i
+        else:
+            if x["F"] < r[best]["F"]:
+                best = i
+            elif x["F"] > r[best]["F"] + band:
+                out.append(("trough", best)); state = "up"; best = i
+    return out
+
+
+def cyclic_loops(key, lo=100.0, hi=500.0):
+    """Closed stress-strain loops per cycle + enclosed area = energy dissipated per unit volume.
+    Shoelace over (strain, stress in MPa) gives MJ/m³, reported as kJ/m³. DIC-invalid rows are
+    dropped first, or the loop closes through a spurious origin."""
+    r = rd(key)
+    ex = _load_extrema(r, lo, hi)
+    loops = []
+    for i in range(len(ex) - 2):
+        (k0, a), (k1, b), (k2, c) = ex[i], ex[i + 1], ex[i + 2]
+        if not (k0 == "trough" and k1 == "peak" and k2 == "trough"):
+            continue
+        if r[b]["F"] < 0.6 * hi:
+            continue
+        up = [x for x in r[a:b + 1] if x["lpx"] > 100]
+        dn = [x for x in r[b:c + 1] if x["lpx"] > 100]
+        if len(up) < 6 or len(dn) < 6:
+            continue
+        path = [(x["ec"], x["F"] / AREA) for x in up] + [(x["ec"], x["F"] / AREA) for x in dn]
+        A = 0.0
+        for j in range(len(path)):
+            x1, y1 = path[j]; x2, y2 = path[(j + 1) % len(path)]
+            A += x1 * y2 - x2 * y1
+        Eup, R2up = _fit([x["ec"] for x in up], [x["F"] / AREA for x in up])
+        Edn, R2dn = _fit([x["ec"] for x in dn], [x["F"] / AREA for x in dn])
+        # Hysteresis in CROSSHEAD space (work = ∫F·dx, mJ). The strain axis is quantisation-limited
+        # at these load bounds (see px_span below), so the stress-strain loop area is noise —
+        # crosshead displacement has far finer resolution and the work loop IS meaningful.
+        seg = r[a:c + 1]
+        wi = sum(0.5 * (r[i]["F"] + r[i - 1]["F"]) * (r[i]["pos"] - r[i - 1]["pos"])
+                 for i in range(a + 1, b + 1))
+        wo = -sum(0.5 * (r[i]["F"] + r[i - 1]["F"]) * (r[i]["pos"] - r[i - 1]["pos"])
+                  for i in range(b + 1, c + 1))
+        lp = [x["lpx"] for x in up + dn]
+        px_span = max(lp) - min(lp)
+        L0 = st.mean(lp)
+        loops.append(dict(n=len(loops) + 1, up=up, dn=dn,
+                          area_kJm3=abs(A) / 2.0 * 1000.0, peak=r[b]["F"],
+                          e_max=max(x["ec"] for x in up), e_min=min(x["ec"] for x in dn),
+                          E_up=Eup, R2_up=R2up, E_dn=Edn, R2_dn=R2dn,
+                          Win=wi, Wout=wo, diss_mJ=wi - wo,
+                          diss_pct=100 * (wi - wo) / wi if wi else float("nan"),
+                          px_span=px_span, ue_per_px=1e6 / L0,
+                          # the loop only closes if the crosshead comes back to where it started;
+                          # at these load bounds it ratchets, so the work integral is not a
+                          # hysteresis area and comes out NEGATIVE. Flag it instead of plotting it.
+                          ratchet_um=(dn[-1]["pos"] - up[0]["pos"]) * 1000.0,
+                          closed=(wi - wo) > 0))
+    return loops
+
+
+def stair_modulus(key, targets=(300.0, 600.0, 900.0)):
+    """Modulus re-measured on the RAMP into each level — the claim the Staircase slide makes.
+    Each ramp spans its own stress interval, so this is stiffness as a function of stress level."""
+    r = rd(key); out = []; prev = 0.0
+    for t in targets:
+        i0 = next((i for i in range(len(r)) if r[i]["F"] >= prev + 0.25 * (t - prev)), None)
+        i1 = next((i for i in range(len(r)) if r[i]["F"] >= t * 0.97), None)
+        if i0 is None or i1 is None or i1 <= i0:
+            prev = t; continue
+        seg = [x for x in r[i0:i1 + 1] if x["lpx"] > 100]
+        E, R2 = _fit([x["ec"] for x in seg], [x["F"] / AREA for x in seg])
+        out.append(dict(target=t, lo=prev, E=E, R2=R2, n=len(seg),
+                        s_lo=prev / AREA, s_hi=t / AREA))
+        prev = t
+    return out
+
+
 def t7_stall():
     """T7 (S20, 100 %) never fractured. Quantify the stall from the run itself rather than trying to
     replay the live guard offline — the live guard is phase-aware (silent during intentional dwells)
@@ -216,6 +317,8 @@ def t7_stall():
 
 def build():
     return dict(creep=creep(), relax=relax(), t7=t7_stall(),
+                loops_tri=cyclic_loops("cyc_tri"), loops_sin=cyclic_loops("cyc_sin"),
+                mod_lin=stair_modulus("stair_lin"), mod_smo=stair_modulus("stair_smo"),
                 stair_lin=staircase("stair_lin"), stair_smo=staircase("stair_smo"),
                 cyc_tri=cyclic("cyc_tri"), cyc_sin=cyclic("cyc_sin"), cyc_sin1=cyclic("cyc_sin1"),
                 cyc_sin2=cyclic("cyc_sin2"),
@@ -473,9 +576,200 @@ def fig_t7_stall():
     return _save(fig, "sf9_t7_stall.png")
 
 
+def dic_ok(r, upto=None, hi=1.07):
+    """DIC-valid rows with a PLAUSIBILITY bound on marker separation. At fracture the markers fly
+    apart and L_px jumps (1668 -> 1825 px = 9 % 'strain') one sample BEFORE the load collapses, so
+    slicing at the fracture index alone still lets one garbage point through and stretches every
+    stress-strain axis to ~0.10 strain. Real ε_f here is ~3 %, so 7 % is a safe ceiling."""
+    d = [x for x in r[:upto or len(r)] if x["lpx"] > 100]
+    if not d:
+        return d
+    L0 = st.median([x["lpx"] for x in d[:200]])
+    return [x for x in d if x["lpx"] < L0 * hi]
+
+
+def _note(ax, x, y, text, color="#333", fs=9.0, ha="left", va="top", weight="normal"):
+    """Annotation in AXES coordinates with an opaque-ish backing box, so text placed over a data
+    line stays readable and cannot be hidden behind it."""
+    return ax.text(x, y, text, transform=ax.transAxes, ha=ha, va=va, fontsize=fs, color=color,
+                   fontweight=weight, zorder=20,
+                   bbox=dict(facecolor="white", alpha=0.86, edgecolor="none", pad=2.5))
+
+
+def fig_stress_strain():
+    """Engineering stress vs DIC engineering strain for all six modes — the shape of each protocol
+    in material space rather than against time."""
+    plt = _plt()
+    fig, axes = plt.subplots(2, 3, figsize=(13.0, 6.2))
+    def ss(ax, r, upto=None, color=BLUE, lw=1.3):
+        d = dic_ok(r, upto)
+        ax.plot([x["ec"] for x in d], [x["F"] / AREA for x in d], color=color, lw=lw)
+        return d
+
+    a = axes[0][0]
+    for L, c, lab in ((M["loops_tri"], GREY, "T5 Triangle"), (M["loops_sin"], BLUE, "T6.3 Sine")):
+        for i, l in enumerate(L):
+            pts = l["up"] + l["dn"]
+            a.plot([x["ec"] for x in pts], [x["F"] / AREA for x in pts], color=c, lw=1.2,
+                   label=lab if i == 0 else None)
+    a.legend(fontsize=8.5, loc="upper left")
+    _note(a, 0.97, 0.06, "whole cycle = %.1f px of\nmarker motion (%.0f µε/px)"
+          % (M["loops_sin"][0]["px_span"], M["loops_sin"][0]["ue_per_px"]),
+          color=RED, ha="right", va="bottom", fs=8.5, weight="bold")
+    a.set_title("CYCLIC  [T5 · T6.3]", color=BLUE)
+
+    b = axes[0][1]
+    for k, c, lab in (("stair_lin", GREY, "T3 Linear"), ("stair_smo", BLUE, "T4 Smooth")):
+        d = dic_ok(M[k]["r"])
+        b.plot([x["ec"] for x in d], [x["F"] / AREA for x in d], color=c, lw=1.3, label=lab)
+    b.legend(fontsize=8.5, loc="upper left")
+    b.set_title("STAIRCASE  [T3 · T4]", color=BLUE)
+
+    c_ = axes[0][2]
+    ss(c_, M["relax"]["r"], color=ORANGE, lw=1.6)
+    _note(c_, 0.05, 0.94, "vertical drop =\nrelaxation at fixed ε", color=ORANGE, fs=8.5, weight="bold")
+    c_.set_title("RELAXATION  [T2]", color=ORANGE)
+
+    d_ = axes[1][0]
+    ss(d_, M["creep"]["r"], color=ORANGE, lw=1.6)
+    _note(d_, 0.05, 0.94, "hold is a POINT —\nno resolvable creep", color=ORANGE, fs=8.5, weight="bold")
+    d_.set_title("CREEP  [T1]", color=ORANGE)
+
+    e_ = axes[1][1]
+    ss(e_, M["sf"]["r"], upto=M["sf"]["fi"], color=RED, lw=1.4)
+    e_.set_title("STAIRCASE → FRACTURE  [T7.2]", color=RED)
+
+    f_ = axes[1][2]
+    ss(f_, M["pc"]["r"], upto=M["pc"]["fi"], color=RED, lw=1.3)
+    _note(f_, 0.05, 0.94, "nested loops =\nstiffness degradation", color=RED, fs=8.5, weight="bold")
+    f_.set_title("PROGRESSIVE CYCLIC → FRACTURE  [T8]", color=RED)
+
+    for ax in axes.ravel():
+        ax.set_xlabel("Engineering strain, DIC  (–)")
+        ax.set_ylabel("Engineering stress  (MPa)")
+    fig.tight_layout()
+    return _save(fig, "sf9_stress_strain.png")
+
+
+def fig_cyclic_hyst():
+    """What the Cyclic mode CAN and CANNOT deliver. Cycling at ~14 % of fracture load leaves almost
+    no hysteresis to measure, and the DIC strain axis is quantisation-limited there — so the honest
+    result is a negative one, with T8 shown alongside as the protocol that does resolve it."""
+    plt = _plt()
+    fig, (a, b, c) = plt.subplots(1, 3, figsize=(13.0, 4.2))
+    for L, col, lab in ((M["loops_tri"], GREY, "T5 Triangle"), (M["loops_sin"], BLUE, "T6.3 Sine")):
+        for i, l in enumerate(L):
+            pts = l["up"] + l["dn"]
+            a.plot([x["ec"] * 1e6 for x in pts], [x["F"] / AREA for x in pts], color=col, lw=1.3,
+                   label=lab if i == 0 else None)
+    px = M["loops_sin"][0]["ue_per_px"]
+    lo_, hi_ = a.get_xlim()
+    for g in range(int(lo_ // px), int(hi_ // px) + 2):
+        a.axvline(g * px, color=RED, lw=0.7, ls=":", alpha=0.55, zorder=0)
+    a.legend(fontsize=9, loc="upper left")
+    _note(a, 0.97, 0.05, "dotted = 1-pixel DIC steps\nloop is only ~%.0f px wide"
+          % (M["loops_sin"][0]["px_span"]), color=RED, ha="right", va="bottom", fs=9, weight="bold")
+    a.set_xlabel("Engineering strain, DIC  (µε)"); a.set_ylabel("Engineering stress  (MPa)")
+    a.set_title("Loops exist — but land inside the\nDIC quantisation grid", fontsize=10)
+
+    names = ["T5\nTriangle", "T6.3\nSine", "T8 cy4", "T8 cy6", "T8 cy8"]
+    peaks = [M["loops_tri"][0]["peak"], M["loops_sin"][0]["peak"],
+             M["pc"]["cycles"][3]["peak"], M["pc"]["cycles"][5]["peak"], M["pc"]["cycles"][7]["peak"]]
+    frac = [3696.0, 3696.0, 1710.0, 1710.0, 1710.0]
+    pct = [100 * p / f for p, f in zip(peaks, frac)]
+    b.bar(range(5), pct, color=[GREY, BLUE, RED, RED, RED])
+    for i, v in enumerate(pct):
+        b.text(i, v + 1.5, "%.0f %%" % v, ha="center", fontsize=9, fontweight="bold")
+    b.set_xticks(range(5)); b.set_xticklabels(names, fontsize=8.5)
+    b.set_ylabel("Peak as % of that specimen's fracture load")
+    b.set_ylim(0, 95)
+    b.set_title("Cyclic runs in the deep elastic range —\nthere is little damage to find", fontsize=10)
+
+    cy = M["pc"]["cycles"]
+    c.plot([x["n"] for x in cy], [x["diss"] for x in cy], "o-", color=RED, lw=2.2, ms=7,
+           label="T8 — closed loops")
+    c.plot([1, 2, 3], [abs(l["diss_mJ"]) for l in M["loops_tri"]], "s--", color=GREY, lw=1.8, ms=6,
+           label="T5 — loop does NOT close")
+    c.legend(fontsize=8.5, loc="upper left")
+    _note(c, 0.97, 0.30, "T5/T6.3 ratchet %+.0f µm per\ncycle → work integral is not\na hysteresis area (came out\nNEGATIVE, so it is excluded)"
+          % M["loops_tri"][0]["ratchet_um"], color=GREY, ha="right", va="top", fs=8.5)
+    c.set_xlabel("Cycle"); c.set_ylabel("Energy dissipated per cycle  (mJ)")
+    c.set_title("Where dissipation IS measurable", fontsize=10)
+    fig.tight_layout()
+    return _save(fig, "sf9_cyclic_hyst.png")
+
+
+def fig_stair_modulus():
+    """Modulus re-measured on the ramp into every level — the Staircase mode's headline claim."""
+    plt = _plt()
+    fig, (a, b) = plt.subplots(1, 2, figsize=(12.4, 4.3), gridspec_kw={"width_ratios": [1.25, 1]})
+    for k, col, lab in (("mod_lin", GREY, "T3 Linear"), ("mod_smo", BLUE, "T4 Smooth")):
+        m = M[k]
+        a.plot([(x["s_lo"] + x["s_hi"]) / 2 for x in m], [x["E"] / 1000 for x in m], "o-",
+               color=col, lw=2.2, ms=8, label=lab)
+        for x in m:
+            a.annotate("R²%.3f" % x["R2"], xy=((x["s_lo"] + x["s_hi"]) / 2, x["E"] / 1000),
+                       xytext=(0, -16), textcoords="offset points", ha="center", fontsize=8,
+                       color=col)
+    a.axhspan(2.65, 3.06, color=GREEN, alpha=0.13, zorder=0)
+    _note(a, 0.03, 0.96, "shaded = literature FDM PLA\n2.65–3.06 GPa", color=GREEN, fs=9, weight="bold")
+    a.legend(fontsize=9, loc="lower right")
+    a.set_xlabel("Stress interval of the ramp  (MPa)"); a.set_ylabel("Modulus, DIC  (GPa)")
+    a.set_title("Modulus re-measured at every level")
+
+    lv = ["L1\n0→3.8", "L2\n3.8→7.5", "L3\n7.5→11.2"]
+    w = 0.36; idx = range(len(lv))
+    b.bar([i - w / 2 for i in idx], [x["E"] / 1000 for x in M["mod_lin"]], w, color=GREY, label="T3 Linear")
+    b.bar([i + w / 2 for i in idx], [x["E"] / 1000 for x in M["mod_smo"]], w, color=BLUE, label="T4 Smooth")
+    for i, x in enumerate(M["mod_lin"]):
+        b.text(i - w / 2, x["E"] / 1000 + 0.05, "%.2f" % (x["E"] / 1000), ha="center", fontsize=8.5, color=GREY)
+    for i, x in enumerate(M["mod_smo"]):
+        b.text(i + w / 2, x["E"] / 1000 + 0.05, "%.2f" % (x["E"] / 1000), ha="center", fontsize=8.5, color=BLUE)
+    b.set_xticks(list(idx)); b.set_xticklabels(lv, fontsize=8.5)
+    b.set_ylabel("Modulus, DIC  (GPa)"); b.set_ylim(0, 3.6)
+    b.legend(fontsize=9, loc="lower right")
+    b.set_title("Stiffness rises as rig slack is squeezed out")
+    fig.tight_layout()
+    return _save(fig, "sf9_stair_modulus.png")
+
+
+def fig_literature():
+    """Our numbers against published FDM-PLA values."""
+    plt = _plt()
+    fig, (a, b) = plt.subplots(1, 2, figsize=(12.4, 4.2))
+    ours = [("T3/T4 staircase\n(100 % infill)", max(x["E"] for x in M["mod_smo"]) / 1000, BLUE),
+            ("V6 quintet\n(100 % infill)", 2.60, BLUE),
+            ("T8 cy4\n(50 % infill)", M["pc"]["cycles"][3]["E"] / 1000, ORANGE),
+            ("T8 cy8 damaged\n(50 % infill)", M["pc"]["cycles"][7]["E"] / 1000, ORANGE)]
+    a.bar(range(len(ours)), [o[1] for o in ours], color=[o[2] for o in ours])
+    for i, o in enumerate(ours):
+        a.text(i, o[1] + 0.06, "%.2f" % o[1], ha="center", fontsize=9.5, fontweight="bold")
+    a.axhspan(2.65, 3.06, color=GREEN, alpha=0.16, zorder=0)
+    a.axhspan(1.16, 1.33, color=ORANGE, alpha=0.14, zorder=0)
+    a.set_xticks(range(len(ours))); a.set_xticklabels([o[0] for o in ours], fontsize=8)
+    a.set_ylabel("Young's modulus  (GPa)"); a.set_ylim(0, 3.5)
+    _note(a, 0.02, 0.97, "green = literature solid/high-infill FDM PLA 2.65–3.06 GPa\n"
+                         "orange = literature low-infill band ≈1.25 GPa", fs=8.5)
+    a.set_title("Modulus vs literature")
+
+    lab = ["Literature\nsolid FDM PLA", "Ours 100 %\n(V6 quintet)", "Literature\n≈50 % of solid",
+           "Ours 50 %\n(T7.2)", "Ours 50 %\n(T8)"]
+    val = [42.0, 46.2, 21.0, M["sf"]["uts"], M["pc"]["uts"]]
+    col = [GREEN, BLUE, GREEN, ORANGE, ORANGE]
+    b.bar(range(len(val)), val, color=col)
+    for i, v in enumerate(val):
+        b.text(i, v + 0.7, "%.1f" % v, ha="center", fontsize=9.5, fontweight="bold")
+    b.set_xticks(range(len(val))); b.set_xticklabels(lab, fontsize=8)
+    b.set_ylabel("Ultimate tensile strength  (MPa)"); b.set_ylim(0, 55)
+    b.set_title("Strength vs literature — and the 50 % infill halving")
+    fig.tight_layout()
+    return _save(fig, "sf9_literature.png")
+
+
 def make_plots():
     return [fig_overview(), fig_cyclic(), fig_staircase(), fig_relax(), fig_creep(),
-            fig_stair_fracture(), fig_prog_cyclic(), fig_t7_stall()]
+            fig_stair_fracture(), fig_prog_cyclic(), fig_t7_stall(),
+            fig_stress_strain(), fig_cyclic_hyst(), fig_stair_modulus(), fig_literature()]
 
 
 if __name__ == "__main__":

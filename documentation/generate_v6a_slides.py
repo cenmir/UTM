@@ -1345,17 +1345,22 @@ sf9_how(193, "CREEP", "T1", UIH + "creep.png",
 
 sf9_result(194, "CREEP", "T1", "documentation/sf9_creep.png",
            kpis=[("Force held", "%.0f N" % cr["Fmean"]), ("Hold stability", "± %.1f N" % cr["Fsd"]),
-                 ("Creep strain", "+%.0f µε" % cr["de"]), ("Hold duration", "%.0f s" % cr["dur"])],
+                 ("Creep measured", "%+.0f µε  (none)" % cr["de"]), ("DIC noise band", "± %.0f µε" % (cr["e_sd"] * 1e6))],
            tbl=[["Quantity", "Value", "Interpretation"],
                 ["Force held", "%.0f ± %.1f N" % (cr["Fmean"], cr["Fsd"]),
                  "±%.2f %% of target — the load is genuinely constant" % (100 * cr["Fsd"] / cr["Fmean"])],
-                ["DIC strain", "%.5f → %.5f" % (cr["e0"], cr["e1"]),
-                 "+%.0f µε of creep in %.0f s at fixed stress" % (cr["de"], cr["dur"])]],
-           verdict="Force pinned to ±%.1f N (%.2f %%) while the strain crept +%.0f µε — the specimen "
-                   "deformed under a load that never changed."
-                   % (cr["Fsd"], 100 * cr["Fsd"] / cr["Fmean"], cr["de"]),
-           foot="Creep and relaxation are duals and were run back-to-back on the same specimen (S20), so "
-                "the two responses are directly comparable.")
+                ["DIC strain over the hold", "%.5f ± %.6f" % (cr["e_mean"], cr["e_sd"]),
+                 "drift %+.2f µε/s → %+.0f µε in %.0f s: BELOW the ±%.0f µε noise band"
+                 % (cr["drift_ue_per_s"], cr["drift_ue_per_s"] * cr["dur"], cr["dur"], cr["e_sd"] * 1e6)],
+                ["DIC dropouts skipped", "%d of %d rows" % (cr["n_drop"], cr["n_drop"] + cr["n_valid"]),
+                 "a dropout writes ec=0.0; differencing across one faked +3257 µε of 'creep'"]],
+           verdict="Force pinned to ±%.1f N (%.2f %%) — the CONTROL works. But creep was NOT resolvable: "
+                   "%.1f MPa is only %.0f %% of UTS and PLA is glassy at room temperature. Negative result, "
+                   "correctly reported."
+                   % (cr["Fsd"], 100 * cr["Fsd"] / cr["Fmean"], cr["sigma"], 100 * cr["sigma"] / 46.2),
+           vfill=YELLOW_WARN,
+           foot="To actually measure PLA creep, raise the hold to 50–70 % of UTS and extend it to "
+                "minutes. See p203 for the literature comparison.")
 
 # ---- 195/196: STAIRCASE → FRACTURE ----
 sf = SF9["sf"]
@@ -1470,7 +1475,108 @@ footer(s, "NOT a hard ceiling: six 100 % specimens fractured at 3.1–3.4 kN. So
           "correct — nothing ran away, and the specimen was released intact and reusable.")
 pageno(s, 199)
 
-# ---- 200: campaign register — the T-number ↔ slide-page cross reference ----
+# ---- 200: stress-strain for every mode ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF9 — STRESS vs STRAIN, ALL SIX MODES")
+tb(s, 0.5, 1.14, 12.4, 0.36,
+   "The same six protocols in MATERIAL space. Strain is DIC gauge strain, ENGINEERING (ΔL/L₀); "
+   "stress is engineering (F/A₀). True stress needs the current cross-section, which needs Poisson "
+   "from edge tracking — not measured yet, so nothing here is labelled 'true'.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_stress_strain.png", 0.45, 1.54, 12.45, 4.55)
+banner(s, 0.45, 6.20, 12.45, 0.60,
+       "Each protocol has a signature: cyclic = a tight loop bundle · staircase = one straight line "
+       "with dwell steps · relaxation = a VERTICAL drop at fixed strain · creep = a single POINT · "
+       "both fracture modes = the full curve to failure.",
+       fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
+footer(s, "ε_f 3.10 % (T7.2) and 3.32 % (T8). A marker-separation plausibility bound is applied: at "
+          "fracture L_px jumps 1668→1825 px ONE SAMPLE before the load collapses, which would otherwise "
+          "stretch both fracture panels to a fictitious 10 % strain.")
+pageno(s, 200)
+
+# ---- 201: cyclic hysteresis — what the mode can and cannot deliver ----
+_lt, _ls = SF9["loops_tri"], SF9["loops_sin"]
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF9 · CYCLIC  [T5 · T6.3] — HYSTERESIS: A NEGATIVE RESULT")
+tb(s, 0.5, 1.14, 12.4, 0.36,
+   "The mode description promises loop area = energy dissipated, and loop-shape change = early "
+   "damage. Neither is measurable from THIS run — and the reason is physics, not a rig fault.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_cyclic_hyst.png", 0.45, 1.52, 12.45, 3.55)
+for i, (lab, val) in enumerate([("Cycled at", "%.0f %% of fracture load" % (100 * _ls[0]["peak"] / 3696.0)),
+                                ("DIC excursion", "%.1f px" % _ls[0]["px_span"]),
+                                ("DIC resolution", "%.0f µε / px" % _ls[0]["ue_per_px"]),
+                                ("Crosshead ratchet", "%+.0f µm / cycle" % _lt[0]["ratchet_um"]),
+                                ("Loop closes?", "NO → area invalid")]):
+    kpi(s, 0.45 + i * 2.49, 5.22, 2.37, lab, val, h=0.80, vfs=14,
+        fill=YELLOW_WARN if i >= 3 else LIGHT_BLUE)
+banner(s, 0.45, 6.14, 12.45, 0.68,
+       "Cycling at 14 % of fracture load leaves almost no hysteresis to find — correct material "
+       "behaviour for PLA in its elastic range. To measure damage you must cycle NEAR YIELD, which is "
+       "exactly what Progressive cyclic (T8, 78 % of fracture) does — see p198.",
+       fill=YELLOW_WARN, fg=BLACK, fs=11.5)
+footer(s, "To get hysteresis from the fixed-bounds Cyclic mode, re-run with High near yield "
+          "(~2500 N on 100 % infill) instead of 500 N. Two honest failures are shown, not hidden: the "
+          "strain axis is quantisation-limited, and the work loop does not close because the crosshead "
+          "ratchets, which makes the apparent dissipation NEGATIVE.")
+pageno(s, 201)
+
+# ---- 202: staircase modulus at every level ----
+_ml, _ms = SF9["mod_lin"], SF9["mod_smo"]
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF9 · STAIRCASE  [T3 · T4] — MODULUS AT EVERY LEVEL")
+tb(s, 0.5, 1.14, 12.4, 0.36,
+   "The mode's claim is that stiffness can be re-measured at every level. Here it is: a modulus "
+   "fitted to the ramp into each level, so E as a function of stress.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_stair_modulus.png", 0.45, 1.52, 12.45, 3.45)
+table(s, 0.45, 5.10, 12.45, 0.27 * 4,
+      [["Ramp into level", "L1 · 0 → 3.8 MPa", "L2 · 3.8 → 7.5 MPa", "L3 · 7.5 → 11.2 MPa"],
+       ["T3 Linear — E (GPa)"] + ["%.2f  (R² %.3f)" % (x["E"] / 1000, x["R2"]) for x in _ml],
+       ["T4 Smooth — E (GPa)"] + ["%.2f  (R² %.3f)" % (x["E"] / 1000, x["R2"]) for x in _ms],
+       ["Literature, FDM PLA", "2.65 – 3.06 GPa", "(solid / high infill)", "Chacón · Chen et al."]],
+      hf=9.5, bf=9.5)
+banner(s, 0.45, 6.28, 12.45, 0.58,
+       "E climbs %.2f → %.2f GPa across the three levels and settles INSIDE the literature band — the "
+       "rise is rig slack being squeezed out at low load, the same artefact that fools the crosshead "
+       "stiffness in T8."
+       % (_ms[0]["E"] / 1000, _ms[-1]["E"] / 1000),
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
+footer(s, "Fit quality improves with the Smooth ramp (R² ≥ 0.986 vs 0.954) because a tapered approach "
+          "spends more samples in steady loading and fewer in the overshoot transient.")
+pageno(s, 202)
+
+# ---- 203: PLA vs literature ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF9 — DO THE NUMBERS MAKE SENSE FOR PLA?")
+tb(s, 0.5, 1.14, 12.4, 0.36,
+   "Sanity-check of every SF9 result against published FDM-PLA data. PLA is GLASSY at room "
+   "temperature (Tg ≈ 60–63 °C), which sets the expectation for all the time-dependent modes.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_literature.png", 0.45, 1.52, 12.45, 3.35)
+table(s, 0.45, 5.00, 12.45, 0.27 * 5,
+      [["Quantity", "Ours", "Literature (FDM PLA)", "Verdict"],
+       ["Modulus, 100 % infill", "%.2f GPa (T4 top level)" % (_ms[-1]["E"] / 1000),
+        "2.65 ± 0.20 … 3.06 GPa", "✓ inside the band"],
+       ["UTS, 100 % infill", "46.2 MPa (V6 quintet)", "41 – 43 MPa (dogbone)", "✓ ~8 % above — same order"],
+       ["UTS, 50 % infill", "%.1f / %.1f MPa (T7.2 / T8)" % (SF9["sf"]["uts"], SF9["pc"]["uts"]),
+        "≈ half of solid ⇒ ~21 MPa", "✓ the k≈2 infill knock-down, confirmed"],
+       ["Stress relaxation", "%.1f %% in %.0f s at ε=%.3f" % (rx["drop_pct"], rx["dur"], rx["eps"]),
+        "11 – 13 % (much longer holds)", "✓ plausible early portion — hold too short to compare"]],
+      hf=9.5, bf=9.5)
+banner(s, 0.45, 6.42, 12.45, 0.56,
+       "CREEP: none resolvable (%+.0f µε drift over %.0f s at %.1f MPa, DIC noise ±%.0f µε). Correct — "
+       "glassy PLA at %.0f %% of UTS should not creep measurably in 40 s. The test proved the CONTROL, "
+       "not the material."
+       % (cr["drift_ue_per_s"] * cr["dur"], cr["dur"], cr["sigma"], cr["e_sd"] * 1e6,
+          100 * cr["sigma"] / 46.2),
+       fill=YELLOW_WARN, fg=BLACK, fs=11.5)
+footer(s, "Sources: Materials 15(10) 3509 (PLA stress relaxation, ~11–13 %); J. Appl. Polym. Sci. "
+          "e54463 (infill-orientation relaxation); FDM-PLA tensile surveys (E 2.65–3.06 GPa, UTS 41–43 MPa). "
+          "To compare relaxation properly, re-run the hold at ≥600 s.")
+pageno(s, 203)
+
+# ---- 204: campaign register — the T-number ↔ slide-page cross reference ----
 from sf9_data import when as SF9_WHEN                                              # noqa: E402
 
 _cti, _c6, _c62, _c63 = SF9["cyc_tri"], SF9["cyc_sin1"], SF9["cyc_sin2"], SF9["cyc_sin"]
@@ -1488,17 +1594,18 @@ tb(s, 0.5, 1.14, 12.4, 0.34,
 _reg = [
     ["Test", "Mode / variant", "Spec.", "When (2026)", "Headline result", "Slides"],
     ["T1", "Creep", "S20 100 %", SF9_WHEN("creep"),
-     "held %.0f ± %.1f N for %.0f s; strain crept +%.0f µε" % (_cr["Fmean"], _cr["Fsd"], _cr["dur"], _cr["de"]),
-     "193-194"],
+     "held %.0f ± %.1f N for %.0f s; creep NOT resolvable (%+.0f µε vs ±%.0f µε noise)"
+     % (_cr["Fmean"], _cr["Fsd"], _cr["dur"], _cr["de"], _cr["e_sd"] * 1e6),
+     "193-194 · 200 · 203"],
     ["T2", "Relaxation", "S20 100 %", SF9_WHEN("relax"),
      "ε pinned at %.5f; force decayed %.0f → %.0f N (%.1f %%)" % (_rx["eps"], _rx["Fpk"], _rx["F1"], _rx["drop_pct"]),
-     "191-192"],
+     "191-192 · 200 · 203"],
     ["T3", "Staircase · Linear ramp", "S20 100 %", SF9_WHEN("stair_lin"),
-     "3 levels / 20 s dwells — arrival overshoot %s N" % _ov(_sl), "189-190"],
+     "3 levels / 20 s dwells — arrival overshoot %s N" % _ov(_sl), "189-190 · 202"],
     ["T4", "Staircase · Smooth ramp", "S20 100 %", SF9_WHEN("stair_smo"),
-     "same levels — overshoot %s N  ▸ the taper fix" % _ov(_sm), "189-190"],
+     "same levels — overshoot %s N  ▸ the taper fix" % _ov(_sm), "189-190 · 202"],
     ["T5", "Cyclic · Triangle", "S20 100 %", SF9_WHEN("cyc_tri"),
-     "5 cycles 100/500 N in %.0f s; peak error %.0f N (no lead yet)" % (_cti["dur"], _cti["pk_mae"]), "187-188"],
+     "5 cycles 100/500 N in %.0f s; peak error %.0f N (no lead yet)" % (_cti["dur"], _cti["pk_mae"]), "187-188 · 201"],
     ["T6", "Cyclic · Sine — 1st try", "S20 100 %", SF9_WHEN("cyc_sin1"),
      "accurate (%.0f N) but took %.0f s — ~2× too slow, flat bottoms ▸ velocity-law bug found"
      % (_c6["pk_mae"], _c6["dur"]), "—"],
@@ -1507,16 +1614,16 @@ _reg = [
      % (_c62["dur"], _c62["pk_mae"]), "—"],
     ["T6.3", "Cyclic · Sine — final", "S20 100 %", SF9_WHEN("cyc_sin"),
      "%.0f s, peak error %.0f N, and peaks CONVERGE %.0f → %.0f N"
-     % (_c63["dur"], _c63["pk_mae"], _c63["peaks"][0], _c63["peaks"][-1]), "187-188"],
+     % (_c63["dur"], _c63["pk_mae"], _c63["peaks"][0], _c63["peaks"][-1]), "187-188 · 201"],
     ["T7", "Staircase → FRACTURE", "S20 100 %", SF9_WHEN("sf_stall"),
      "STALLED at %.0f N (%.0f %% of what was needed) — no fracture, specimen intact"
      % (t7["peak"], t7["pct_of_need"]), "199"],
     ["T7.2", "Staircase → FRACTURE", "S18 50 %", SF9_WHEN("sf"),
      "yield knee %s, TRUE UTS %.2f MPa, auto-halt %.2f s"
-     % (("%.0f N" % _kn["arrive"]) if _kn else "located", sf["uts"], sf["halt"]), "195-196"],
+     % (("%.0f N" % _kn["arrive"]) if _kn else "located", sf["uts"], sf["halt"]), "195-196 · 200"],
     ["T8", "Progressive cyclic → FRACTURE", "S21 50 %", SF9_WHEN("pc"),
      "8 clean cycles, %.0f %% stiffness lost, TRUE UTS %.2f MPa"
-     % (100 * (1 - round(_val[-1]["E"] / 1000, 2) / round(_val[0]["E"] / 1000, 2)), pc["uts"]), "197-198"],
+     % (100 * (1 - round(_val[-1]["E"] / 1000, 2) / round(_val[0]["E"] / 1000, 2)), pc["uts"]), "197-198 · 200"],
 ]
 _ovr = {}
 for _r, _row in enumerate(_reg):
@@ -1543,11 +1650,11 @@ tb(s, 0.5, 6.34, 12.4, 0.62,
    fs=11, colour=GREY_TEXT)
 footer(s, "Raw CSVs: Software/UTM_PyQt6/8.7/<specimen folder>/. Metrics recomputed by "
           "documentation/sf9_data.py — this table is generated, not typed.")
-pageno(s, 200)
+pageno(s, 204)
 
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print("Saved: V6a_8_6_20_slides.pptx (60 slides, pages 141-200)")
+    print("Saved: V6a_8_6_20_slides.pptx (64 slides, pages 141-204)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (60 slides)")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (64 slides)")
