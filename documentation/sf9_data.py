@@ -26,6 +26,7 @@ CSV = {
     "cyc_tri":    "Specimen_S20_V2_Spray_CyclicTest_Triangle/UTM_Test_20260809_131215_T5_Cyclic_Tri.csv",
     "cyc_sin":    "Specimen_S20_V2_Spray_CyclicTest_Sine/UTM_Test_20260809_142723_T6.3_Cyclic_Sine.csv",
     "cyc_sin1":   "Specimen_S20_V2_Spray_CyclicTest_Sine/UTM_Test_20260809_131215_T6_Cyclic_Sine.csv",
+    "cyc_sin2":   "Specimen_S20_V2_Spray_CyclicTest_Sine/UTM_Test_20260809_131215_T6.2_Cyclic_Sine.csv",
     "sf":         "Specimen_S18_V1_Spray_Staircase-Fracture/UTM_Test_20260809_154041_T7.2_Staircase-Failure.csv",
     "sf_stall":   "Specimen_S20_V2_Spray_Staircase-Fracture/UTM_Test_20260809_152644_T7.csv",
     "pc":         "Specimen_S21_V1_Spray_ProgressiveCyclic-Fracture/UTM_Test_20260809_173857_T8_Progressive-Fracture.csv",
@@ -34,6 +35,18 @@ CSV = {
 
 def rd(k):
     return ua.read_csv(os.path.join(DATA, CSV[k]))
+
+
+def when(k):
+    """'Test Date' straight out of the CSV header — the filename's timestamp is the session/file id
+    and does NOT match when the test actually ran (all three T6 attempts share one prefix)."""
+    with open(os.path.join(DATA, CSV[k]), encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if not line.startswith("#"):
+                break
+            if "Test Date:" in line:
+                return line.split("Test Date:")[1].strip()[5:16]      # MM-DD HH:MM
+    return "?"
 
 
 def _segs(r, upto=None):
@@ -120,9 +133,14 @@ def staircase(key, targets=(300.0, 600.0, 900.0)):
 
 
 def cyclic(key, lo=100.0, hi=500.0):
+    """Peaks/troughs per cycle. Strokes that never get near the bounds are the initial approach and
+    the final return home, NOT cycles — counting them wrecked T6's peak error (a 44 N approach and a
+    100 N return dragged its mean error to 128 N when its real peaks were all within ~8 N)."""
     r = rd(key); ss = _segs(r)
-    pk = [max(r[a:b + 1], key=lambda x: x["F"])["F"] for d, a, b in ss if d == "up"]
-    tr = [min(r[a:b + 1], key=lambda x: x["F"])["F"] for d, a, b in ss if d == "down"]
+    pk = [p for p in (max(r[a:b + 1], key=lambda x: x["F"])["F"] for d, a, b in ss if d == "up")
+          if p > 0.6 * hi]
+    tr = [t for t in (min(r[a:b + 1], key=lambda x: x["F"])["F"] for d, a, b in ss if d == "down")
+          if t < lo + 0.6 * (hi - lo)]
     return dict(r=r, peaks=pk, troughs=tr, lo=lo, hi=hi,
                 pk_err=[p - hi for p in pk], tr_err=[t - lo for t in tr],
                 pk_mae=st.mean(abs(p - hi) for p in pk) if pk else float("nan"),
@@ -200,6 +218,7 @@ def build():
     return dict(creep=creep(), relax=relax(), t7=t7_stall(),
                 stair_lin=staircase("stair_lin"), stair_smo=staircase("stair_smo"),
                 cyc_tri=cyclic("cyc_tri"), cyc_sin=cyclic("cyc_sin"), cyc_sin1=cyclic("cyc_sin1"),
+                cyc_sin2=cyclic("cyc_sin2"),
                 sf=stair_fracture(), pc=prog_cyclic())
 
 

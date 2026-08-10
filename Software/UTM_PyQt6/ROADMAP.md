@@ -59,7 +59,7 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
   stall guard · 10 kN/30 mm backstop · dead-DIC guard). One proof plot per feature — all of them already
   exist as `feat_*.png` / the new `ui_help/*.png` diagrams. Decide size (A0 vs A1) before laying out.
 - 🟡 **DECK — bring `documentation/V6a_8_6_20_slides.pptx` up to current progress.**
-  ✅ **SF9 built 2026-08-10 — 14 slides, pages 186-199, deck now 59 slides:** overview of all six modes (real measured signatures, not schematics) · 2 slides per mode (how it works + settings + **software limits**, then results with graphs and tables) · **T7 failure analysis** (why it stalled, ranked causes, mitigations). Numbers are computed by `documentation/sf9_data.py` from the rig CSVs and imported by the generator, so nothing on these slides is transcribed by hand.
+  ✅ **SF9 built 2026-08-10 — 15 slides, pages 186-200, deck now 60 slides:** overview of all six modes (real measured signatures, not schematics) · 2 slides per mode (how it works + settings + **software limits**, then results with graphs and tables) · **T7 failure analysis** (why it stalled, ranked causes, mitigations). Numbers are computed by `documentation/sf9_data.py` from the rig CSVs and imported by the generator, so nothing on these slides is transcribed by hand.
   ⬜ **Still to slide:**
   - ~~The 6 control modes~~ ✅ SF9
   - ~~Session 1–2 creep/relaxation/staircase~~ ✅ SF9 (measured overshoot +45.5/+46.8/+52.6 → +6.0/+4.8/+7.8 N)
