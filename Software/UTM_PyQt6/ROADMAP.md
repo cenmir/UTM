@@ -105,6 +105,16 @@ number** — the numbers are IDs, so a status-grouped layout reads correctly wit
 ⚠️ **SF10 (auto-preload) was not in the original SF1–SF8 set** — added here because the poster is meant to
 show *all* smart features and auto-preload is a real, validated one that was simply never carded.
 
+- ⬜ **T9 — creep that actually resolves** (rig run, ~17 min). T1 held 398 N for 40 s at 4.98 MPa and
+  saw **nothing**, correctly: the fitted rate was **+0.002 ± 0.060 µε/s**, so the 95 % bound is
+  **<0.12 µε/s = under 5 µε across the whole hold**. The hold was ~20× too short and the stress ~2×
+  too low — PLA is glassy at room temperature (Tg ≈ 60–63 °C) and barely creeps at 11 % of UTS.
+  **Settings: 50 % infill · hold 600 N tared (11.3 MPa = 53 % UTS, 86 % of the 694 N yield knee) ·
+  900 s · ramp 0.10 mm/s.** Stay BELOW the yield knee — above it you get tertiary creep running to
+  failure, which is a different experiment. A typical 6 % creep strain is ≈450 µε = **20× the
+  detection floor**; even 1 % is 3×. **Run a 900 s zero-load baseline first** so thermal drift can be
+  separated from creep (over 900 s even 0.05 µε/s of drift is 45 µε). Scoped on deck p196.
+
 - ⬜ **T6.4 — cyclic hysteresis near yield** (rig run, ~6 min). T5/T6.3 cycled at only **14 % of
   fracture load**, so there was almost no hysteresis to measure, and what loop there was got
   fabricated by a **2.1 s reversal lag** (load +97 N while strain −893 µε = backlash being re-taken).

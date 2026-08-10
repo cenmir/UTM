@@ -133,7 +133,9 @@ def banner(slide, x, y, w, h, text, *, fill=GREEN_PASS, fg=DARK_GREEN, fs=13):
 
 
 def pageno(slide, n):
-    tb(slide, 0.5, 7.05, 0.7, 0.3, str(n), fs=10, colour=GREY_TEXT)
+    # Bottom-RIGHT. It used to sit at x=0.5, which is inside the footer's text box (x=0.6, w=12.1),
+    # so any footer longer than a few words printed straight over the page number.
+    tb(slide, 12.45, 7.05, 0.6, 0.3, str(n), fs=10, colour=GREY_TEXT, align=PP_ALIGN.RIGHT)
 
 
 def ju(slide):
@@ -141,7 +143,7 @@ def ju(slide):
 
 
 def footer(slide, text):
-    tb(slide, 0.6, 7.0, 12.1, 0.4, text, fs=12, italic=True, colour=GREY_TEXT)
+    tb(slide, 0.6, 7.0, 11.75, 0.4, text, fs=12, italic=True, colour=GREY_TEXT)
 
 
 def linkbox(slide, x, y, w, text, url, *, fs=11):
@@ -1195,13 +1197,20 @@ def sf9_how(page, name, tid, schematic, what, settings, limits, guide, note=None
     return s
 
 
-def sf9_result(page, name, tid, fig, kpis=None, tbl=None, verdict=None, vfill=GREEN_PASS, foot=""):
+def sf9_result(page, name, tid, fig, kpis=None, tbl=None, verdict=None, vfill=GREEN_PASS, foot="",
+               proposal=None):
     """Also bottom-up: pin the verdict banner above the footer, stack the table and KPI row above
     it, and give the figure whatever vertical space is left. Sizing the figure FIRST (the obvious
-    way) overflows as soon as a slide carries both a KPI row and a table."""
+    way) overflows as soon as a slide carries both a KPI row and a table.
+    `proposal` adds a green follow-up-test bar under the verdict, and everything above shifts up."""
     s = prs.slides.add_slide(BLANK); ju(s)
     title(s, "SF9 · %s  [%s] — OUR RESULTS" % (name, tid))
-    VERDICT_Y, TOP = 6.30, 1.24
+    TOP = 1.24
+    if proposal:
+        banner(s, 0.45, 6.44, 12.45, 0.44, proposal, fill=GREEN_PASS, fg=DARK_GREEN, fs=10.5)
+        VERDICT_Y = 5.88
+    else:
+        VERDICT_Y = 6.30
     floor_ = VERDICT_Y if verdict else 6.85
     if tbl:
         th = 0.26 * len(tbl); ty = floor_ - 0.10 - th; floor_ = ty
@@ -1415,8 +1424,13 @@ sf9_result(196, "CREEP", "T1", "documentation/sf9_creep.png",
                    "correctly reported."
                    % (cr["Fsd"], 100 * cr["Fsd"] / cr["Fmean"], cr["sigma"], 100 * cr["sigma"] / 46.2),
            vfill=YELLOW_WARN,
-           foot="To actually measure PLA creep, raise the hold to 50–70 % of UTS and extend it to "
-                "minutes. See p203 for the literature comparison.")
+           proposal="PROPOSED T9 — 50 % infill · hold 600 N tared (11.3 MPa = 53 % UTS, 86 % of the "
+                    "694 N yield knee) · 900 s · ramp 0.10 mm/s  →  a typical 6 % creep strain would "
+                    "be ≈450 µε = 20× the detection floor; even 1 % is still 3×.",
+           foot="T1 could not have detected creep at all: fitted rate +0.002 ± 0.060 µε/s, so the 95 % "
+                "bound is <0.12 µε/s — under 5 µε across the whole 40 s hold. The hold was ~20× too "
+                "short and the stress ~2× too low. Run a 900 s ZERO-LOAD baseline first to separate "
+                "thermal drift from creep.")
 
 # ---- 197/198: STAIRCASE → FRACTURE ----
 sf = SF9["sf"]
