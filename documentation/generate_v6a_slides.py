@@ -1620,32 +1620,54 @@ pageno(s, 203)
 
 # ---- 204: PLA vs literature ----
 s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "SF9 — DO THE NUMBERS MAKE SENSE FOR PLA?")
+from sf9_data import SPEC as _SPEC                                                 # noqa: E402
+_k = lambda spec, ours: spec / ours
+
+title(s, "SF9 — DO THE NUMBERS MAKE SENSE?  vs add:north E-PLA TDS")
 tb(s, 0.5, 1.14, 12.4, 0.36,
-   "Sanity-check of every SF9 result against published FDM-PLA data. PLA is GLASSY at room "
-   "temperature (Tg ≈ 60–63 °C), which sets the expectation for all the time-dependent modes.",
+   "SAME reference as the V6 slides (p156 / p163): add:north E-PLA TDS rev 2.1, ISO 527 / 178, so "
+   "k = spec ÷ measured is directly comparable across the deck. The datasheet has NO creep or "
+   "relaxation data — those two rows use journals and are marked ‡.",
    fs=11.5, italic=True, colour=GREY_TEXT)
-img_fit(s, "documentation/sf9_literature.png", 0.45, 1.52, 12.45, 3.35)
-table(s, 0.45, 5.00, 12.45, 0.27 * 5,
-      [["Quantity", "Ours", "Literature (FDM PLA)", "Verdict"],
-       ["Modulus, 100 % infill", "%.2f GPa (T4 top level)" % (_ms[-1]["E"] / 1000),
-        "2.65 ± 0.20 … 3.06 GPa", "✓ inside the band"],
-       ["UTS, 100 % infill", "46.2 MPa (V6 quintet)", "41 – 43 MPa (dogbone)", "✓ ~8 % above — same order"],
-       ["UTS, 50 % infill", "%.1f / %.1f MPa (T7.2 / T8)" % (SF9["sf"]["uts"], SF9["pc"]["uts"]),
-        "≈ half of solid ⇒ ~21 MPa", "✓ the k≈2 infill knock-down, confirmed"],
-       ["Stress relaxation", "%.1f %% in %.0f s at ε=%.3f" % (rx["drop_pct"], rx["dur"], rx["eps"]),
-        "11 – 13 % (much longer holds)", "✓ plausible early portion — hold too short to compare"]],
-      hf=9.5, bf=9.5)
-banner(s, 0.45, 6.42, 12.45, 0.56,
-       "CREEP: none resolvable (%+.0f µε drift over %.0f s at %.1f MPa, DIC noise ±%.0f µε). Correct — "
-       "glassy PLA at %.0f %% of UTS should not creep measurably in 40 s. The test proved the CONTROL, "
-       "not the material."
-       % (cr["drift_ue_per_s"] * cr["dur"], cr["dur"], cr["sigma"], cr["e_sd"] * 1e6,
-          100 * cr["sigma"] / 46.2),
-       fill=YELLOW_WARN, fg=BLACK, fs=11.5)
-footer(s, "Sources: Materials 15(10) 3509 (PLA stress relaxation, ~11–13 %); J. Appl. Polym. Sci. "
-          "e54463 (infill-orientation relaxation); FDM-PLA tensile surveys (E 2.65–3.06 GPa, UTS 41–43 MPa). "
-          "To compare relaxation properly, re-run the hold at ≥600 s.")
+img_fit(s, "documentation/sf9_literature.png", 0.45, 1.52, 12.45, 3.10)
+_lit = {}
+_rows = [["Property", "ISO", "E-PLA spec", "SF9 measured", "k", "retain"],
+         ["Tensile modulus E — T4 staircase, top level (100 %)", "527", "2.87 GPa",
+          "%.2f GPa" % (_ms[-1]["E"] / 1000), "%.2f" % _k(_SPEC["E"], _ms[-1]["E"] / 1000),
+          "%.0f %%" % (100 * (_ms[-1]["E"] / 1000) / _SPEC["E"])],
+         ["Tensile modulus E — T8 cycle 4 (50 % infill)", "527", "2.87 GPa",
+          "%.2f GPa" % (pc["cycles"][3]["E"] / 1000),
+          "%.2f" % _k(_SPEC["E"], pc["cycles"][3]["E"] / 1000),
+          "%.0f %%" % (100 * (pc["cycles"][3]["E"] / 1000) / _SPEC["E"])],
+         ["Tensile strength — T7.2 / T8 (50 % infill)", "527", "58 MPa",
+          "%.1f / %.1f MPa" % (sf["uts"], pc["uts"]),
+          "%.2f / %.2f" % (_k(_SPEC["uts"], sf["uts"]), _k(_SPEC["uts"], pc["uts"])),
+          "%.0f %%" % (100 * sf["uts"] / _SPEC["uts"])],
+         ["Elongation at break — T7.2 / T8 (50 % infill)", "527", "8 %", "3.10 / 3.32 %",
+          "2.58 / 2.41", "39–42 %"],
+         ["Stress relaxation ‡ — T2, %.0f s at ε=%.3f" % (rx["dur"], rx["eps"]), "—",
+          "not on TDS", "%.1f %%" % rx["drop_pct"], "—", "see ‡"],
+         ["Creep ‡ — T1, %.0f s at %.1f MPa" % (cr["dur"], cr["sigma"]), "—", "not on TDS",
+          "none resolvable", "—", "see ‡"]]
+_ov = {}
+for _r in (1, 3):
+    for _c in range(6):
+        _ov[(_r, _c)] = {"bg": GREEN_PASS, "bold": _c in (0, 4)}
+for _r in (5, 6):
+    for _c in range(6):
+        _ov[(_r, _c)] = {"bg": YELLOW_WARN, "bold": _c == 0}
+table(s, 0.45, 4.72, 12.45, 0.26 * len(_rows), _rows,
+      cw=[4.6, 0.55, 1.25, 1.65, 1.15, 0.85], hf=9.5, bf=9, ov=_ov)
+banner(s, 0.45, 6.52, 12.45, 0.44,
+       "Headline: the staircase modulus measured on a HIGH-STRESS increment lands on the datasheet "
+       "(k = %.2f) where the conventional broad-range fit gives k = 1.10 — the low-stress slack is "
+       "what drags the usual number down." % _k(_SPEC["E"], _ms[-1]["E"] / 1000),
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
+linkbox(s, 0.5, 6.99, 5.0, "Spec sheet — add:north E-PLA TDS (PDF, ISO 527 / 178)", ADDNORTH_TDS)
+tb(s, 5.7, 6.99, 7.0, 0.4,
+   "‡ TDS carries no viscoelastic data. Relaxation/creep compared against Materials 15(10) 3509 and "
+   "J. Appl. Polym. Sci. e54463 (~11–13 % relaxation, far longer holds). Tg 55–60 °C is from the TDS.",
+   fs=9.5, italic=True, colour=GREY_TEXT)
 pageno(s, 204)
 
 # ---- 205: campaign register — the T-number ↔ slide-page cross reference ----

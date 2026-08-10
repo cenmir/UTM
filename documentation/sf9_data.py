@@ -753,35 +753,50 @@ def fig_stair_modulus():
     return _save(fig, "sf9_stair_modulus.png")
 
 
+# add:north E-PLA TDS rev 2.1 (ISO 527 / 178) — the SAME reference the rest of this deck uses.
+# Verified against the PDF: tensile strength at break 58 MPa, tensile modulus 2870 MPa, elongation
+# at break 8 %, flexural 120 MPa / 3155 MPa, density 1.24 g/cc, Tg 55-60 °C (DSC), HDT 55 °C.
+# The TDS carries NO creep and NO stress-relaxation data — those must come from journals, and the
+# slide says so rather than blurring the two sources together.
+SPEC = dict(uts=58.0, E=2.87, ef=8.0, tg="55–60 °C", flex=120.0, flex_E=3.155, rho=1.24)
+
+
 def fig_literature():
-    """Our numbers against published FDM-PLA values."""
+    """SF9 results against the add:north E-PLA datasheet — same reference as the V6 slides, so the
+    k-factors are directly comparable with p156/p163."""
     plt = _plt()
     fig, (a, b) = plt.subplots(1, 2, figsize=(12.4, 4.2))
-    ours = [("T3/T4 staircase\n(100 % infill)", max(x["E"] for x in M["mod_smo"]) / 1000, BLUE),
-            ("V6 quintet\n(100 % infill)", 2.60, BLUE),
-            ("T8 cy4\n(50 % infill)", M["pc"]["cycles"][3]["E"] / 1000, ORANGE),
-            ("T8 cy8 damaged\n(50 % infill)", M["pc"]["cycles"][7]["E"] / 1000, ORANGE)]
+    ours = [("T4 staircase\ntop level, 100 %", max(x["E"] for x in M["mod_smo"]) / 1000, BLUE),
+            ("V6 quintet\nbroad fit, 100 %", 2.60, BLUE),
+            ("T8 cy4\n50 % infill", M["pc"]["cycles"][3]["E"] / 1000, ORANGE),
+            ("T8 cy8\n50 %, damaged", M["pc"]["cycles"][7]["E"] / 1000, ORANGE)]
     a.bar(range(len(ours)), [o[1] for o in ours], color=[o[2] for o in ours])
     for i, o in enumerate(ours):
         a.text(i, o[1] + 0.06, "%.2f" % o[1], ha="center", fontsize=9.5, fontweight="bold")
-    a.axhspan(2.65, 3.06, color=GREEN, alpha=0.16, zorder=0)
-    a.axhspan(1.16, 1.33, color=ORANGE, alpha=0.14, zorder=0)
+    a.axhline(SPEC["E"], color=GREEN, lw=2.2, ls="--")
     a.set_xticks(range(len(ours))); a.set_xticklabels([o[0] for o in ours], fontsize=8)
-    a.set_ylabel("Young's modulus  (GPa)"); a.set_ylim(0, 3.5)
-    _note(a, 0.02, 0.97, "green = literature solid/high-infill FDM PLA 2.65–3.06 GPa\n"
-                         "orange = literature low-infill band ≈1.25 GPa", fs=8.5)
-    a.set_title("Modulus vs literature")
+    a.set_ylabel("Tensile modulus  (GPa)"); a.set_ylim(0, 3.5)
+    _note(a, 0.02, 0.97, "add:north E-PLA TDS · ISO 527 = %.2f GPa" % SPEC["E"],
+          color=GREEN, fs=9, weight="bold")
+    _note(a, 0.97, 0.06, "staircase top level lands on\nthe datasheet: k = %.2f"
+          % (SPEC["E"] / ours[0][1]), color=BLUE, ha="right", va="bottom", fs=9, weight="bold")
+    a.set_title("Modulus vs the datasheet")
 
-    lab = ["Literature\nsolid FDM PLA", "Ours 100 %\n(V6 quintet)", "Literature\n≈50 % of solid",
-           "Ours 50 %\n(T7.2)", "Ours 50 %\n(T8)"]
-    val = [42.0, 46.2, 21.0, M["sf"]["uts"], M["pc"]["uts"]]
-    col = [GREEN, BLUE, GREEN, ORANGE, ORANGE]
-    b.bar(range(len(val)), val, color=col)
+    lab = ["V6 quintet\n100 % infill", "T7.2\n50 % infill", "T8\n50 % infill"]
+    val = [46.2, M["sf"]["uts"], M["pc"]["uts"]]
+    b.bar(range(len(val)), val, color=[BLUE, ORANGE, ORANGE])
     for i, v in enumerate(val):
-        b.text(i, v + 0.7, "%.1f" % v, ha="center", fontsize=9.5, fontweight="bold")
-    b.set_xticks(range(len(val))); b.set_xticklabels(lab, fontsize=8)
-    b.set_ylabel("Ultimate tensile strength  (MPa)"); b.set_ylim(0, 55)
-    b.set_title("Strength vs literature — and the 50 % infill halving")
+        b.text(i, v + 0.8, "%.1f\nk=%.2f" % (v, SPEC["uts"] / v), ha="center", fontsize=9,
+               fontweight="bold")
+    b.axhline(SPEC["uts"], color=GREEN, lw=2.2, ls="--")
+    b.axhline(46.2 / 2, color=GREY, lw=1.6, ls=":")
+    b.set_xticks(range(len(val))); b.set_xticklabels(lab, fontsize=8.5)
+    b.set_ylabel("Tensile strength  (MPa)"); b.set_ylim(0, 68)
+    _note(b, 0.02, 0.97, "add:north E-PLA TDS · ISO 527 = %.0f MPa" % SPEC["uts"],
+          color=GREEN, fs=9, weight="bold")
+    _note(b, 0.97, 0.74, "dotted = half of our own 100 % result —\n50 % infill lands on it, k ≈ 2 knock-down",
+          color=GREY, ha="right", fs=8.5, weight="bold")
+    b.set_title("Strength vs the datasheet, and the infill knock-down")
     fig.tight_layout()
     return _save(fig, "sf9_literature.png")
 
