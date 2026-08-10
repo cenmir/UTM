@@ -53,8 +53,7 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
 
 ### 3a. Near-term deliverables  ⭐ next up
 - ⬜ **POSTER — "Smart features of the UTM" (one page).** A single visual summary of everything the rig
-  now does automatically, for the lab wall / open days / conference. Reuse the **SF1–SF8** feature
-  numbering already established in the V6a deck so poster and deck agree. Should cover: DIC health HUD ·
+  now does automatically, for the lab wall / open days / conference. Use the **SF registry in §3c** (SF1–SF14) so poster, deck and roadmap agree. Should cover: DIC health HUD ·
   Prepare specimen · recipes (2 starter profiles) · one-click report · auto-stop at fracture ·
   strain-rate closed loop · the **6 control modes** · the **3-layer safety net** (load-collapse detector ·
   stall guard · 10 kN/30 mm backstop · dead-DIC guard). One proof plot per feature — all of them already
@@ -75,11 +74,41 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
     caveat (that spread contains specimen scatter too; n=2 can't separate them).
   - **Motor torque ceiling:** variable 3.2–3.4 kN, T7 on S20 stalled at 2355 N tared — hardware, not software.
   - **Workflow slides:** recipes (2 starter profiles), destructive-test confirmation, speed-scaled stall guard.
+  - **Rebuild the SF grid (slide 169):** it shows only 8 cards and its banner still reads *"Engine ready to add 4 more modes: cyclic · staircase · relaxation · creep"* — those are all done now. Take it to **14 cards from §3c**, grouped built vs planned.
 - ⬜ **BLACK-SPECIMEN DIC TEST — rig run, not just research.** Tracked in §5 below; repeated here so it is
   not lost among the reading tasks. Every specimen to date is WHITE; the "Black" DIC preset has never been
   exercised on the rig.
 
 - 🟢 **Wire the control modes into the Motor-Control UI — DONE** ("Advanced test modes" segment, 6 modes incl. the two fracture protocols). ✅ **Recipes now store the mode + every mode's params** (`TestRecipe.mode` + `mode_params`, 2026-08-09) — one `_mode_widget_map()` drives both save and load. ✅ **All 6 modes rig-validated:** creep · relaxation · staircase · cyclic (T6.3) · staircase→fracture (T7.2) · **progressive-cyclic→fracture (T8, 2026-08-09 — 8 clean cycles, no false-fire, 25 % stiffness loss resolved, true UTS 21.38 MPa vs T7.2's 21.19 = 0.9 % apart)**. ⬜ Remaining: **deck slides** — scoped in §3a above.
+### 3c. Smart-feature registry (SF numbers) — canonical list
+
+The **SF number is a stable identifier, not a ranking or an ordering**. Numbering is **append-only**:
+SF1–SF8 are already printed in the V6a deck (slide 169) and must never be renumbered. Poster, deck and
+this file all cite the same numbers.
+
+| SF | Feature | Status |
+|---|---|---|
+| 1 | DIC health HUD — live 2/2 · tracking % · jitter | ✅ rig-validated |
+| 2 | Prepare specimen — one-click tare of position + force + DIC | ✅ rig-validated |
+| 3 | Settings save / load (recipes) — reuse a whole setup | ✅ rig-validated |
+| 4 | Generate report — one-click PDF + PNGs | ✅ rig-validated |
+| 5 | Auto-stop at fracture — halts on load collapse | ✅ rig-validated |
+| 6 | Strain-rate fracture test — constant *gauge* dε/dt | ✅ rig-validated |
+| 7 | Stall guard — halts a frozen motor under load | ✅ rig-validated |
+| 8 | Release load — controlled return through 0 to −preload | ✅ rig-validated |
+| **9** | **Advanced test modes** — 6 closed-loop modes: cyclic · staircase · relaxation · creep · staircase→FRACTURE · progressive-cyclic→FRACTURE | ✅ **rig-validated 2026-08-09 (T8 closed the set)** |
+| **10** | **Auto-preload** — speed-schedule 0.2→0.1→0.02 mm/s, stops at 1.03× target to offset PLA relaxation | ✅ rig-validated |
+| **11** | **Auto-metadata + foldering** + one-click per-specimen deck (`utm_slides.py`) | ⬜ planned |
+| **12** | **DIC auto-calibrate** — auto-exposure/threshold sweep · auto-follow ROI through the draw | ⬜ planned |
+| **13** | **Guided workflow + live analysis overlay** — wizard · live E / predicted UTS / fracture flag · dashboard + audio cue | ⬜ planned |
+| **14** | **Multi-marker Poisson / true Cauchy** — 4-marker preset, live ν | 🔴 hardware-blocked (optics) |
+
+SF1–SF10 are built and rig-validated; SF11–SF14 are planned. **Group the poster by status, not by
+number** — the numbers are IDs, so a status-grouped layout reads correctly without renumbering anything.
+
+⚠️ **SF10 (auto-preload) was not in the original SF1–SF8 set** — added here because the poster is meant to
+show *all* smart features and auto-preload is a real, validated one that was simply never carded.
+
 ### 3b. Longer-range features
 - ⬜ **Multi-marker Poisson** — 4-marker preset in the dropdown, `detect_blobs`/`tare_dic`/`calculate_dic_strain` for 4 markers, new CSV columns (lateral strain / ν / current area / Cauchy), live ν readout. Needs a matte-black backdrop and/or a gauge-zoomed camera.
 - ⬜ **Phase D — UX layer:** guided Connect→Calibrate→Mount→Prepare→Recipe→Run→Save wizard; live analysis overlay (live E / predicted UTS / fracture flag); glanceable dashboard + audio cue on fracture; event-annotation hotkey.
