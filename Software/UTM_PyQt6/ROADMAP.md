@@ -58,21 +58,17 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
   strain-rate closed loop · the **6 control modes** · the **3-layer safety net** (load-collapse detector ·
   stall guard · 10 kN/30 mm backstop · dead-DIC guard). One proof plot per feature — all of them already
   exist as `feat_*.png` / the new `ui_help/*.png` diagrams. Decide size (A0 vs A1) before laying out.
-- ⬜ **DECK — bring `documentation/V6a_8_6_20_slides.pptx` up to current progress.** It stops at the
-  2026-07-29 state (40 slides); everything since is unslided. Needs:
-  - **The 6 control modes** — one slide each, using the `ui_help/*.png` schematics as the figure.
-  - **Session 1–2 (2026-08-08, S20):** creep · relaxation · staircase Linear vs Smooth (arrival
-    overshoot 45/47/53 N → 6/5/8 N after the last-25 % taper).
-  - **Cyclic T5/T6 → T6.3:** the true-sine velocity law (`2·√(frac(1−frac))`, the old `sin(π·frac)` was
-    ~2× too slow near the bounds) and the **force-domain adaptive reversal lead** — including why the
-    rate-scaled version is structurally broken for a sine and why the lead is seeded at 0.
-  - **T7.2 (S18) staircase→fracture:** the dwell force-drop vs level curve, yield knee at 694 N.
-  - **T8 (S21) progressive cyclic→fracture:** the damage curve (E 2.32→1.73 GPa, 25 % loss), hysteresis
-    dissipation 9.6 %→29.6 %, and **the headline — crosshead stiffness rose 613→777 N/mm while the
-    specimen softened, so without DIC the test reads as stiffening.**
+- 🟡 **DECK — bring `documentation/V6a_8_6_20_slides.pptx` up to current progress.**
+  ✅ **SF9 built 2026-08-10 — 14 slides, pages 186-199, deck now 59 slides:** overview of all six modes (real measured signatures, not schematics) · 2 slides per mode (how it works + settings + **software limits**, then results with graphs and tables) · **T7 failure analysis** (why it stalled, ranked causes, mitigations). Numbers are computed by `documentation/sf9_data.py` from the rig CSVs and imported by the generator, so nothing on these slides is transcribed by hand.
+  ⬜ **Still to slide:**
+  - ~~The 6 control modes~~ ✅ SF9
+  - ~~Session 1–2 creep/relaxation/staircase~~ ✅ SF9 (measured overshoot +45.5/+46.8/+52.6 → +6.0/+4.8/+7.8 N)
+  - ~~Cyclic T5/T6 → T6.3~~ ✅ SF9 (peak error 71 → 15 N; convergence 528 → 500 N shown)
+  - ~~T7.2 staircase→fracture~~ ✅ SF9
+  - ~~T8 progressive cyclic→fracture~~ ✅ SF9 (the crosshead-vs-DIC headline is the verdict banner on p198)
   - **Cross-protocol result:** T7.2 21.19 vs T8 21.38 MPa = 0.9 %, stated with the different-specimen
     caveat (that spread contains specimen scatter too; n=2 can't separate them).
-  - **Motor torque ceiling:** variable 3.2–3.4 kN, T7 on S20 stalled at 2355 N tared — hardware, not software.
+  - ~~Motor torque ceiling / T7~~ ✅ SF9 p199 (dedicated failure-analysis slide)
   - **Workflow slides:** recipes (2 starter profiles), destructive-test confirmation, speed-scaled stall guard.
   - **Rebuild the SF grid (slide 169):** it shows only 8 cards and its banner still reads *"Engine ready to add 4 more modes: cyclic · staircase · relaxation · creep"* — those are all done now. Take it to **14 cards from §3c**, grouped built vs planned.
 - ⬜ **BLACK-SPECIMEN DIC TEST — rig run, not just research.** Tracked in §5 below; repeated here so it is

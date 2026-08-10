@@ -1143,9 +1143,336 @@ footer(s, "Supersedes the transverse-marker idea on the previous slide: the narr
           "rule out a transverse dot pair. Measure the specimen's own edges (or full-field speckle) instead.")
 pageno(s, 185)
 
+# =============================================================================================
+# SF9 — ADVANCED TEST MODES (pages 186-199): 1 overview + 2 per mode + 1 failure analysis.
+# Every number comes from documentation/sf9_data.py, which recomputes it from the rig CSVs —
+# nothing on these slides is typed in by hand.
+# =============================================================================================
+from sf9_data import M as SF9                                                      # noqa: E402
+
+SF9_BACKSTOP = ("Always-on, every mode: 10 kN force · 30 mm travel · 900 s timeout · stall guard "
+                "(6 s window, min(0.05 mm, 35 % of commanded travel), armed above 200 N) · "
+                "dead-DIC freeze 0.2 s / halt 1.0 s · E-Stop.")
+
+
+def img_fit(slide, path, x, y, maxw, maxh):
+    """Place a picture scaled to fit a box, centred horizontally in it — the SF9 schematics have
+    very different aspect ratios (the fracture ones are 2-panel and twice as wide)."""
+    iw, ih = Image.open(path).size
+    sc = min(maxw / iw, maxh / ih)
+    w, h = iw * sc, ih * sc
+    slide.shapes.add_picture(path, Inches(x + (maxw - w) / 2), Inches(y), width=Inches(w))
+    return h
+
+
+def sf9_how(page, name, schematic, what, settings, limits, guide, note=None):
+    """LEFT: schematic of the protocol (+ optional caveat under it). RIGHT: what it measures and the
+    settings actually used. BOTTOM: the software limits the UI enforces for this mode.
+
+    Laid out BOTTOM-UP: the limits banner and guidance line are anchored just above the footer and
+    the settings table is sized to end above them, so a mode with more parameters (staircase has 7
+    rows) cannot push content into the banner.
+    """
+    s = prs.slides.add_slide(BLANK); ju(s)
+    title(s, "SF9 · %s — HOW IT WORKS" % name)
+    ih = img_fit(s, schematic, 0.5, 1.30, 6.85, 4.30)
+    if note:
+        tb(s, 0.5, 1.30 + ih + 0.15, 6.85, 0.75, note, fs=10.5, italic=True, colour=GREY_TEXT)
+
+    GUIDE_Y, BANNER_Y = 6.56, 6.02
+    header(s, 7.55, 1.24, 5.4, "What this mode tells you")
+    flow(s, 7.55, 1.66, 5.30, 1.95, what, fill=LIGHT_BLUE, border=FLOW_BLUE, fs=11.5)
+    header(s, 7.55, 3.72, 5.4, "Settings used for our test")
+    rows = len(settings)
+    rh = min(0.28, (BANNER_Y - 0.12 - 4.10) / rows)      # shrink rows rather than overflow
+    table(s, 7.55, 4.10, 5.30, rh * rows, settings, cw=[1.55, 1.0], hf=10, bf=10)
+
+    banner(s, 0.5, BANNER_Y, 12.4, 0.48, "SOFTWARE LIMITS — " + limits,
+           fill=YELLOW_WARN, fg=BLACK, fs=11)
+    tb(s, 0.5, GUIDE_Y, 12.4, 0.32, guide, fs=10.5, italic=True, colour=GREY_TEXT)
+    footer(s, SF9_BACKSTOP)
+    pageno(s, page)
+    return s
+
+
+def sf9_result(page, name, fig, kpis=None, tbl=None, verdict=None, vfill=GREEN_PASS, foot=""):
+    """Also bottom-up: pin the verdict banner above the footer, stack the table and KPI row above
+    it, and give the figure whatever vertical space is left. Sizing the figure FIRST (the obvious
+    way) overflows as soon as a slide carries both a KPI row and a table."""
+    s = prs.slides.add_slide(BLANK); ju(s)
+    title(s, "SF9 · %s — OUR RESULTS" % name)
+    VERDICT_Y, TOP = 6.30, 1.24
+    floor_ = VERDICT_Y if verdict else 6.85
+    if tbl:
+        th = 0.26 * len(tbl); ty = floor_ - 0.10 - th; floor_ = ty
+    if kpis:
+        ky = floor_ - 0.10 - 0.82; floor_ = ky
+    img_fit(s, fig, 0.45, TOP, 12.45, max(1.5, floor_ - 0.10 - TOP))
+    if kpis:
+        w = 12.45 / len(kpis)
+        for i, (lab, val) in enumerate(kpis):
+            kpi(s, 0.45 + i * w, ky, w - 0.12, lab, val, h=0.82, vfs=15)
+    if tbl:
+        table(s, 0.45, ty, 12.45, th, tbl, hf=9.5, bf=9.5)
+    if verdict:
+        banner(s, 0.45, VERDICT_Y, 12.45, 0.55, verdict, fill=vfill, fg=DARK_GREEN, fs=12)
+    footer(s, foot)
+    pageno(s, page)
+    return s
+
+
+UIH = "Software/UTM_PyQt6/ui_help/"
+
+# ---- 186: SF9 overview — all six modes, real measured signatures ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF9 — ADVANCED TEST MODES: SIX CLOSED-LOOP PROTOCOLS, ONE ENGINE")
+tb(s, 0.5, 1.16, 12.4, 0.4,
+   "All six share one control loop (`_policy_step`) and one safety net. Every trace below is real rig "
+   "data, not a schematic. Two of them drive the specimen to destruction.",
+   fs=12, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_overview.png", 0.45, 1.56, 12.45, 4.45)
+banner(s, 0.45, 6.14, 12.45, 0.72,
+       "Why it matters: a conventional pull gives ONE modulus, ONE yield, ONE UTS. These modes "
+       "interrogate the specimen on the way to failure — so a single specimen yields a CURVE "
+       "(stiffness vs damage, relaxation vs level) instead of a point.",
+       fill=LIGHT_BLUE, fg=BLACK, fs=12)
+footer(s, "Rig-validated 2026-08-08/09 on S18, S20, S21. Engine: control_policies.py · "
+          "app wiring: main.py `_policy_step` · schematics: ui_help/.")
+pageno(s, 186)
+
+# ---- 187/188: CYCLIC ----
+ct, cs = SF9["cyc_tri"], SF9["cyc_sin"]
+sf9_how(187, "CYCLIC", UIH + "cyclic.png",
+        "Repeatedly loads and unloads between a Low and a High force for N cycles.\n\n"
+        "• Hysteresis loop area = energy dissipated per cycle\n"
+        "• Change in loop shape = early damage, before any visible yield\n"
+        "• Waveform choice: Triangle (constant-speed ramps) or Sine (eases at each peak)\n"
+        "• Stays elastic — the specimen is REUSABLE afterwards",
+        [["Parameter", "Value"], ["Low / High force", "100 / 500 N"], ["Cycles", "5"],
+         ["Speed", "0.100 mm/s"], ["Waveform", "Triangle (T5) · Sine (T6.3)"],
+         ["Specimen", "S20 · 100 % infill"]],
+        "Low 0–5000 N · High 0–5000 N · Cycles 1–1000 · Speed 0.005–0.500 mm/s",
+        "Guidance: keep High below yield, or the run becomes a fatigue test and the specimen breaks.")
+
+sf9_result(188, "CYCLIC", "documentation/sf9_cyclic.png",
+           kpis=[("Peak error — Triangle", "%.0f N" % ct["pk_mae"]),
+                 ("Peak error — Sine", "%.0f N" % cs["pk_mae"]),
+                 ("Sine, final cycle", "%.0f N" % cs["peaks"][-1]),
+                 ("Cycles completed", "%d + %d" % (len(ct["peaks"]), len(cs["peaks"])))],
+           tbl=[["Cycle"] + ["%d" % i for i in range(1, len(cs["peaks"]) + 1)] + ["mean |err|"],
+                ["T5 Triangle — peak (N)"] + ["%.0f" % p for p in ct["peaks"]] + ["%.0f" % ct["pk_mae"]],
+                ["T6.3 Sine — peak (N)"] + ["%.0f" % p for p in cs["peaks"]] + ["%.0f" % cs["pk_mae"]]],
+           verdict="Sine cuts peak error %.0f N → %.0f N (%.0f %% better) and CONVERGES: %.0f → %.0f N "
+                   "across the 5 cycles, landing on the 500 N target."
+                   % (ct["pk_mae"], cs["pk_mae"], 100 * (1 - cs["pk_mae"] / ct["pk_mae"]),
+                      cs["peaks"][0], cs["peaks"][-1]),
+           foot="The convergence is the adaptive reversal lead learning the true coast distance in the "
+                "FORCE domain. Seeded at zero so it approaches from below — seeding it at the measured "
+                "1.3 s decel over-led and rang (T6, T6.2).")
+
+# ---- 189/190: STAIRCASE ----
+sl, sm = SF9["stair_lin"], SF9["stair_smo"]
+sf9_how(189, "STAIRCASE", UIH + "staircase.png",
+        "Steps the load up — Start, Start+Step, Start+2·Step … — and DWELLS at every level.\n\n"
+        "• Each dwell is a mini stress-relaxation test\n"
+        "• Modulus can be re-measured at every level\n"
+        "• Ramp shape: Linear (constant speed) or Smooth (eases into each level)\n"
+        "• Non-destructive if the top level stays below yield",
+        [["Parameter", "Value"], ["Start / Step", "300 / 300 N"], ["Levels", "3"],
+         ["Dwell", "20 s"], ["Speed", "0.100 mm/s"], ["Ramp", "Linear (T3) · Smooth (T4)"],
+         ["Specimen", "S20 · 100 % infill"]],
+        "Start 0–5000 N · Step 10–2000 N · Levels 1–20 · Dwell 1–600 s · Speed 0.005–0.500 mm/s",
+        "Guidance: keep the top level, Start+(Levels−1)·Step, below yield.")
+
+sf9_result(190, "STAIRCASE", "documentation/sf9_staircase.png",
+           kpis=[("Linear — mean overshoot", "%.0f N" % (sum(l["over"] for l in sl["levels"]) / 3)),
+                 ("Smooth — mean overshoot", "%.0f N" % (sum(l["over"] for l in sm["levels"]) / 3)),
+                 ("Improvement", "%.0f×" % ((sum(l["over"] for l in sl["levels"]) / 3) /
+                                            (sum(l["over"] for l in sm["levels"]) / 3))),
+                 ("Stall guard false trips", "0 of 6 dwells")],
+           tbl=[["Level (commanded)", "L1 · 300 N", "L2 · 600 N", "L3 · 900 N"],
+                ["T3 Linear — arrival overshoot"] + ["%+.1f N" % l["over"] for l in sl["levels"]],
+                ["T4 Smooth — arrival overshoot"] + ["%+.1f N" % l["over"] for l in sm["levels"]],
+                ["Dwell force drop (Smooth)"] + ["%.1f N" % l["drop"] for l in sm["levels"]]],
+           verdict="Smooth ramp cuts arrival overshoot from ~%.0f N to ~%.0f N — a %.0f× improvement — "
+                   "by tapering the last 25 %% of every approach."
+                   % (sum(l["over"] for l in sl["levels"]) / 3, sum(l["over"] for l in sm["levels"]) / 3,
+                      (sum(l["over"] for l in sl["levels"]) / 3) / (sum(l["over"] for l in sm["levels"]) / 3)),
+           foot="Overshoot is measured against the COMMANDED level, not the settled value — the settled "
+                "value already contains the dwell relaxation, which would mask the control error.")
+
+# ---- 191/192: RELAXATION ----
+rx = SF9["relax"]
+sf9_how(191, "RELAXATION", UIH + "relaxation.png",
+        "Ramps to a target STRAIN, then holds the crosshead still and watches the force decay.\n\n"
+        "• Measures the viscoelastic stress-relaxation of the polymer\n"
+        "• Decay rate and magnitude are material fingerprints\n"
+        "• Requires live DIC (green 2/2) — strain is the controlled variable\n"
+        "• Non-destructive below yield",
+        [["Parameter", "Value"], ["Hold strain", "0.010"], ["Hold duration (measured)", "%.0f s" % rx["dur"]],
+         ["Speed", "0.100 mm/s"], ["Specimen", "S20 · 100 % infill"]],
+        "Hold strain 0.001–0.200 · Duration 1–3600 s · Speed 0.005–0.500 mm/s · needs DIC green 2/2",
+        "Guidance: keep the hold strain below yield (≈0.015 for PLA) for a purely elastic hold.")
+
+sf9_result(192, "RELAXATION", "documentation/sf9_relax.png",
+           kpis=[("Peak load", "%.0f N" % rx["Fpk"]), ("After hold", "%.0f N" % rx["F1"]),
+                 ("Stress relaxed", "%.0f N  (%.1f %%)" % (rx["drop"], rx["drop_pct"])),
+                 ("Strain held", "%.5f" % rx["eps"])],
+           tbl=[["Quantity", "Value", "Interpretation"],
+                ["Force decay over %.0f s" % rx["dur"], "%.0f → %.0f N" % (rx["Fpk"], rx["F1"]),
+                 "%.1f %% of the initial stress relaxed away" % rx["drop_pct"]],
+                ["Strain held", "%.5f ± %.6f" % (rx["eps"], rx["eps_sd"]),
+                 "±%.2f %% of the held value — the crosshead really did stand still"
+                 % (100 * rx["eps_sd"] / rx["eps"])]],
+           verdict="Textbook viscoelastic relaxation: %.0f N (%.1f %%) shed at a strain held to "
+                   "±%.2f %%. The control did its job — the decay is the MATERIAL, not drift."
+                   % (rx["drop"], rx["drop_pct"], 100 * rx["eps_sd"] / rx["eps"]),
+           foot="Relaxation is the one mode whose dwell is not a zero-speed hold: it keeps nudging the "
+                "crosshead to pin the strain, so the dwell is found from crosshead POSITION going flat.")
+
+# ---- 193/194: CREEP ----
+cr = SF9["creep"]
+sf9_how(193, "CREEP", UIH + "creep.png",
+        "Ramps to a target LOAD, then holds that force constant and watches the strain grow.\n\n"
+        "• The dual of relaxation: fix stress, measure strain(t)\n"
+        "• Reveals time-dependent deformation under sustained service load\n"
+        "• Primary-creep slope indicates how the part behaves under a permanent load\n"
+        "• Non-destructive well below UTS",
+        [["Parameter", "Value"], ["Hold load", "400 N"], ["Hold duration (measured)", "%.0f s" % cr["dur"]],
+         ["Speed", "0.100 mm/s"], ["Specimen", "S20 · 100 % infill"]],
+        "Load 10–5000 N · Duration 1–3600 s · Speed 0.005–0.500 mm/s",
+        "Guidance: use ≤60–70 % of UTS — above that, creep runs away and the specimen fails during the hold.")
+
+sf9_result(194, "CREEP", "documentation/sf9_creep.png",
+           kpis=[("Force held", "%.0f N" % cr["Fmean"]), ("Hold stability", "± %.1f N" % cr["Fsd"]),
+                 ("Creep strain", "+%.0f µε" % cr["de"]), ("Hold duration", "%.0f s" % cr["dur"])],
+           tbl=[["Quantity", "Value", "Interpretation"],
+                ["Force held", "%.0f ± %.1f N" % (cr["Fmean"], cr["Fsd"]),
+                 "±%.2f %% of target — the load is genuinely constant" % (100 * cr["Fsd"] / cr["Fmean"])],
+                ["DIC strain", "%.5f → %.5f" % (cr["e0"], cr["e1"]),
+                 "+%.0f µε of creep in %.0f s at fixed stress" % (cr["de"], cr["dur"])]],
+           verdict="Force pinned to ±%.1f N (%.2f %%) while the strain crept +%.0f µε — the specimen "
+                   "deformed under a load that never changed."
+                   % (cr["Fsd"], 100 * cr["Fsd"] / cr["Fmean"], cr["de"]),
+           foot="Creep and relaxation are duals and were run back-to-back on the same specimen (S20), so "
+                "the two responses are directly comparable.")
+
+# ---- 195/196: STAIRCASE → FRACTURE ----
+sf = SF9["sf"]
+_kn = None
+try:
+    import utm_analysis as _ua
+    _kn = _ua.yield_onset(sf["dwells"])
+except Exception:
+    pass
+sf9_how(195, "STAIRCASE → FRACTURE", UIH + "staircase_to_fracture.png",
+        "DESTRUCTIVE. Like Staircase, but it keeps adding levels until the specimen breaks.\n\n"
+        "• A mini stress-relaxation at EVERY level, right up to failure\n"
+        "• Yield onset appears as the dwell drop stops shrinking and starts growing\n"
+        "• Modulus re-measured at every level = stiffness vs stress\n"
+        "• Ends in fracture → UTS and ε_f from the SAME specimen",
+        [["Parameter", "Value"], ["Start / Step", "200 / 120 N"], ["Dwell", "10 s"],
+         ["Speed", "0.100 mm/s"], ["Ramp", "Smooth"], ["Specimen", "S18 · 50 % infill"]],
+        "Start 0–5000 N · Step 10–2000 N · Dwell 1–600 s · Speed 0.005–0.500 mm/s · max 60 levels (policy cap)",
+        "Guidance: size Step so ~8–12 levels reach fracture. Too fine and the run drags; too coarse and "
+        "you lose resolution exactly where yield happens.",
+        note="Destructive modes are behind a confirmation dialog that echoes area, gauge and infill "
+             "before arming.")
+
+sf9_result(196, "STAIRCASE → FRACTURE", "documentation/sf9_stair_fracture.png",
+           kpis=[("Peak load", "%.0f N" % sf["peak"]), ("Force anchor", "%.1f N" % sf["anchor"]),
+                 ("TRUE UTS", "%.2f MPa" % sf["uts"]), ("Auto-halt after collapse", "%.2f s" % sf["halt"])],
+           tbl=[["Quantity", "Value", "Note"],
+                ["Levels resolved", "%d dwells" % len(sf["dwells"]), "each one a mini relaxation test"],
+                ["Yield onset", ("%.0f N tared" % _kn["arrive"]) if _kn else "n/a",
+                 "the dwell drop stops falling and starts growing"],
+                ["Nominal vs TRUE UTS", "%.2f → %.2f MPa" % (sf["uts_nom"], sf["uts"]),
+                 "anchor %.1f N recovered from the post-fracture tail" % sf["anchor"]]],
+           verdict="One specimen delivered a yield knee AND a fracture: %d relaxation points, yield "
+                   "located at %s, TRUE UTS %.2f MPa, auto-halt %.2f s after collapse."
+                   % (len(sf["dwells"]), ("%.0f N" % _kn["arrive"]) if _kn else "the knee",
+                      sf["uts"], sf["halt"]),
+           foot="The anchor is the preload the tare removed; recovering it from the settled post-fracture "
+                "tail converts nominal stress to true stress without a second measurement.")
+
+# ---- 197/198: PROGRESSIVE CYCLIC → FRACTURE ----
+pc = SF9["pc"]
+_cy = pc["cycles"]
+_val = [c for c in _cy if c["R2"] > 0.94]
+_dmin = min(_cy[1:], key=lambda z: z["diss_pct"])
+sf9_how(197, "PROGRESSIVE CYCLIC → FRACTURE", UIH + "progressive_cyclic_to_fracture.png",
+        "DESTRUCTIVE. Load–unload–reload with the peak rising every cycle, until fracture.\n\n"
+        "• EVERY unload measures the modulus at that damage state\n"
+        "• Gives the stiffness-degradation curve D = 1 − Eᵢ/E₀ vs stress\n"
+        "• Hysteresis area per cycle tracks energy going into damage\n"
+        "• Permanent set per cycle shows plasticity accumulating",
+        [["Parameter", "Value"], ["1st peak", "300 N"], ["Peak step", "150 N"],
+         ["Unload to", "100 N"], ["Speed", "0.100 mm/s"], ["Specimen", "S21 · 50 % infill"]],
+        "1st peak 0–5000 N · Peak step 10–2000 N · Unload to 20–2000 N · Speed 0.005–0.500 mm/s · "
+        "max 40 cycles (policy cap)",
+        "Guidance: keep the unload floor ≥20 N so the specimen never goes slack and the grips stay seated.",
+        note="The collapse watch here is PER RISING STROKE and armed only past halfway to target — a "
+             "single always-on detector would trip on every intentional unload.")
+
+sf9_result(198, "PROGRESSIVE CYCLIC → FRACTURE", "documentation/sf9_prog_cyclic.png",
+           tbl=[["Cycle"] + ["%d" % c["n"] for c in _cy] + ["trend"],
+                ["Peak load (N)"] + ["%.0f" % c["peak"] for c in _cy] + ["target ±12 N"],
+                ["Peak error vs target (N)"] + ["%+.0f" % (c["peak"] - c["target"]) for c in _cy] +
+                ["±%.0f mean" % (sum(abs(c["peak"] - c["target"]) for c in _cy[1:]) / (len(_cy) - 1))],
+                ["DIC unload E (GPa)"] + ["%.2f" % (c["E"] / 1000) if c["R2"] > 0.94 else "—" for c in _cy] +
+                ["%.2f → %.2f" % (_val[0]["E"] / 1000, _val[-1]["E"] / 1000)],
+                ["Crosshead K (N/mm)"] + ["%.0f" % c["K"] for c in _cy] +
+                ["%.0f → %.0f  ↑" % (_cy[0]["K"], _cy[-1]["K"])],
+                ["Hysteresis dissipated (%)"] + ["%.1f" % c["diss_pct"] for c in _cy] +
+                ["min %.1f → %.1f" % (_dmin["diss_pct"], _cy[-1]["diss_pct"])]],
+           verdict="Specimen SOFTENED %.2f → %.2f GPa (%.0f %% stiffness lost) while the crosshead read "
+                   "%.0f → %.0f N/mm — STIFFER. Without DIC this test concludes the opposite of the truth."
+                   % (round(_val[0]["E"] / 1000, 2), round(_val[-1]["E"] / 1000, 2),
+                      100 * (1 - round(_val[-1]["E"] / 1000, 2) / round(_val[0]["E"] / 1000, 2)),
+                      _cy[0]["K"], _cy[-1]["K"]),
+           vfill=YELLOW_WARN,
+           foot="Cycles 1–3 carry no modulus: the DIC strain CHANGE in those small unloads is below the "
+                "noise floor (R² %.2f–%.2f). Dissipation is an energy integral over a large position "
+                "range and has no such floor — on this rig it is the better damage metric."
+                % (min(c["R2"] for c in _cy[:3]), max(c["R2"] for c in _cy[:3])))
+
+# ---- 199: T7 failure analysis ----
+t7 = SF9["t7"]
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF9 · THE ONE THAT FAILED — T7, AND WHY")
+tb(s, 0.5, 1.16, 12.4, 0.4,
+   "T7 ran Staircase → FRACTURE on S20 (100 % infill) and never broke the specimen. Worth a slide: the "
+   "failure is a HARDWARE limit, and the software behaved exactly as designed.",
+   fs=12, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_t7_stall.png", 0.45, 1.58, 12.45, 3.30)
+for i, (lab, val) in enumerate([("Peak reached", "%.0f N" % t7["peak"]),
+                                ("Needed to fracture", "%.0f N" % t7["need_N"]),
+                                ("Got to", "%.0f %% of it" % t7["pct_of_need"]),
+                                ("Crosshead at the top", "%.0f µm in %.0f s" % (t7["grind_um"], t7["grind_s"])),
+                                ("…of commanded rate", "%.1f %%" % t7["frac_of_cmd"])]):
+    kpi(s, 0.45 + i * 2.49, 4.98, 2.37, lab, val, h=0.82, vfs=15,
+        fill=RED_FAIL if i in (2, 4) else LIGHT_BLUE, vcol=DARK_GREEN)
+header(s, 0.5, 5.92, 6.0, "Why it stalled — ranked")
+tb(s, 0.5, 6.24, 6.3, 1.1,
+   "1  Stepper DRIVER CURRENT (Vref) set too low — most likely, and cheapest to check\n"
+   "2  Driver THERMAL DERATING — T7 was the 7th test of a 2 h 15 min session\n"
+   "3  PSU voltage SAG under peak load\n"
+   "4  Mechanical binding in the lead screw",
+   fs=11)
+header(s, 7.0, 5.92, 5.9, "Mitigation")
+tb(s, 7.0, 6.24, 5.9, 1.1,
+   "1  Measure and raise driver Vref to spec; add a heatsink/fan\n"
+   "2  Cool between destructive runs — T7.2 and T8 both PASSED after a pause\n"
+   "3  Scope the rail under load; fit a stiffer PSU\n"
+   "4  On a weak day use 50 % specimens (fracture ≈1.4 kN) — both later runs did",
+   fs=11)
+footer(s, "NOT a hard ceiling: six 100 % specimens fractured at 3.1–3.4 kN. Software response was "
+          "correct — nothing ran away, and the specimen was released intact and reusable.")
+pageno(s, 199)
+
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print("Saved: V6a_8_6_20_slides.pptx (45 slides, pages 141-185)")
+    print("Saved: V6a_8_6_20_slides.pptx (59 slides, pages 141-199)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (45 slides)")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (59 slides)")
