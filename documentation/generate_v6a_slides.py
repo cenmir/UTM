@@ -815,7 +815,7 @@ pageno(s, 168)
 # ---- Slide 171: SF 1 · DIC-driven safety halt — proof (S17)  [content unchanged, was slide 177] ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "DIC-DRIVEN SAFETY — HALT IF TRACKING GOES BAD  (proof, S17)")
-s.shapes.add_picture("feat_dic_halt.png", Inches(0.35), Inches(1.55), width=Inches(7.3))
+s.shapes.add_picture("documentation/feat_dic_halt.png", Inches(0.35), Inches(1.55), width=Inches(7.3))
 header(s, 7.9, 1.28, 5.05, "CONDITION")
 flow(s, 7.9, 1.72, 5.05, 1.6,
      "During a strain-rate test, if DIC strain FREEZES (markers lost):\n\n•  FREEZE speed at 0.2 s\n•  HALT at 1.0 s",

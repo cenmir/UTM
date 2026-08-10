@@ -945,11 +945,73 @@ def fig_teach_dissipation():
     return _save(fig, "sf9_teach_dissipation.png")
 
 
+S17_HALT = os.path.join(_APP, "8.6.20 - Tensile test to Failure", "Specimen_S17_V2_Spray",
+                        "StrainRate_Halt_Test_UTM_Test_20260728_211125.csv")
+
+
+def fig_dic_halt():
+    """Regenerates the SF1 dead-DIC proof figure (feat_dic_halt.png).
+
+    The original PNG dates from 2026-07-29 and its generator was never committed, so the deck's
+    oldest proof slide could not be rebuilt or audited. This reads the CSV directly.
+
+    Marker count is the raw DIC_Blobs column — no derivation. It is a DISCRETE count (0/1/2), so it
+    gets integer ticks and a step plot; the previous version drew it as a continuous line on a
+    0.0-2.0 axis with half-marker gridlines, which implies values that cannot exist. Position and
+    count are also split into stacked panels rather than sharing one pair of y-axes."""
+    plt = _plt()
+    rows = [l for l in open(S17_HALT, encoding="utf-8", errors="replace") if not l.startswith("#")]
+    h = rows[0].strip().split(",")
+    it, ip, ib = h.index("Time_s"), h.index("Position_mm"), h.index("DIC_Blobs")
+    d = []
+    for r in rows[1:]:
+        p = r.split(",")
+        try:
+            d.append((float(p[it]), float(p[ip]), int(float(p[ib]))))
+        except (ValueError, IndexError):
+            continue
+    w = [x for x in d if 20 <= x[0] <= 32]
+    t = [x[0] for x in w]; pos = [x[1] for x in w]; nb = [x[2] for x in w]
+    bad0 = next(x[0] for x in w if x[2] < 2)
+    bad1 = next(x[0] for x in reversed(w) if x[2] < 2)
+    halt = next((w[i][0] for i in range(1, len(w))
+                 if abs(w[i][1] - w[-1][1]) < 0.005), bad1)
+
+    fig, (a, b) = plt.subplots(2, 1, figsize=(7.6, 4.6), sharex=True,
+                               gridspec_kw={"height_ratios": [2.1, 1], "hspace": 0.12})
+    for ax in (a, b):
+        ax.axvspan(bad0, bad1, color=RED, alpha=0.10, zorder=0)
+    a.plot(t, pos, color="#1e5b3a", lw=2.2)
+    a.axvline(halt, color="#1e5b3a", ls=":", lw=1.5)
+    a.annotate("guard HALT — motor stopped\n(crosshead frozen at %.2f mm)" % w[-1][1],
+               xy=(halt + 0.05, w[-1][1] - 0.02), xytext=(halt + 1.4, w[-1][1] - 0.72), fontsize=9,
+               fontweight="bold", color="#1e5b3a",
+               arrowprops=dict(arrowstyle="->", color="#1e5b3a", lw=1.5),
+               bbox=dict(facecolor="white", alpha=0.88, edgecolor="none", pad=2))
+    a.set_ylabel("Crosshead position  (mm)")
+    a.set_title("Dead-DIC safety halt — S17 (a marker covered mid-test)",
+                fontsize=11, fontweight="bold")
+
+    b.step(t, nb, where="post", color=RED, lw=2.2)
+    b.set_yticks([0, 1, 2])                      # a marker count cannot be 0.5
+    b.set_ylim(-0.25, 2.35)
+    b.set_ylabel("DIC markers\n(raw DIC_Blobs)", fontsize=9.5)
+    b.set_xlabel("Time (s)")
+    b.text((bad0 + bad1) / 2, 0.42, "markers lost → DIC BAD\n%.2f s" % (bad1 - bad0),
+           ha="center", fontsize=9, color=RED, fontweight="bold",
+           bbox=dict(facecolor="white", alpha=0.85, edgecolor="none", pad=2))
+    for x_, lab in ((bad0, "2→1→0"), (bad1, "0→1→2")):
+        b.annotate(lab, xy=(x_, 2.0), xytext=(x_ + (-1.5 if x_ == bad0 else 0.5), 2.15),
+                   fontsize=8.5, color=RED, ha="center")
+    fig.tight_layout()
+    return _save(fig, "feat_dic_halt.png")
+
+
 def make_plots():
     return [fig_overview(), fig_cyclic(), fig_staircase(), fig_relax(), fig_creep(),
             fig_stair_fracture(), fig_prog_cyclic(), fig_t7_stall(),
             fig_stress_strain(), fig_cyclic_hyst(), fig_stair_modulus(), fig_literature(),
-            fig_teach_stiffness(), fig_teach_dissipation()]
+            fig_teach_stiffness(), fig_teach_dissipation(), fig_dic_halt()]
 
 
 if __name__ == "__main__":
