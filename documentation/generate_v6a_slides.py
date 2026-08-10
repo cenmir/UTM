@@ -1495,7 +1495,7 @@ tb(s, 0.5, 6.24, 6.3, 1.1,
    fs=11)
 header(s, 7.0, 5.92, 5.9, "Mitigation")
 tb(s, 7.0, 6.24, 5.9, 1.1,
-   "1  Measure and raise driver Vref to spec; add a heatsink/fan\n"
+   "1  Raise driver current (Vref) — ⚠ HARDWARE today, NOT a software change · see next slide\n"
    "2  Cool between destructive runs — T7.2 and T8 both PASSED after a pause\n"
    "3  Scope the rail under load; fit a stiffer PSU\n"
    "4  On a weak day use 50 % specimens (fracture ≈1.4 kN) — both later runs did",
@@ -1504,12 +1504,66 @@ footer(s, "NOT a hard ceiling: six 100 % specimens fractured at 3.1–3.4 kN. So
           "correct — nothing ran away, and the specimen was released intact and reusable.")
 pageno(s, 199)
 
-# ---- 200/201: PROGRESSIVE CYCLIC → FRACTURE ----
+# ---- 200: can the Vref fix be done in software? ----
+import math as _math                                                               # noqa: E402
+_TM, _NM, _GR, _LEAD, _EG = 1.85, 2, 20.0, 0.005, 0.90
+_Tscrew = _TM * _NM * _GR * _EG
+_need = 46.2 * 80.0
+_F = lambda e: 2 * _math.pi * _Tscrew * e / _LEAD
+
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF9 · T7 — CAN THE Vref FIX BE DONE IN SOFTWARE?")
+banner(s, 0.45, 1.18, 12.45, 0.56,
+       "NO — not as the rig stands today. But the driver hardware would allow it, and that is the "
+       "single highest-value change available.", fill=YELLOW_WARN, fg=BLACK, fs=13)
+
+header(s, 0.5, 1.90, 6.0, "TODAY — a screwdriver job, not a code change")
+flow(s, 0.5, 2.28, 6.05, 2.05,
+     "Firmware drives the motors with STEP / DIR / ENABLE only.\n\n"
+     "• No SPI, no UART to the driver\n"
+     "• No TMCStepper (or equivalent) library\n"
+     "• MoToStepper in STEPDIR mode; 200 × 8 microsteps\n\n"
+     "⇒ Nothing in main.py or the firmware can change motor current. Vref is set physically on the "
+     "driver board and verified with a multimeter.",
+     fill=RED_FAIL, border=FLOW_RED, fs=11)
+
+header(s, 6.85, 1.90, 6.0, "POSSIBLE — the driver is an SPI Trinamic part")
+flow(s, 6.85, 2.28, 6.05, 2.05,
+     "MKS TMC2160_57 boards (README + PROJECT_REQUIREMENTS).\n\n"
+     "Wire CS / SCK / MOSI / MISO to the ESP32 and you can:\n"
+     "• SET run current in code — GLOBALSCALER + IRUN\n"
+     "• READ DRV_STATUS — otpw / ot over-temperature flags\n"
+     "• READ StallGuard — a true stall signal, not an inference\n\n"
+     "⇒ The thermal-derating theory stops being a theory and becomes a LOGGED CHANNEL.",
+     fill=GREEN_PASS, border=DARK_GREEN, fs=11)
+
+header(s, 0.5, 4.48, 12.4, "Is the drivetrain even big enough?  2 × 1.85 Nm · 20:1 gearbox · 5 mm lead")
+table(s, 0.45, 4.86, 12.45, 0.28 * 3,
+      [["Lead-screw efficiency assumed", "15 % (pessimistic ACME)", "20 %", "30 %", "90 % (ball screw)"],
+       ["Force the drivetrain should reach"] + ["{:,.0f} N".format(_F(e)) for e in (0.15, 0.20, 0.30, 0.90)],
+       ["Headroom over the %.0f N needed" % _need] + ["%.1f×" % (_F(e) / _need) for e in (0.15, 0.20, 0.30, 0.90)]],
+      hf=9.5, bf=9.5)
+banner(s, 0.45, 5.86, 12.45, 0.58,
+       "Even at a pessimistic 15 %% screw efficiency the drivetrain should deliver ~%.1f× what is "
+       "needed, yet T7 stopped at 72 %%. A mechanical-sizing explanation does not survive that "
+       "arithmetic — an electrical one does, which is why driver current is suspect #1."
+       % (_F(0.15) / _need),
+       fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
+banner(s, 0.45, 6.50, 12.45, 0.44,
+       "RECOMMENDED ORDER — (1) measure Vref and compare against the motor's rated current; (2) fit a "
+       "heatsink/fan; (3) wire the SPI pins and log DRV_STATUS so derating is measured, not guessed.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
+footer(s, "Motor AMP57TH76-4280 (1.85 Nm), gearbox EPL64/2 20:1, 5 mm lead — from README.md and the "
+          "MM_PER_S_PER_RPM constant in main.py. Torque figures are holding torque at rated current; "
+          "if the driver runs the motor below rating, available force scales down roughly with current.")
+pageno(s, 200)
+
+# ---- 201/202: PROGRESSIVE CYCLIC → FRACTURE ----
 pc = SF9["pc"]
 _cy = pc["cycles"]
 _val = [c for c in _cy if c["R2"] > 0.94]
 _dmin = min(_cy[1:], key=lambda z: z["diss_pct"])
-sf9_how(200, "PROGRESSIVE CYCLIC → FRACTURE", "T8", UIH + "progressive_cyclic_to_fracture.png",
+sf9_how(201, "PROGRESSIVE CYCLIC → FRACTURE", "T8", UIH + "progressive_cyclic_to_fracture.png",
         "DESTRUCTIVE. Load–unload–reload with the peak rising every cycle, until fracture.\n\n"
         "• EVERY unload measures the modulus at that damage state\n"
         "• Gives the stiffness-degradation curve D = 1 − Eᵢ/E₀ vs stress\n"
@@ -1523,7 +1577,7 @@ sf9_how(200, "PROGRESSIVE CYCLIC → FRACTURE", "T8", UIH + "progressive_cyclic_
         note="The collapse watch here is PER RISING STROKE and armed only past halfway to target — a "
              "single always-on detector would trip on every intentional unload.")
 
-sf9_result(201, "PROGRESSIVE CYCLIC → FRACTURE", "T8", "documentation/sf9_prog_cyclic.png",
+sf9_result(202, "PROGRESSIVE CYCLIC → FRACTURE", "T8", "documentation/sf9_prog_cyclic.png",
            tbl=[["Cycle"] + ["%d" % c["n"] for c in _cy] + ["trend"],
                 ["Peak load (N)"] + ["%.0f" % c["peak"] for c in _cy] + ["target ±12 N"],
                 ["Peak error vs target (N)"] + ["%+.0f" % (c["peak"] - c["target"]) for c in _cy] +
@@ -1545,7 +1599,7 @@ sf9_result(201, "PROGRESSIVE CYCLIC → FRACTURE", "T8", "documentation/sf9_prog
                 "range and has no such floor — on this rig it is the better damage metric."
                 % (min(c["R2"] for c in _cy[:3]), max(c["R2"] for c in _cy[:3])))
 
-# ---- 202: stress-strain for every mode ----
+# ---- 203: stress-strain for every mode ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "SF9 — STRESS vs STRAIN, ALL SIX MODES")
 tb(s, 0.5, 1.14, 12.4, 0.36,
@@ -1562,9 +1616,9 @@ banner(s, 0.45, 6.20, 12.45, 0.60,
 footer(s, "ε_f 3.10 % (T7.2) and 3.32 % (T8). A marker-separation plausibility bound is applied: at "
           "fracture L_px jumps 1668→1825 px ONE SAMPLE before the load collapses, which would otherwise "
           "stretch both fracture panels to a fictitious 10 % strain.")
-pageno(s, 202)
+pageno(s, 203)
 
-# ---- 203: PLA vs literature ----
+# ---- 204: PLA vs literature ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "SF9 — DO THE NUMBERS MAKE SENSE FOR PLA?")
 tb(s, 0.5, 1.14, 12.4, 0.36,
@@ -1592,9 +1646,9 @@ banner(s, 0.45, 6.42, 12.45, 0.56,
 footer(s, "Sources: Materials 15(10) 3509 (PLA stress relaxation, ~11–13 %); J. Appl. Polym. Sci. "
           "e54463 (infill-orientation relaxation); FDM-PLA tensile surveys (E 2.65–3.06 GPa, UTS 41–43 MPa). "
           "To compare relaxation properly, re-run the hold at ≥600 s.")
-pageno(s, 203)
+pageno(s, 204)
 
-# ---- 204: campaign register — the T-number ↔ slide-page cross reference ----
+# ---- 205: campaign register — the T-number ↔ slide-page cross reference ----
 from sf9_data import when as SF9_WHEN                                              # noqa: E402
 
 _cti, _c6, _c62, _c63 = SF9["cyc_tri"], SF9["cyc_sin1"], SF9["cyc_sin2"], SF9["cyc_sin"]
@@ -1614,10 +1668,10 @@ _reg = [
     ["T1", "Creep", "S20 100 %", SF9_WHEN("creep"),
      "held %.0f ± %.1f N for %.0f s; creep NOT resolvable (%+.0f µε vs ±%.0f µε noise)"
      % (_cr["Fmean"], _cr["Fsd"], _cr["dur"], _cr["de"], _cr["e_sd"] * 1e6),
-     "195-196 · 202 · 203"],
+     "195-196 · 203 · 204"],
     ["T2", "Relaxation", "S20 100 %", SF9_WHEN("relax"),
      "ε pinned at %.5f; force decayed %.0f → %.0f N (%.1f %%)" % (_rx["eps"], _rx["Fpk"], _rx["F1"], _rx["drop_pct"]),
-     "193-194 · 202 · 203"],
+     "193-194 · 203 · 204"],
     ["T3", "Staircase · Linear ramp", "S20 100 %", SF9_WHEN("stair_lin"),
      "3 levels / 20 s dwells — arrival overshoot %s N" % _ov(_sl), "190-192"],
     ["T4", "Staircase · Smooth ramp", "S20 100 %", SF9_WHEN("stair_smo"),
@@ -1635,13 +1689,13 @@ _reg = [
      % (_c63["dur"], _c63["pk_mae"], _c63["peaks"][0], _c63["peaks"][-1]), "187-189"],
     ["T7", "Staircase → FRACTURE", "S20 100 %", SF9_WHEN("sf_stall"),
      "STALLED at %.0f N (%.0f %% of what was needed) — no fracture, specimen intact"
-     % (t7["peak"], t7["pct_of_need"]), "199"],
+     % (t7["peak"], t7["pct_of_need"]), "199-200"],
     ["T7.2", "Staircase → FRACTURE", "S18 50 %", SF9_WHEN("sf"),
      "yield knee %s, TRUE UTS %.2f MPa, auto-halt %.2f s"
-     % (("%.0f N" % _kn["arrive"]) if _kn else "located", sf["uts"], sf["halt"]), "197-198 · 202"],
+     % (("%.0f N" % _kn["arrive"]) if _kn else "located", sf["uts"], sf["halt"]), "197-199 · 203"],
     ["T8", "Progressive cyclic → FRACTURE", "S21 50 %", SF9_WHEN("pc"),
      "8 clean cycles, %.0f %% stiffness lost, TRUE UTS %.2f MPa"
-     % (100 * (1 - round(_val[-1]["E"] / 1000, 2) / round(_val[0]["E"] / 1000, 2)), pc["uts"]), "200-202"],
+     % (100 * (1 - round(_val[-1]["E"] / 1000, 2) / round(_val[0]["E"] / 1000, 2)), pc["uts"]), "201-203"],
 ]
 _ovr = {}
 for _r, _row in enumerate(_reg):
@@ -1668,11 +1722,11 @@ tb(s, 0.5, 6.34, 12.4, 0.62,
    fs=11, colour=GREY_TEXT)
 footer(s, "Raw CSVs: Software/UTM_PyQt6/8.7/<specimen folder>/. Metrics recomputed by "
           "documentation/sf9_data.py — this table is generated, not typed.")
-pageno(s, 204)
+pageno(s, 205)
 
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print("Saved: V6a_8_6_20_slides.pptx (64 slides, pages 141-204)")
+    print("Saved: V6a_8_6_20_slides.pptx (65 slides, pages 141-205)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (64 slides)")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (65 slides)")
