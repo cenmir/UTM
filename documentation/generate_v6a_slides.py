@@ -1599,7 +1599,58 @@ sf9_result(202, "PROGRESSIVE CYCLIC → FRACTURE", "T8", "documentation/sf9_prog
                 "range and has no such floor — on this rig it is the better damage metric."
                 % (min(c["R2"] for c in _cy[:3]), max(c["R2"] for c in _cy[:3])))
 
-# ---- 203: stress-strain for every mode ----
+# ---- 203: PLAIN-ENGLISH — why the machine says stiffer while the specimen softens ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "EXPLAINER — “the specimen softens but the machine reads stiffer”")
+tb(s, 0.5, 1.16, 12.4, 0.34,
+   "This is the single most important idea on the T8 slide, so here it is slowly. Nothing here is new "
+   "data — it is the same numbers, explained.", fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_teach_stiffness.png", 0.45, 1.52, 12.45, 3.72)
+_ex = [("What you are measuring", "Two DIFFERENT things.  DIC watches two dots ON the specimen. "
+        "The crosshead measures how far the whole machine moved."),
+       ("Why that matters", "The crosshead reading contains the grips, screw, frame and every bit of "
+        "slack — the specimen is only ONE part of what it sees."),
+       ("What actually happened", "The specimen got 26 % SOFTER (real damage). The machine got 29 % "
+        "STIFFER as slack was squeezed out. The machine change is bigger, so the total went UP 4 %."),
+       ("The one-line version", "The rig is the SOFTER spring (1095 vs 2325 N/mm), so it dominates the "
+        "crosshead number. Only DIC can see the specimen by itself.")]
+_y = 5.36
+for _t, _d in _ex:
+    tb(s, 0.5, _y, 2.95, 0.42, _t, fs=11, bold=True, colour=DARK_GREEN)
+    tb(s, 3.55, _y, 9.35, 0.42, _d, fs=10.5)
+    _y += 0.42
+banner(s, 0.45, 7.02, 12.45, 0.0, "", fill=WHITE, fg=WHITE, fs=1)
+footer(s, "Springs in series: 1/K_measured = 1/K_specimen + 1/K_machine. K_specimen = E·A/L; with "
+          "A = 80 mm² and L = 80 mm that is numerically E in MPa, which is why all three fit on one axis.")
+pageno(s, 203)
+
+# ---- 204: PLAIN-ENGLISH — why energy loss dips then climbs ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "EXPLAINER — why the energy loss DIPS, then CLIMBS")
+tb(s, 0.5, 1.16, 12.4, 0.34,
+   "The U shape looks odd until you see that TWO separate things are being added together — one dying "
+   "away, one waking up.", fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_teach_dissipation.png", 0.45, 1.52, 12.45, 3.55)
+table(s, 0.45, 5.22, 12.45, 0.27 * 4,
+      [["Cycle", "3", "4", "5  ← lowest", "6", "8", "what it tells you"],
+       ["Energy lost per cycle", "10.8 %", "11.4 %", "9.6 %", "15.2 %", "29.6 %",
+        "dips, then climbs"],
+       ["Permanent stretch added", "+106 µm", "+102 µm", "+22 µm", "+65 µm", "+271 µm",
+        "dips, then climbs"],
+       ["Left-over strain added (DIC)", "+385 µε", "+254 µε", "+212 µε", "+264 µε", "+1669 µε",
+        "dips, then climbs"]],
+      cw=[2.5, 0.95, 0.95, 1.25, 0.95, 0.95, 2.2], hf=9.5, bf=9.5,
+      ov={(r, 3): {"bg": GREEN_PASS, "bold": True} for r in (1, 2, 3)})
+banner(s, 0.45, 6.38, 12.45, 0.52,
+       "Three completely separate measurements all bottom out at CYCLE 5. That is why it is believed — "
+       "one dipping curve could be noise; three agreeing is a real change of regime.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
+footer(s, "Careful: cycle 5 is where MATERIAL damage overtakes the still-fading MACHINE settling — it is "
+          "not a pure yield point. T7.2's relaxation knee says 694 N, this says 893 N, so the deck quotes "
+          "yield onset as a BRACKET of 700–900 N rather than one number.")
+pageno(s, 204)
+
+# ---- 205: stress-strain for every mode ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "SF9 — STRESS vs STRAIN, ALL SIX MODES")
 tb(s, 0.5, 1.14, 12.4, 0.36,
@@ -1616,9 +1667,9 @@ banner(s, 0.45, 6.20, 12.45, 0.60,
 footer(s, "ε_f 3.10 % (T7.2) and 3.32 % (T8). A marker-separation plausibility bound is applied: at "
           "fracture L_px jumps 1668→1825 px ONE SAMPLE before the load collapses, which would otherwise "
           "stretch both fracture panels to a fictitious 10 % strain.")
-pageno(s, 203)
+pageno(s, 205)
 
-# ---- 204: PLA vs literature ----
+# ---- 206: PLA vs literature ----
 s = prs.slides.add_slide(BLANK); ju(s)
 from sf9_data import SPEC as _SPEC                                                 # noqa: E402
 _k = lambda spec, ours: spec / ours
@@ -1668,9 +1719,9 @@ tb(s, 5.7, 6.99, 7.0, 0.4,
    "‡ TDS carries no viscoelastic data. Relaxation/creep compared against Materials 15(10) 3509 and "
    "J. Appl. Polym. Sci. e54463 (~11–13 % relaxation, far longer holds). Tg 55–60 °C is from the TDS.",
    fs=9.5, italic=True, colour=GREY_TEXT)
-pageno(s, 204)
+pageno(s, 206)
 
-# ---- 205: campaign register — the T-number ↔ slide-page cross reference ----
+# ---- 207: campaign register — the T-number ↔ slide-page cross reference ----
 from sf9_data import when as SF9_WHEN                                              # noqa: E402
 
 _cti, _c6, _c62, _c63 = SF9["cyc_tri"], SF9["cyc_sin1"], SF9["cyc_sin2"], SF9["cyc_sin"]
@@ -1690,16 +1741,16 @@ _reg = [
     ["T1", "Creep", "S20 100 %", SF9_WHEN("creep"),
      "held %.0f ± %.1f N for %.0f s; creep NOT resolvable (%+.0f µε vs ±%.0f µε noise)"
      % (_cr["Fmean"], _cr["Fsd"], _cr["dur"], _cr["de"], _cr["e_sd"] * 1e6),
-     "195-196 · 203 · 204"],
+     "195-196 · 205 · 206"],
     ["T2", "Relaxation", "S20 100 %", SF9_WHEN("relax"),
      "ε pinned at %.5f; force decayed %.0f → %.0f N (%.1f %%)" % (_rx["eps"], _rx["Fpk"], _rx["F1"], _rx["drop_pct"]),
-     "193-194 · 203 · 204"],
+     "193-194 · 205 · 206"],
     ["T3", "Staircase · Linear ramp", "S20 100 %", SF9_WHEN("stair_lin"),
-     "3 levels / 20 s dwells — arrival overshoot %s N" % _ov(_sl), "190-192"],
+     "3 levels / 20 s dwells — arrival overshoot %s N" % _ov(_sl), "190-192 · 205"],
     ["T4", "Staircase · Smooth ramp", "S20 100 %", SF9_WHEN("stair_smo"),
-     "same levels — overshoot %s N  ▸ the taper fix" % _ov(_sm), "190-192"],
+     "same levels — overshoot %s N  ▸ the taper fix" % _ov(_sm), "190-192 · 205"],
     ["T5", "Cyclic · Triangle", "S20 100 %", SF9_WHEN("cyc_tri"),
-     "5 cycles 100/500 N in %.0f s; peak error %.0f N (no lead yet)" % (_cti["dur"], _cti["pk_mae"]), "187-189"],
+     "5 cycles 100/500 N in %.0f s; peak error %.0f N (no lead yet)" % (_cti["dur"], _cti["pk_mae"]), "187-189 · 204"],
     ["T6", "Cyclic · Sine — 1st try", "S20 100 %", SF9_WHEN("cyc_sin1"),
      "accurate (%.0f N) but took %.0f s — ~2× too slow, flat bottoms ▸ velocity-law bug found"
      % (_c6["pk_mae"], _c6["dur"]), "—"],
@@ -1708,16 +1759,16 @@ _reg = [
      % (_c62["dur"], _c62["pk_mae"]), "—"],
     ["T6.3", "Cyclic · Sine — final", "S20 100 %", SF9_WHEN("cyc_sin"),
      "%.0f s, peak error %.0f N, and peaks CONVERGE %.0f → %.0f N"
-     % (_c63["dur"], _c63["pk_mae"], _c63["peaks"][0], _c63["peaks"][-1]), "187-189"],
+     % (_c63["dur"], _c63["pk_mae"], _c63["peaks"][0], _c63["peaks"][-1]), "187-189 · 204"],
     ["T7", "Staircase → FRACTURE", "S20 100 %", SF9_WHEN("sf_stall"),
      "STALLED at %.0f N (%.0f %% of what was needed) — no fracture, specimen intact"
      % (t7["peak"], t7["pct_of_need"]), "199-200"],
     ["T7.2", "Staircase → FRACTURE", "S18 50 %", SF9_WHEN("sf"),
      "yield knee %s, TRUE UTS %.2f MPa, auto-halt %.2f s"
-     % (("%.0f N" % _kn["arrive"]) if _kn else "located", sf["uts"], sf["halt"]), "197-199 · 203"],
+     % (("%.0f N" % _kn["arrive"]) if _kn else "located", sf["uts"], sf["halt"]), "197-199 · 205"],
     ["T8", "Progressive cyclic → FRACTURE", "S21 50 %", SF9_WHEN("pc"),
      "8 clean cycles, %.0f %% stiffness lost, TRUE UTS %.2f MPa"
-     % (100 * (1 - round(_val[-1]["E"] / 1000, 2) / round(_val[0]["E"] / 1000, 2)), pc["uts"]), "201-203"],
+     % (100 * (1 - round(_val[-1]["E"] / 1000, 2) / round(_val[0]["E"] / 1000, 2)), pc["uts"]), "201-205"],
 ]
 _ovr = {}
 for _r, _row in enumerate(_reg):
@@ -1744,11 +1795,11 @@ tb(s, 0.5, 6.34, 12.4, 0.62,
    fs=11, colour=GREY_TEXT)
 footer(s, "Raw CSVs: Software/UTM_PyQt6/8.7/<specimen folder>/. Metrics recomputed by "
           "documentation/sf9_data.py — this table is generated, not typed.")
-pageno(s, 205)
+pageno(s, 207)
 
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print("Saved: V6a_8_6_20_slides.pptx (65 slides, pages 141-205)")
+    print("Saved: V6a_8_6_20_slides.pptx (67 slides, pages 141-207)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (65 slides)")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (67 slides)")

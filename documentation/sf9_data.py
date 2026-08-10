@@ -801,10 +801,155 @@ def fig_literature():
     return _save(fig, "sf9_literature.png")
 
 
+# Reference-palette categorical slots, assigned in fixed order (skill: never cycle hues).
+# Node was unavailable to run validate_palette.js, so these are the palette's own pre-validated
+# slots 1/2/3 rather than hand-picked colours.
+C_SPEC, C_MACH, C_MEAS = "#2a78d6", "#eb6834", "#1baf7a"
+INK, INK2 = "#0b0b0b", "#52514e"
+
+
+def _spring(ax, x0, x1, y, coils, amp, color, lw=2.4):
+    """A zigzag spring. Tighter zigzag = stiffer spring, which is the whole visual point."""
+    import numpy as _np
+    n = coils * 2
+    xs = _np.linspace(x0 + 0.12 * (x1 - x0), x1 - 0.12 * (x1 - x0), n + 1)
+    ys = [y + (amp if i % 2 else -amp) for i in range(n + 1)]
+    ys[0] = ys[-1] = y
+    ax.plot([x0, xs[0]], [y, y], color=color, lw=lw, solid_capstyle="round")
+    ax.plot(xs, ys, color=color, lw=lw, solid_capstyle="round")
+    ax.plot([xs[-1], x1], [y, y], color=color, lw=lw, solid_capstyle="round")
+
+
+def fig_teach_stiffness():
+    """Teaching figure: why the crosshead reads STIFFER while the specimen SOFTENS."""
+    plt = _plt()
+    from matplotlib.patches import FancyBboxPatch
+    fig = plt.figure(figsize=(13.0, 4.6))
+    gs = fig.add_gridspec(1, 3, width_ratios=[1.25, 1.0, 1.05], wspace=0.28)
+
+    # ---- A: what each sensor actually spans -------------------------------------------
+    a = fig.add_subplot(gs[0]); a.set_xlim(0, 10); a.set_ylim(0, 10); a.axis("off")
+    a.set_title("1 · The two rulers are not the same length", fontsize=11, fontweight="bold")
+    parts = [("Motor\n+ screw", 0.3, 1.9, "#dcdcda"), ("Frame", 2.3, 1.5, "#dcdcda"),
+             ("Grip", 3.9, 1.1, "#dcdcda"), ("SPECIMEN", 5.1, 2.0, "#cfe3f7"),
+             ("Grip", 7.2, 1.1, "#dcdcda"), ("Load\ncell", 8.4, 1.3, "#dcdcda")]
+    for lab, x, w, fc in parts:
+        a.add_patch(FancyBboxPatch((x, 4.1), w, 1.7, boxstyle="round,pad=0.06",
+                                   fc=fc, ec=INK2, lw=1.1))
+        a.text(x + w / 2, 4.95, lab, ha="center", va="center", fontsize=8.5,
+               fontweight="bold" if "SPEC" in lab else "normal", color=INK)
+    a.plot([5.6, 6.6], [5.35, 5.35], "o", color=C_SPEC, ms=7)
+    a.text(6.1, 5.9, "DIC dots", ha="center", fontsize=7.5, color=C_SPEC, fontweight="bold")
+    a.annotate("", xy=(0.3, 7.0), xytext=(9.7, 7.0),
+               arrowprops=dict(arrowstyle="<->", color=C_MEAS, lw=2.2))
+    a.text(5.0, 7.35, "CROSSHEAD sees ALL of this", ha="center", fontsize=10,
+           color=C_MEAS, fontweight="bold")
+    a.annotate("", xy=(5.1, 3.4), xytext=(7.1, 3.4),
+               arrowprops=dict(arrowstyle="<->", color=C_SPEC, lw=2.2))
+    a.text(6.1, 2.95, "DIC sees ONLY the specimen", ha="center", fontsize=10,
+           color=C_SPEC, fontweight="bold")
+    a.text(5.0, 1.6, "So the crosshead number always contains the machine.\n"
+                     "The DIC number cannot — the dots are on the specimen.",
+           ha="center", fontsize=9, color=INK2, style="italic")
+
+    # ---- B: two springs in series ------------------------------------------------------
+    b = fig.add_subplot(gs[1]); b.set_xlim(0, 10); b.set_ylim(0, 10); b.axis("off")
+    b.set_title("2 · They are two springs in a row", fontsize=11, fontweight="bold")
+    for yy, cyc, coil_m, coil_s, km, ks in ((8.15, "Early — cycle 4", 4, 9, 1095, 2325),
+                                            (3.95, "Late — cycle 8", 7, 6, 1411, 1727)):
+        b.text(0.4, yy + 1.35, cyc, fontsize=9.5, fontweight="bold", color=INK)
+        _spring(b, 0.6, 4.5, yy, coil_m, 0.5, C_MACH)
+        _spring(b, 5.5, 9.4, yy, coil_s, 0.5, C_SPEC)
+        b.text(2.55, yy - 1.15, "MACHINE\n%d N/mm" % km, ha="center", fontsize=8.5,
+               color=C_MACH, fontweight="bold", linespacing=1.35)
+        b.text(7.45, yy - 1.15, "SPECIMEN\n%d N/mm" % ks, ha="center", fontsize=8.5,
+               color=C_SPEC, fontweight="bold", linespacing=1.35)
+        b.plot([5.0, 5.0], [yy - 0.45, yy + 0.45], color=INK2, lw=1.0)
+    b.annotate("", xy=(1.5, 5.55), xytext=(1.5, 6.55),
+               arrowprops=dict(arrowstyle="->", color=C_MACH, lw=2.6))
+    b.text(1.8, 6.05, "coils TIGHTEN\n→ stiffer", ha="left", va="center", fontsize=8.5,
+           color=C_MACH, fontweight="bold")
+    b.annotate("", xy=(6.4, 5.55), xytext=(6.4, 6.55),
+               arrowprops=dict(arrowstyle="->", color=C_SPEC, lw=2.6))
+    b.text(6.7, 6.05, "coils LOOSEN\n→ softer", ha="left", va="center", fontsize=8.5,
+           color=C_SPEC, fontweight="bold")
+    b.text(5.0, 1.15, "Pull a spring through a LOOSE CHAIN. As the chain\n"
+                      "pulls tight your reading says 'stiffer' — even while\nthe spring itself is weakening.",
+           ha="center", fontsize=9, color=INK2, style="italic")
+
+    # ---- C: all three on ONE axis, same units -----------------------------------------
+    c = fig.add_subplot(gs[2])
+    cy = [x for x in M["pc"]["cycles"] if x["R2"] > 0.94]
+    n = [x["n"] for x in cy]
+    ks = [x["E"] for x in cy]                       # MPa == N/mm for A=80 mm², L=80 mm
+    km = [x["K"] for x in cy]
+    kmach = [1.0 / (1.0 / a_ - 1.0 / b_) for a_, b_ in zip(km, ks)]
+    c.plot(n, ks, "o-", color=C_SPEC, lw=2.4, ms=8, label="SPECIMEN (from DIC)")
+    c.plot(n, kmach, "s-", color=C_MACH, lw=2.4, ms=8, label="MACHINE (deduced)")
+    c.plot(n, km, "^-", color=C_MEAS, lw=2.4, ms=8, label="What the crosshead READS")
+    c.set_xticks(n); c.set_xlabel("Cycle"); c.set_ylabel("Stiffness  (N/mm)")
+    c.set_title("3 · Same units, one axis — now it is obvious", fontsize=11, fontweight="bold")
+    c.legend(fontsize=8.5, loc="upper right", framealpha=0.95)
+    c.text(n[0] + 0.08, ks[0] + 110, "−26 %", color=C_SPEC, fontsize=9.5, fontweight="bold")
+    c.text(n[-1] - 0.15, kmach[-1] - 230, "+29 %", ha="right", color=C_MACH, fontsize=9.5, fontweight="bold")
+    c.text(n[-1] - 0.15, km[-1] - 230, "+4 %", ha="right", color=C_MEAS, fontsize=9.5, fontweight="bold")
+    c.set_ylim(0, 2700)
+    fig.tight_layout()
+    return _save(fig, "sf9_teach_stiffness.png")
+
+
+def fig_teach_dissipation():
+    """Teaching figure: why energy loss per cycle dips and then climbs."""
+    import numpy as _np
+    plt = _plt()
+    fig, (a, b) = plt.subplots(1, 2, figsize=(13.0, 4.4), gridspec_kw={"width_ratios": [1, 1.15]})
+
+    x = _np.linspace(1, 8, 200)
+    mach = 26 * _np.exp(-(x - 1) / 1.5) + 4        # bedding-in: big, fades fast
+    dmg = 0.55 * _np.clip(x - 4.2, 0, None) ** 2.1  # damage: starts late, accelerates
+    a.plot(x, mach, "--", color=C_MACH, lw=2.4, label="① Machine bedding in  (fades)")
+    a.plot(x, dmg, "--", color=C_SPEC, lw=2.4, label="② Material damaging  (grows)")
+    a.plot(x, mach + dmg, "-", color=INK, lw=3.0, label="What you MEASURE  (① + ②)")
+    xm = x[int(_np.argmin(mach + dmg))]
+    a.axvline(xm, color=INK2, ls=":", lw=1.4)
+    a.annotate("THE DIP is just the crossover —\nwhere ① stops falling faster\nthan ② rises",
+               xy=(xm + 0.05, float(_np.min(mach + dmg)) + 0.4), xytext=(5.45, 22.0),
+               fontsize=9, color=INK2, fontweight="bold", ha="left",
+               arrowprops=dict(arrowstyle="->", color=INK2, lw=1.4),
+               bbox=dict(facecolor="white", alpha=0.88, edgecolor="none", pad=2.5))
+    a.legend(fontsize=9, loc="upper right", framealpha=0.95)
+    a.set_xlabel("Cycle"); a.set_ylabel("Energy lost per cycle  (%)")
+    a.set_title("Two things are happening at once", fontsize=11, fontweight="bold")
+    a.set_ylim(0, 36)
+
+    cy = M["pc"]["cycles"]
+    n = [c["n"] for c in cy]; d = [c["diss_pct"] for c in cy]
+    mn = min(cy[1:], key=lambda z: z["diss_pct"])
+    b.axvspan(0.6, mn["n"], color=C_MACH, alpha=0.10)
+    b.axvspan(mn["n"], 8.4, color=C_SPEC, alpha=0.10)
+    b.plot(n, d, "o-", color=INK, lw=2.6, ms=8)
+    b.plot([mn["n"]], [mn["diss_pct"]], "o", color=INK, ms=15, mfc="none", mew=2.4)
+    b.text(3.7, 29.5, "MACHINE settling\ndominates", ha="center", fontsize=9.5,
+           color=C_MACH, fontweight="bold")
+    b.text(7.1, 12.5, "MATERIAL damage\ndominates", ha="center", fontsize=9.5,
+           color=C_SPEC, fontweight="bold")
+    b.annotate("cycle %d — the crossover\n(%.1f %%, at %.0f N)" % (mn["n"], mn["diss_pct"], mn["peak"]),
+               xy=(mn["n"] - 0.10, mn["diss_pct"] + 0.25), xytext=(2.6, 22.0),
+               fontsize=9.5, fontweight="bold", ha="center",
+               arrowprops=dict(arrowstyle="->", lw=1.5),
+               bbox=dict(facecolor="white", alpha=0.9, edgecolor="none", pad=2.5))
+    b.set_xticks(n); b.set_xlim(0.6, 8.4)
+    b.set_xlabel("Cycle"); b.set_ylabel("Energy lost per cycle  (%)")
+    b.set_title("The real T8 data — same U shape", fontsize=11, fontweight="bold")
+    fig.tight_layout()
+    return _save(fig, "sf9_teach_dissipation.png")
+
+
 def make_plots():
     return [fig_overview(), fig_cyclic(), fig_staircase(), fig_relax(), fig_creep(),
             fig_stair_fracture(), fig_prog_cyclic(), fig_t7_stall(),
-            fig_stress_strain(), fig_cyclic_hyst(), fig_stair_modulus(), fig_literature()]
+            fig_stress_strain(), fig_cyclic_hyst(), fig_stair_modulus(), fig_literature(),
+            fig_teach_stiffness(), fig_teach_dissipation()]
 
 
 if __name__ == "__main__":
