@@ -1859,9 +1859,77 @@ footer(s, "Raw CSVs: Software/UTM_PyQt6/8.7/<specimen folder>/. Metrics recomput
           "documentation/sf9_data.py — this table is generated, not typed.")
 pageno(s, 208)
 
+# ---- 209: REFERENCE — the three strain terms, and why we report engineering ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "REFERENCE — ENGINEERING vs TRUE vs “CAUCHY” STRAIN")
+tb(s, 0.5, 1.16, 12.4, 0.34,
+   "Three names, only TWO quantities. This page exists because the CSV column is called DIC_Cauchy "
+   "while it holds ENGINEERING strain — the single most confusing thing in this project.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_strain_terms.png", 0.45, 1.52, 12.45, 3.25)
+
+banner(s, 0.45, 4.90, 12.45, 0.56,
+       "THE TRAP:  “Cauchy STRESS” means TRUE stress — but “Cauchy STRAIN” is a synonym for "
+       "ENGINEERING strain. Putting the two words side by side invites exactly the wrong reading, "
+       "which is why every axis now says “Engineering strain, DIC”.",
+       fill=YELLOW_WARN, fg=BLACK, fs=11.5)
+
+header(s, 0.5, 5.58, 6.0, "Why engineering — and it is about STRESS, not strain")
+table(s, 0.5, 5.94, 6.05, 0.26 * 5,
+      [["Quantity", "Needs", "Can we?"],
+       ["Engineering strain  ΔL/L₀", "length only", "YES"],
+       ["True strain  ln(L/L₀)", "length only", "YES"],
+       ["Engineering stress  F/A₀", "original area", "YES"],
+       ["True stress  F/A_current", "CURRENT area", "NO — not yet"]],
+      cw=[2.6, 1.6, 1.2], hf=9.5, bf=9,
+      ov={(4, c): {"bg": RED_FAIL, "bold": c == 2} for c in range(3)})
+
+header(s, 6.85, 5.58, 6.0, "So the choice is forced")
+tb(s, 6.85, 5.92, 6.05, 1.25,
+   "•  A stress–strain curve must be INTERNALLY CONSISTENT — engineering with engineering, or true "
+   "with true. Mixing them is simply wrong.\n"
+   "•  True stress needs the current cross-section ⇒ Poisson, which the narrow gauge blocks (p188).\n"
+   "•  So engineering + engineering is the only defensible pairing available today.\n"
+   "•  ISO 527 and the add:north TDS also report engineering — which is what keeps our k-factors "
+   "comparable (p206).", fs=10)
+footer(s, "In code: cauchy = (L−L₀)/L₀ and true_strain = ln(L/L₀), both written to every CSV. Verified "
+          "on real data: DIC_True always equals ln(1 + DIC_Cauchy), so the maths was right — only the "
+          "NAME was misleading. The column name is kept for backward compatibility with every past test.")
+pageno(s, 209)
+
+# ---- 210: REFERENCE — how much would true stress change the answer? ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "REFERENCE — WOULD TRUE STRESS CHANGE OUR ANSWERS?")
+tb(s, 0.5, 1.16, 12.4, 0.34,
+   "Worth asking before building the edge-tracking rig on p188. Short answer: it is a ~3 % refinement "
+   "on the numbers — but it buys two things nothing else can.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_true_stress.png", 0.45, 1.52, 12.45, 3.25)
+
+table(s, 0.45, 4.86, 12.45, 0.26 * 5,
+      [["Engineering strain", "1 %", "3.3 %  (T8 ε_f)", "7 %  (V6 worst)", "20 %  (a ductile metal)"],
+       ["True stress higher by — elastic, ν = 0.35", "+0.7 %", "+2.4 %", "+5.1 %", "+15.6 %"],
+       ["True stress higher by — volume conserved", "+1.0 %", "+3.3 %", "+7.0 %", "+20.0 %"],
+       ["Our 21.38 MPa would become", "21.6", "21.9 – 22.1", "22.5 – 22.9", "—"],
+       ["Engineering vs TRUE STRAIN differ by", "0.5 %", "1.6 %", "3.3 %", "10.7 %"]],
+      cw=[3.5, 1.1, 1.6, 1.6, 1.9], hf=9.5, bf=9,
+      ov={(r, 2): {"bg": GREEN_PASS, "bold": True} for r in (1, 2, 3, 4)})
+
+banner(s, 0.45, 6.24, 12.45, 0.50,
+       "So DO IT — but not for the 3 %. Do it for (1) POISSON'S RATIO, a material property we cannot "
+       "measure at all today, and (2) telling whether the post-peak drop is real softening or just "
+       "thinning: S16 falls 47.4 → 42 MPa, and volume-conserved true stress is still only 44.5.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
+banner(s, 0.45, 6.80, 12.45, 0.44,
+       "⚠ DESIGN FIX for p188: it says “average width over 100s of rows”. Necking is LOCAL — averaging "
+       "under-corrects exactly where it matters. Track the MINIMUM width along the gauge, not the mean.",
+       fill=YELLOW_WARN, fg=BLACK, fs=10.5)
+footer(s, "")
+pageno(s, 210)
+
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print("Saved: V6a_8_6_20_slides.pptx (68 slides, pages 141-208)")
+    print("Saved: V6a_8_6_20_slides.pptx (70 slides, pages 141-210)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (68 slides)")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (70 slides)")

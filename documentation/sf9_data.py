@@ -6,7 +6,7 @@ figures and print the metric table:
 
     python documentation/sf9_data.py
 """
-import os, sys, statistics as st
+import os, sys, math, statistics as st
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.join(_HERE, "..")
@@ -1007,11 +1007,115 @@ def fig_dic_halt():
     return _save(fig, "feat_dic_halt.png")
 
 
+def fig_strain_terms():
+    """Engineering vs true strain — both exact, both from the same measured L."""
+    import numpy as _np
+    plt = _plt()
+    from matplotlib.patches import FancyBboxPatch
+    fig = plt.figure(figsize=(13.0, 4.0))
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.15, 1.0], wspace=0.22)
+
+    a = fig.add_subplot(gs[0]); a.set_xlim(0, 10); a.set_ylim(0, 10); a.axis("off")
+    a.set_title("One measurement, two definitions", fontsize=11, fontweight="bold")
+    a.add_patch(FancyBboxPatch((0.6, 6.6), 4.2, 1.5, boxstyle="round,pad=0.06",
+                               fc="#e8e8e6", ec=INK2, lw=1.1))
+    a.plot([1.3, 4.1], [7.35, 7.35], "o", color=C_SPEC, ms=8)
+    a.annotate("", xy=(1.3, 6.1), xytext=(4.1, 6.1),
+               arrowprops=dict(arrowstyle="<->", color=C_SPEC, lw=1.8))
+    a.text(2.7, 5.55, "L₀  (tared at start)", ha="center", fontsize=9.5, color=C_SPEC, fontweight="bold")
+    a.text(0.6, 8.5, "BEFORE", fontsize=9.5, fontweight="bold", color=INK2)
+
+    a.add_patch(FancyBboxPatch((0.6, 2.8), 5.6, 1.5, boxstyle="round,pad=0.06",
+                               fc="#e8e8e6", ec=INK2, lw=1.1))
+    a.plot([1.3, 5.5], [3.55, 3.55], "o", color=C_SPEC, ms=8)
+    a.annotate("", xy=(1.3, 2.3), xytext=(5.5, 2.3),
+               arrowprops=dict(arrowstyle="<->", color=C_SPEC, lw=1.8))
+    a.text(3.4, 1.75, "L  (now)", ha="center", fontsize=9.5, color=C_SPEC, fontweight="bold")
+    a.text(0.6, 4.7, "AFTER", fontsize=9.5, fontweight="bold", color=INK2)
+    a.text(0.6, 0.65, "The camera measures ONE number: the gap L.\nEverything else is arithmetic on it.",
+           fontsize=9, color=INK2, style="italic")
+
+    a.text(6.7, 8.2, "ENGINEERING\n(= nominal, = “Cauchy”)", fontsize=10, fontweight="bold", color=C_SPEC)
+    a.text(6.7, 7.0, r"$\varepsilon = \dfrac{L - L_0}{L_0}$", fontsize=15, color=INK)
+    a.text(6.7, 6.15, "always ÷ the ORIGINAL length", fontsize=8.5, color=INK2, style="italic")
+    a.text(6.7, 4.6, "TRUE\n(= logarithmic, Hencky)", fontsize=10, fontweight="bold", color=C_MACH)
+    a.text(6.7, 3.5, r"$\varepsilon = \ln\!\left(\dfrac{L}{L_0}\right)$", fontsize=15, color=INK)
+    a.text(6.7, 2.6, "each step ÷ the CURRENT length", fontsize=8.5, color=INK2, style="italic")
+    a.text(6.7, 1.5, "Both are EXACT.\nNeither is an estimate of the other.",
+           fontsize=9, color=INK2, fontweight="bold")
+
+    b = fig.add_subplot(gs[1])
+    e = _np.linspace(0.0005, 0.25, 400)
+    diff = 100 * (e - _np.log1p(e)) / e
+    b.plot(e * 100, diff, color=C_MACH, lw=2.6)
+    b.axvspan(0, 7, color=C_SPEC, alpha=0.13, zorder=0)
+    for x_, lab, dy in ((1.0, "at 1 % strain", 2.4), (3.32, "at our ε_f (3.3 %)", 1.7),
+                        (7.0, "at V6 worst (7 %)", 1.2)):
+        y_ = 100 * (x_ / 100 - math.log1p(x_ / 100)) / (x_ / 100)
+        b.plot([x_], [y_], "o", color=C_MACH, ms=8)
+        b.annotate("%s → differ %.1f %%" % (lab, y_), xy=(x_, y_), xytext=(x_ + 1.0, y_ + dy),
+                   fontsize=8.5, color=C_MACH, fontweight="bold",
+                   bbox=dict(facecolor="white", alpha=0.85, edgecolor="none", pad=1.5))
+    _note(b, 0.03, 0.96, "shaded = where PLA actually fails\n→ the two definitions agree to ~2 %",
+          color=C_SPEC, fs=9, weight="bold")
+    b.set_xlabel("Engineering strain  (%)")
+    b.set_ylabel("How much they differ  (%)")
+    b.set_title("At our strains the choice barely matters", fontsize=11, fontweight="bold")
+    b.set_xlim(0, 25); b.set_ylim(0, 13)
+    fig.tight_layout()
+    return _save(fig, "sf9_strain_terms.png")
+
+
+def fig_true_stress():
+    """How much true stress would change the answer, in the context of errors already carried."""
+    import numpy as _np
+    plt = _plt()
+    fig, (a, b) = plt.subplots(1, 2, figsize=(13.0, 4.0), gridspec_kw={"width_ratios": [1.05, 1]})
+
+    e = _np.linspace(0, 0.22, 300)
+    el = 100 * (1 / (1 - 0.35 * e) ** 2 - 1)
+    pl = 100 * ((1 + e) - 1)
+    a.plot(e * 100, el, color=C_SPEC, lw=2.6, label="elastic, ν = 0.35")
+    a.plot(e * 100, pl, "--", color=C_MACH, lw=2.6, label="fully plastic (volume conserved)")
+    a.axvspan(0, 7, color=GREEN, alpha=0.13, zorder=0)
+    a.legend(fontsize=9, loc="upper left")
+    _note(a, 0.97, 0.34, "our whole operating range\nsits in the shaded strip",
+          color=GREEN, ha="right", va="bottom", fs=9, weight="bold")
+    a.plot([3.32], [3.32], "o", color=INK, ms=9)
+    a.annotate("T8 ε_f = 3.3 %\n→ true stress only +3.3 %", xy=(3.32, 3.32), xytext=(6.0, 1.2),
+               fontsize=9, fontweight="bold",
+               arrowprops=dict(arrowstyle="->", lw=1.4),
+               bbox=dict(facecolor="white", alpha=0.9, edgecolor="none", pad=2))
+    a.set_xlabel("Engineering strain  (%)")
+    a.set_ylabel("True stress is HIGHER by  (%)")
+    a.set_title("The size of the correction", fontsize=11, fontweight="bold")
+    a.set_xlim(0, 22); a.set_ylim(0, 24)
+
+    pc = M["pc"]
+    items = [("Anchor correction\n(preload removed by the tare)", 100 * pc["anchor"] / pc["peak"], C_MACH),
+             ("TRUE vs ENGINEERING stress\nat our ε_f", 3.3, C_SPEC),
+             ("Specimen-to-specimen\n(T7.2 vs T8)", 0.9, C_MEAS)]
+    ypos = range(len(items))
+    b.barh(list(ypos), [i[1] for i in items], color=[i[2] for i in items], height=0.55)
+    for i, (lab, v, c) in enumerate(items):
+        b.text(v + 0.5, i, "%.1f %%" % v, va="center", fontsize=10, fontweight="bold", color=c)
+    b.set_yticks(list(ypos)); b.set_yticklabels([i[0] for i in items], fontsize=9)
+    b.invert_yaxis()
+    b.set_xlabel("Effect on the reported stress  (%)")
+    b.set_xlim(0, 27)
+    b.set_title("…next to the errors we ALREADY carry", fontsize=11, fontweight="bold")
+    _note(b, 0.97, 0.46, "true stress is a ~3 % refinement\nunder a 22 % correction",
+          color=INK2, ha="right", fs=9, weight="bold")
+    fig.tight_layout()
+    return _save(fig, "sf9_true_stress.png")
+
+
 def make_plots():
     return [fig_overview(), fig_cyclic(), fig_staircase(), fig_relax(), fig_creep(),
             fig_stair_fracture(), fig_prog_cyclic(), fig_t7_stall(),
             fig_stress_strain(), fig_cyclic_hyst(), fig_stair_modulus(), fig_literature(),
-            fig_teach_stiffness(), fig_teach_dissipation(), fig_dic_halt()]
+            fig_teach_stiffness(), fig_teach_dissipation(), fig_dic_halt(),
+            fig_strain_terms(), fig_true_stress()]
 
 
 if __name__ == "__main__":
