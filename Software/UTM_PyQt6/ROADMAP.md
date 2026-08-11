@@ -60,6 +60,11 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
   exist as `feat_*.png` / the new `ui_help/*.png` diagrams. Decide size (A0 vs A1) before laying out.
 - 🟡 **DECK — bring `documentation/V6a_8_6_20_slides.pptx` up to current progress.**
   ✅ **SF9 built 2026-08-10 — 15 slides, pages 186-200, deck now 60 slides:** overview of all six modes (real measured signatures, not schematics) · 2 slides per mode (how it works + settings + **software limits**, then results with graphs and tables) · **T7 failure analysis** (why it stalled, ranked causes, mitigations). Numbers are computed by `documentation/sf9_data.py` from the rig CSVs and imported by the generator, so nothing on these slides is transcribed by hand.
+  ✅ **Also built 2026-08-10/11 — deck is now 70 slides, pages 141-210:** T7 Vref answer (p200) ·
+  two plain-English explainers for the T8 findings (p203/204) · SF3 "what Settings actually saves"
+  (p205) · datasheet comparison rebuilt on the add:north TDS (p206) · two reference pages on strain
+  and stress conventions (p209/210). `feat_dic_halt.png` regenerated from its CSV — it had no
+  generator in the repo. Page numbers moved bottom-right (they were printing under the footer).
   ⬜ **Still to slide:**
   - ~~The 6 control modes~~ ✅ SF9
   - ~~Session 1–2 creep/relaxation/staircase~~ ✅ SF9 (measured overshoot +45.5/+46.8/+52.6 → +6.0/+4.8/+7.8 N)
@@ -105,6 +110,12 @@ number** — the numbers are IDs, so a status-grouped layout reads correctly wit
 ⚠️ **SF10 (auto-preload) was not in the original SF1–SF8 set** — added here because the poster is meant to
 show *all* smart features and auto-preload is a real, validated one that was simply never carded.
 
+- ⬜ **p188 edge-tracking: track MINIMUM width, not the average.** The slide currently specifies
+  "average width over 100s of rows". Necking is **local** — averaging over the gauge measures average
+  thinning and systematically **under-corrects exactly where the correction matters** (at the neck,
+  which is where fracture happens). Change the spec to the minimum width along the gauge before
+  building it. Cheap to fix now, expensive after the rig is built. Reasoning on deck p210.
+
 - ⬜ **T9 — creep that actually resolves** (rig run, ~17 min). T1 held 398 N for 40 s at 4.98 MPa and
   saw **nothing**, correctly: the fitted rate was **+0.002 ± 0.060 µε/s**, so the 95 % bound is
   **<0.12 µε/s = under 5 µε across the whole hold**. The hold was ~20× too short and the stress ~2×
@@ -126,6 +137,12 @@ show *all* smart features and auto-preload is a real, validated one that was sim
   accumulates. Arm auto-stop (T8 fractured at 1397 N). Scoped on deck p189.
 
 ### 3b. Longer-range features
+- ✅ **Strain nomenclature settled (2026-08-11).** Everything user-facing now says **engineering**
+  (ΔL/L₀): report axes, live plot legend, the strain-source dropdown and the `Eng ε:` readout. The
+  dropdown branches on a stable `userData` key instead of display text — it was matching on the
+  visible string, so a rename would have silently plotted the wrong array. **CSV columns
+  `DIC_Cauchy`/`DIC_True` deliberately unchanged** (every past test and `utm_analysis` read them);
+  the tooltip documents the mapping. See [[reference_addnorth_tds]] and deck p209.
 - ⬜ **Multi-marker Poisson** — 4-marker preset in the dropdown, `detect_blobs`/`tare_dic`/`calculate_dic_strain` for 4 markers, new CSV columns (lateral strain / ν / current area / Cauchy), live ν readout. Needs a matte-black backdrop and/or a gauge-zoomed camera.
 - ⬜ **Phase D — UX layer:** guided Connect→Calibrate→Mount→Prepare→Recipe→Run→Save wizard; live analysis overlay (live E / predicted UTS / fracture flag); glanceable dashboard + audio cue on fracture; event-annotation hotkey.
 - ⬜ **DIC auto-calibrate (Phase C remainder):** auto-exposure/threshold sweep on Start Camera; auto-follow ROI (shift offset to keep markers centred through ductile draw).
