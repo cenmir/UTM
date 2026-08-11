@@ -150,8 +150,12 @@ class CyclicPolicy(ControlPolicy):
 
     def __init__(self, f_low: float, f_high: float, cycles: int, speed: float = 0.1,
                  waveform: str = "triangle", predictive: bool = True,
-                 min_speed: float = 0.02, adapt_gain: float = 0.85, shape_margin: float = 0.05):
+                 min_speed: float = 0.02, adapt_gain: float = 0.85, shape_margin: float = 0.05,
+                 collapse_frac: float = 0.6):
         self.f_low, self.f_high, self.cycles, self.speed = f_low, f_high, cycles, speed
+        self.collapse_frac = collapse_frac
+        self._frac_armed = False        # collapse watch, armed only on a rising stroke
+        self._frac_peak = 0.0
         self.waveform = waveform
         self.predictive = predictive
         self.min_speed = min_speed
@@ -221,6 +225,25 @@ class CyclicPolicy(ControlPolicy):
                 self._started = True
             else:
                 return Command(self.speed, "tension", message="ramp-in to low bound")
+        # Fracture watch, same per-rising-stroke pattern that ProgressiveCyclicPolicy uses and T8
+        # rig-proved. Cyclic had NO collapse detection at all: a run near yield (T6.4 cycles to
+        # 79 % of fracture) that broke mid-stroke would keep commanding tension until the 30 mm
+        # travel backstop -- ~28 mm of the grips separating on a broken specimen. The always-on
+        # shared detector cannot be used here: the deliberate unload to f_low is far below half the
+        # peak and would trip it every single cycle. So arm only on the RISING stroke, and only once
+        # the load is past halfway to f_high -- the specimen already survived the previous peak.
+        if self.dir == "tension":
+            if s.load > self._frac_peak:
+                self._frac_peak = s.load
+            if s.load >= self.f_low + 0.5 * self.span:
+                self._frac_armed = True
+            if self._frac_armed and s.load < self.collapse_frac * self._frac_peak:
+                return Command(0, "hold", done=True,
+                               message=f"FRACTURE on cycle {self.done_cycles + 1} "
+                                       f"(peak {self._frac_peak:.0f} N)")
+        else:
+            self._frac_armed = False          # unloading is intentional - never watch during it
+            self._frac_peak = 0.0
         lead = min(self._lead[self.dir], 0.45 * self.span) if self.predictive else 0.0
         if self.dir == "tension" and s.load >= self.f_high - lead:
             self.dir = "compression"
