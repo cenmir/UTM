@@ -212,5 +212,56 @@
       "cycle8": 1.73,
       "damage_D": 0.257
     }
+  },
+  {
+    "specimen": "S22",
+    "test": "T6.4_CyclicTest_Sine",
+    "date": "2026-08-11",
+    "csv": "8.7/Specimen_S22_V1_Spray_CyclicTest_Sine/UTM_Test_20260811_141121_T6.4_CyclicTest_Sine.csv",
+    "material": "PLA",
+    "infill_pct": 50.0,
+    "area_mm2": 80.0,
+    "gauge_mm": 80.0,
+    "E_GPa": null,
+    "sy_MPa": null,
+    "UTS_MPa": null,
+    "ef": null,
+    "tough_kJm3": null,
+    "anchor_N": null,
+    "comment": "Cyclic 400-1100 N x8, sine, 0.1 mm/s. Bound accuracy 3.0 N mean. DIC DIED at t=145 s (one-off camera stop) -> only cycles 1-3 have strain; loop 24.6->12.4 kJ/m3, 9.7-15.2 px. No E/sy/UTS: not a monotonic pull."
+  },
+  {
+    "specimen": "S22",
+    "test": "T6.5_CyclicTest_Sine",
+    "date": "2026-08-11",
+    "csv": "8.7/Specimen_S22_V1_Spray_CyclicTest_Sine/UTM_Test_20260811_145039_T6.5_CyclicTest_Sine.csv",
+    "material": "PLA",
+    "infill_pct": 50.0,
+    "area_mm2": 80.0,
+    "gauge_mm": 80.0,
+    "E_GPa": null,
+    "sy_MPa": null,
+    "UTS_MPa": null,
+    "ef": null,
+    "tough_kJm3": null,
+    "anchor_N": null,
+    "comment": "Re-run of T6.4 on the SAME (now pre-damaged) specimen. DIC 97.4 %, no gap >0.10 s. 7 cycles: peaks converge to +-1 N, mean 12.4 px (T6.3 was 3.6), loop 21.7->10.9 kJ/m3, E_unload 1.54->1.43 GPa. VALIDATES THE MODE, but E recovered across the 40-min rest between runs so damage cannot be separated from recovery, and there is no virgin E0 (cycle 1 of each run is slack-contaminated, K 426/441 vs ~700 steady). Not the damage curve - T6.6 on a fresh specimen is."
+  },
+  {
+    "specimen": "S22",
+    "test": "T7.3_Staircase-Failure",
+    "date": "2026-08-11",
+    "csv": "8.7/Specimen_S22_V1_Spray_Staircase-Fracture/UTM_Test_20260811_151515_T7.3.csv",
+    "material": "PLA",
+    "infill_pct": 50.0,
+    "area_mm2": 80.0,
+    "gauge_mm": 80.0,
+    "E_GPa": null,
+    "sy_MPa": null,
+    "tough_kJm3": null,
+    "UTS_MPa": 19.74,
+    "ef": 0.036,
+    "anchor_N": 307.1,
+    "comment": "RESIDUAL STRENGTH after 15 cycles at 1100 N (T6.4+T6.5). Same protocol as T7.2 (200 N start /120 N step /10 s dwell) so it is directly comparable to S18. Peak 1272.3 N tared vs virgin mean 1391 N = -8.5 %; true 1579 N = 19.74 MPa vs S18 21.19 / S21 21.38 = -6.1 %. Virgin spread is 0.7 % across 3 protocols, so the loss is 12x the spread. Anchor 307.1 N vs S18 307.4 N. Yield knee moved UP to 811-931 N (S18 virgin 694 N) - the specimen is elastic below its prior 1100 N peak (load memory), so damage shows as higher yield + lower UTS + lower ef, not early yield. E/sy/toughness nulled: stepped path, not a monotonic pull."
   }
 ]

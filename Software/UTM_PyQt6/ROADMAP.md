@@ -116,6 +116,12 @@ show *all* smart features and auto-preload is a real, validated one that was sim
   which is where fracture happens). Change the spec to the minimum width along the gauge before
   building it. Cheap to fix now, expensive after the rig is built. Reasoning on deck p210.
 
+- ✅ **T6.4 / T6.5 / T7.3 DONE 2026-08-11 (S22).** Cyclic near yield validated (12.4 px vs 3.6, loop
+  21.7→10.9 kJ/m³, bounds ±1 N) and S22 pulled to fracture: **residual strength −8.5 %** after 15 cycles
+  at 79 % of UTS, **12× the 0.7 % virgin baseline spread**. Yield knee moved UP to 811-931 N (virgin 694)
+  = load memory at the prior cycling peak. ε_f 3.60 %.
+- ⬜ **T6.6 — the clean damage curve.** Fresh 50 % specimen, 400→1100 N, **12 cycles**, sine, 0.100 mm/s,
+  ONE continuous run (no pause — E recovers across a rest). Baseline E on **cycle 2**, never cycle 1.
 - ⬜ **T9 — creep that actually resolves** (rig run, ~17 min). T1 held 398 N for 40 s at 4.98 MPa and
   saw **nothing**, correctly: the fitted rate was **+0.002 ± 0.060 µε/s**, so the 95 % bound is
   **<0.12 µε/s = under 5 µε across the whole hold**. The hold was ~20× too short and the stress ~2×
