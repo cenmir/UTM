@@ -2450,17 +2450,24 @@ class UTMApplication(QMainWindow):
             b = QSpinBox(); b.setRange(lo, hi); b.setValue(val); return b
 
         def page(pairs):
-            w = QWidget(); h = QHBoxLayout(w); h.setContentsMargins(0, 0, 0, 0)
-            for lab, widget in pairs:
-                h.addWidget(QLabel(lab)); h.addWidget(widget)
-            h.addStretch(1)
+            """Two label/field pairs per ROW, not one long line.
+
+            The control column is ~300 px wide and cyclic alone has five parameters; packed into a
+            single QHBoxLayout every spin box was crushed to a few pixels and its value clipped. A
+            2-column grid wraps them instead, and the fields get a usable minimum width."""
+            from PyQt6.QtWidgets import QGridLayout
+            w = QWidget(); g = QGridLayout(w)
+            g.setContentsMargins(0, 0, 0, 0); g.setHorizontalSpacing(6); g.setVerticalSpacing(4)
+            for i, (lab, widget) in enumerate(pairs):
+                widget.setMinimumWidth(84)
+                r, c = divmod(i, 2)
+                g.addWidget(QLabel(lab), r, c * 2)
+                g.addWidget(widget, r, c * 2 + 1)
+            g.setColumnStretch(1, 1); g.setColumnStretch(3, 1)
             return w
 
         seg = QVBoxLayout()
-        line = QFrame(); line.setFrameShape(QFrame.Shape.HLine)
-        self._modeSeparatorLine = line          # recoloured by apply_theme (#bbb glares on dark)
-        seg.addWidget(line)
-        self.modeEnableCheck = QCheckBox("Advanced test modes (BETA) — enable to choose type + settings")
+        self.modeEnableCheck = QCheckBox("Enable — choose type + settings")
         self.modeEnableCheck.setStyleSheet("font-weight:bold")
         self.modeEnableCheck.setToolTip("Tick to arm the advanced closed-loop modes. Left off, the type/settings "
                                         "stay greyed so they can't be changed by accident.")
@@ -2536,9 +2543,24 @@ class UTMApplication(QMainWindow):
         self.modeStartButton.setEnabled(False)
         seg.addWidget(self.modeStartButton)
 
+        # Give the segment its OWN titled frame. Previously it was a bare layout dropped into the
+        # Motor Control group with only a thin rule above it, so it ran straight into the specimen
+        # and fracture controls below and the operator could not see where one ended and the next
+        # began. A QGroupBox draws the boundary the eye is looking for.
+        #
+        # NOT a checkable QGroupBox, deliberately: Qt auto-disables every child of an unchecked
+        # checkable group, which would kill the Start/STOP button mid-run. `_update_control_mode_
+        # enabled` keeps that button live while a policy is running precisely so the operator can
+        # always cancel. The enable checkbox therefore stays an ordinary child.
+        from PyQt6.QtWidgets import QGroupBox
+        self.advancedModesGroup = QGroupBox("Advanced test modes  (BETA)")
+        self.advancedModesGroup.setLayout(seg)
+        self.advancedModesGroup.setToolTip("The six closed-loop protocols. Left disabled, the type and "
+                                           "settings stay greyed so they cannot be changed by accident.")
+
         lay = self.motorControlGroup.layout()
         idx = lay.indexOf(self.emergencyStopButton)
-        lay.insertLayout(idx, seg) if idx >= 0 else lay.addLayout(seg)
+        lay.insertWidget(idx, self.advancedModesGroup) if idx >= 0 else lay.addWidget(self.advancedModesGroup)
         self._update_control_mode_enabled()                 # start greyed until the operator enables it
 
     def _update_control_mode_enabled(self):
@@ -3011,12 +3033,26 @@ class UTMApplication(QMainWindow):
                                            "at fracture (with the force/travel backstop). Stop / E-Stop aborts.")
         r2.addWidget(self.prepareSpecimenButton); r2.addWidget(self.autoStopFractureCheck)
         r2.addWidget(self.fractureTestButton); r2.addStretch()
+
+        # These are the two buttons an operator reaches for most often, and they were the hardest to
+        # find: bare rows wedged between the advanced-mode block and Emergency STOP. Their own titled
+        # frame separates them from the protocols above, and the run order reads top to bottom —
+        # pick a settings profile, Prepare specimen, then Fracture test.
+        from PyQt6.QtWidgets import QGroupBox, QVBoxLayout
+        self.specimenTestGroup = QGroupBox("Specimen  ·  prepare and fracture")
+        _stg = QVBoxLayout(self.specimenTestGroup)
+        _stg.setContentsMargins(6, 4, 6, 4); _stg.setSpacing(4)
+        _stg.addLayout(r1)          # settings profile + infill  (set up first)
+        _stg.addLayout(r2)          # Prepare specimen · auto-stop · Fracture test  (then run)
+        self.prepareSpecimenButton.setMinimumHeight(28)
+        self.fractureTestButton.setMinimumHeight(28)
+
         lay = self.motorControlGroup.layout()
         idx = lay.indexOf(self.emergencyStopButton)
         if idx >= 0:
-            lay.insertLayout(idx, r1); lay.insertLayout(idx, r2)
+            lay.insertWidget(idx, self.specimenTestGroup)
         else:
-            lay.addLayout(r1); lay.addLayout(r2)
+            lay.addWidget(self.specimenTestGroup)
         self.recipeLoadButton.clicked.connect(self.on_recipe_load)
         self.recipeSaveButton.clicked.connect(self.on_recipe_save)
         self.prepareSpecimenButton.clicked.connect(self.on_prepare_specimen)
