@@ -4110,9 +4110,55 @@ class UTMApplication(QMainWindow):
 
     # ========== Application Lifecycle ==========
 
+    # ---- window geometry: fit the screen it actually opens on --------------------------------
+    #
+    # DESIGN_SIZE is the target for a 15" laptop. Such a panel is usually 1920x1080 physical, but
+    # Windows ships those at 150 % scaling, so the space Qt can actually use is 1280x720 LOGICAL
+    # pixels. The .ui file asks for 1232x1098 — 378 px taller than that desktop — so the window
+    # opened with its bottom below the screen and the layout could not be reached.
+    DESIGN_SIZE = (1180, 700)
+
+    def fit_to_screen(self):
+        """Clamp the window to the screen's available area and centre it.
+
+        Deliberately adaptive rather than a hard-coded resolution: the same build has to be usable
+        on the laptop AND on the external monitor, and availableGeometry() already excludes the
+        taskbar. A remembered size from a previous session is honoured, but is itself re-clamped —
+        otherwise a size saved on the big monitor would reopen off-screen on the laptop.
+        """
+        from PyQt6.QtGui import QGuiApplication
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        avail = screen.availableGeometry()
+        margin = 24                                    # leave the frame some air
+
+        w, h = self.DESIGN_SIZE
+        saved = self._recall("window/size", None)
+        if isinstance(saved, (list, tuple)) and len(saved) == 2:
+            try:
+                w, h = int(saved[0]), int(saved[1])
+            except (TypeError, ValueError):
+                w, h = self.DESIGN_SIZE
+
+        # never larger than the desktop, never smaller than the window's own minimum
+        w = max(self.minimumWidth(),  min(w, avail.width()  - margin))
+        h = max(self.minimumHeight(), min(h, avail.height() - margin))
+        self.resize(w, h)
+
+        frame = self.frameGeometry()
+        frame.moveCenter(avail.center())
+        self.move(max(avail.left(), frame.left()), max(avail.top(), frame.top()))
+
     def closeEvent(self, event):
         """Handle application close event"""
         from PyQt6.QtWidgets import QMessageBox
+        # Remember the size the operator settled on (re-clamped on the next open, see fit_to_screen).
+        try:
+            if not self.isMaximized() and not self.isFullScreen():
+                self._remember("window/size", [self.width(), self.height()])
+        except Exception:
+            pass
 
         reply = QMessageBox.question(
             self,
@@ -4189,9 +4235,17 @@ class UTMApplication(QMainWindow):
         # --- Camera feed display label (below buttons) ---
         self.cameraFeedLabel = QLabel("Camera not started")
         self.cameraFeedLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cameraFeedLabel.setMinimumHeight(100)
+        # WHY Ignored + an explicit minimumSize, and not Expanding:
+        # QLabel derives its sizeHint AND its minimumSizeHint from the pixmap it is holding. The feed
+        # scales each frame to the label's CURRENT size and calls setPixmap, so with an Expanding
+        # policy the label's hint grew to that frame, the layout granted it, the next frame was
+        # scaled to the new larger width, and the window ratcheted outwards a few pixels per frame
+        # until it hit the edge of the screen. That is the "GUI expands when I start the camera" bug.
+        # QSizePolicy.Ignored makes the sizeHint irrelevant, and an EXPLICIT minimumSize overrides
+        # minimumSizeHint — together they stop a pixmap from ever driving the layout.
+        self.cameraFeedLabel.setMinimumSize(160, 120)
         self.cameraFeedLabel.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
         )
         self.cameraFeedLabel.setStyleSheet(
             "background-color: #1a1a1a; color: #888888; border: 1px solid #444;"
@@ -4347,9 +4401,9 @@ class UTMApplication(QMainWindow):
 
         self.cameraFeedLabelLP = QLabel("Camera not started")
         self.cameraFeedLabelLP.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cameraFeedLabelLP.setMinimumHeight(100)
+        self.cameraFeedLabelLP.setMinimumSize(160, 120)     # see cameraFeedLabel: pixmap ratchet
         self.cameraFeedLabelLP.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
         )
         self.cameraFeedLabelLP.setStyleSheet(
             "background-color: #1a1a1a; color: #888888; border: 1px solid #444;"
@@ -4386,8 +4440,13 @@ class UTMApplication(QMainWindow):
                 for lbl in (self.cameraFeedLabel, getattr(self, "cameraFeedLabelLP", None)):
                     if lbl is None:
                         continue
+                    # Scale into the label's CONTENT rect, and never up-scale past it. Combined with
+                    # the Ignored size policy set on both feed labels, this guarantees the frame can
+                    # never push the layout outwards — the label follows the window, not the reverse.
+                    box = lbl.contentsRect()
+                    tw, th = max(1, box.width() - 2), max(1, box.height() - 2)
                     scaled = pixmap.scaled(
-                        lbl.width(), lbl.height(),
+                        tw, th,
                         Qt.AspectRatioMode.KeepAspectRatio,
                         Qt.TransformationMode.SmoothTransformation
                     )
@@ -4555,8 +4614,10 @@ def main():
     """Main entry point for the application"""
     app = QApplication(sys.argv)
 
-    # Create and show the main window
+    # Create and show the main window. fit_to_screen() runs AFTER construction so it sees the
+    # finished layout's minimums, and BEFORE show() so the window never flashes at the wrong size.
     window = UTMApplication()
+    window.fit_to_screen()
     window.show()
 
     # Start the event loop
