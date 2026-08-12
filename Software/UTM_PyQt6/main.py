@@ -2771,7 +2771,8 @@ class UTMApplication(QMainWindow):
         msg.setText(f"Run {title}?  This DESTROYS the specimen.")
         msg.setInformativeText(what + "\n\n" + meta +
                                "\n\nConfirm you have:\n   •  mounted the specimen\n"
-                               "   •  applied preload\n   •  pressed Prepare specimen (tared)\n"
+                               "   •  pressed Calibrate Px₀ (BEFORE preload)\n"
+                               "   •  applied preload\n   •  pressed Prepare test (tared)\n"
                                "   •  set the specimen dimensions + INFILL above correctly\n\n"
                                "Stop / E-Stop aborts at any time.")
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
@@ -3051,7 +3052,7 @@ class UTMApplication(QMainWindow):
 
     # ===== Recipes / Prepare-specimen / Auto-stop-at-fracture (offline-built helpers) =====
     def _setup_recipe_controls(self):
-        """Add a Recipe dropdown + Load/Save, a 'Prepare specimen' one-button, and an
+        """Add a Recipe dropdown + Load/Save, a 'Prepare test' one-button, and an
         'Auto-stop at fracture' toggle to the Motor Control group. Recipes come from
         utm_recipes.py; auto-stop reuses the shared LiveFractureDetector during a MANUAL pull."""
         from PyQt6.QtWidgets import QHBoxLayout, QLabel, QComboBox, QPushButton, QCheckBox, QSpinBox
@@ -3090,9 +3091,9 @@ class UTMApplication(QMainWindow):
             lambda v: self._remember("specimen/infill_pct", int(v)))
         r1.addWidget(self.infillSpinBox)
         r2 = QHBoxLayout()
-        self.prepareSpecimenButton = QPushButton("Prepare specimen")
-        self.prepareSpecimenButton.setObjectName("prepareSpecimenButton")   # emphasised by theme
-        self.prepareSpecimenButton.setToolTip("One click: tare position + force + DIC so the test starts from zero.")
+        self.prepareTestButton = QPushButton("Prepare test")
+        self.prepareTestButton.setObjectName("prepareTestButton")   # emphasised by theme
+        self.prepareTestButton.setToolTip("One click: tare position + force + DIC so the test starts from zero.")
         self.autoStopFractureCheck = QCheckBox("Auto-stop at fracture")
         self.autoStopFractureCheck.setObjectName("autoStopFractureCheck")   # emphasised by theme
         self.autoStopFractureCheck.setToolTip("During a MANUAL tension pull, stop the motor automatically when the "
@@ -3101,23 +3102,23 @@ class UTMApplication(QMainWindow):
         self.fractureTestButton = QPushButton("Fracture test")
         self.fractureTestButton.setObjectName("fractureTestButton")         # emphasised by theme
         self.fractureTestButton.setToolTip("One-click run to fracture: confirms your checklist (specimen mounted, "
-                                           "preloaded, Prepare specimen done), then pulls in TENSION and auto-stops "
+                                           "preloaded, Prepare test done), then pulls in TENSION and auto-stops "
                                            "at fracture (with the force/travel backstop). Stop / E-Stop aborts.")
-        r2.addWidget(self.prepareSpecimenButton); r2.addWidget(self.autoStopFractureCheck)
+        r2.addWidget(self.prepareTestButton); r2.addWidget(self.autoStopFractureCheck)
         r2.addWidget(self.fractureTestButton); r2.addStretch()
 
         # These are the two buttons an operator reaches for most often, and they were the hardest to
         # find: bare rows wedged between the advanced-mode block and Emergency STOP. Their own titled
         # frame separates them from the protocols above, and the run order reads top to bottom —
-        # pick a settings profile, Prepare specimen, then Fracture test.
+        # pick a settings profile, Prepare test, then Fracture test.
         from PyQt6.QtWidgets import QGroupBox, QVBoxLayout
         self.specimenTestGroup = QGroupBox("Specimen  ·  prepare and fracture")
         self.specimenTestGroup.setObjectName("specimenTestGroup")     # styled as a NESTED group
         _stg = QVBoxLayout(self.specimenTestGroup)
         _stg.setContentsMargins(6, 4, 6, 4); _stg.setSpacing(4)
         _stg.addLayout(r1)          # settings profile + infill  (set up first)
-        _stg.addLayout(r2)          # Prepare specimen · auto-stop · Fracture test  (then run)
-        self.prepareSpecimenButton.setMinimumHeight(28)
+        _stg.addLayout(r2)          # Prepare test · auto-stop · Fracture test  (then run)
+        self.prepareTestButton.setMinimumHeight(28)
         self.fractureTestButton.setMinimumHeight(28)
 
         lay = self.motorControlGroup.layout()
@@ -3128,7 +3129,7 @@ class UTMApplication(QMainWindow):
             lay.addWidget(self.specimenTestGroup)
         self.recipeLoadButton.clicked.connect(self.on_recipe_load)
         self.recipeSaveButton.clicked.connect(self.on_recipe_save)
-        self.prepareSpecimenButton.clicked.connect(self.on_prepare_specimen)
+        self.prepareTestButton.clicked.connect(self.on_prepare_test)
         self.fractureTestButton.clicked.connect(self.on_fracture_test)
         try:
             from utm_recipes import ensure_default
@@ -3328,7 +3329,7 @@ class UTMApplication(QMainWindow):
         self.append_to_console(f"[Settings] saved '{r.name}' -> {path}")
         self.set_status(f"Settings '{r.name}' saved")
 
-    def on_prepare_specimen(self):
+    def on_prepare_test(self):
         """One click: clear the consoles, then tare position + force + DIC for a clean start.
         DIC is only tared when markers are actually tracked (2 or 4 blobs)."""
         # Fresh start — clear both consoles + BOTH plots, so the new specimen starts on empty axes
@@ -3351,10 +3352,25 @@ class UTMApplication(QMainWindow):
                     fn(); done.append(label)
                 except Exception as e:
                     self.append_to_console(f"[Prepare] {label} tare failed: {e}")
-        # DIC only tares when markers are being tracked
+        # DIC only tares when markers are being tracked.
+        #
+        # And NOT AT ALL if Px₀ was already calibrated at a lower load than we are sitting at now.
+        # Prepare is pressed AFTER preload by the checklist, so re-taring here would silently move
+        # the strain zero onto an already-stretched specimen and throw away a Px₀ the operator
+        # deliberately captured beforehand — the whole reason the Calibrate Px₀ button exists.
         blobs = self._live_blob_count()
         if callable(getattr(self, 'on_tare_dic', None)):
-            if blobs in (2, 4):
+            px0_load = getattr(self, "_px0_load_N", None)
+            now_load = abs(getattr(self, "current_load", 0.0) or 0.0)
+            already_good = (self.camera_manager.initial_distance is not None
+                            and px0_load is not None and px0_load < now_load - 5.0)
+            if already_good:
+                skipped.append("DIC")
+                self.append_to_console(
+                    f"[Prepare] Px₀ KEPT — it was calibrated at {px0_load:.0f} N and you are now at "
+                    f"{now_load:.0f} N, so re-taring would move the strain zero onto a stretched "
+                    "specimen. Press Calibrate Px₀ explicitly if you really want to re-zero here.")
+            elif blobs in (2, 4):
                 try:
                     self.on_tare_dic(); done.append("DIC")
                 except Exception as e:
@@ -3384,8 +3400,9 @@ class UTMApplication(QMainWindow):
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setWindowTitle("Fracture test — checklist")
         msg.setText("Run the specimen to FRACTURE?")
-        msg.setInformativeText("Confirm you have:\n   •  mounted the specimen\n   •  applied preload\n"
-                               "   •  pressed Prepare specimen (tared)\n\n"
+        msg.setInformativeText("Confirm you have:\n   •  mounted the specimen\n"
+                               "   •  pressed Calibrate Px₀ (BEFORE preload)\n   •  applied preload\n"
+                               "   •  pressed Prepare test (tared)\n\n"
                                "On Yes, the gripper pulls in TENSION and auto-stops at fracture. "
                                "Keep Emergency STOP in reach.")
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -4449,7 +4466,13 @@ class UTMApplication(QMainWindow):
         self.specimenModeCombo.setToolTip("White = black dots on white specimen\nBlack = white dots on black specimen")
         self.startCameraButton = QPushButton("Start Camera")
         self.stopCameraButton = QPushButton("Stop Camera")
-        self.tareDICButton = QPushButton("Tare DIC")
+        self.tareDICButton = QPushButton("Calibrate Px₀")
+        self.tareDICButton.setToolTip(
+            "Freeze Px₀ — the marker separation in pixels that every strain is measured "
+            "against.\nPress it BEFORE preload, on a straight but barely-loaded specimen: strain "
+            "is (Px − Px₀)/Px₀, so whatever is already stretched into the specimen "
+            "when you press this is invisible for the rest of the test.\nPreloading to 300 N "
+            "first hides roughly 2500 µε.")
         self.stopCameraButton.setEnabled(False)
         self.tareDICButton.setEnabled(False)
         button_row.addWidget(QLabel("Specimen:"))
@@ -4471,8 +4494,8 @@ class UTMApplication(QMainWindow):
         self.dicHealthLabel.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         info_row.addWidget(self.dicHealthLabel)
         info_row.addSpacing(16)
-        info_row.addWidget(QLabel("L0:"))
-        self.dicL0Label = QLabel("— px")
+        info_row.addWidget(QLabel("Px₀:"))
+        self.dicL0Label = QLabel("— px")   # Px₀ readout
         self.dicL0Label.setStyleSheet("font-weight: bold;")
         info_row.addWidget(self.dicL0Label)
         info_row.addSpacing(20)
@@ -4654,7 +4677,7 @@ class UTMApplication(QMainWindow):
             "White = black dots on white specimen\nBlack = white dots on black specimen")
         self.startCameraButtonLP = QPushButton("Start Camera")
         self.stopCameraButtonLP = QPushButton("Stop Camera")
-        self.tareDICButtonLP = QPushButton("Tare DIC")
+        self.tareDICButtonLP = QPushButton("Calibrate Px₀")
         self.stopCameraButtonLP.setEnabled(False)
         self.tareDICButtonLP.setEnabled(False)
         btn_row.addWidget(QLabel("Specimen:"))
@@ -4672,7 +4695,7 @@ class UTMApplication(QMainWindow):
         self.dicHealthLabelLP.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         info_row.addWidget(self.dicHealthLabelLP)
         info_row.addSpacing(16)
-        info_row.addWidget(QLabel("L0:"))
+        info_row.addWidget(QLabel("Px₀:"))
         self.dicL0LabelLP = QLabel("— px")
         self.dicL0LabelLP.setStyleSheet("font-weight: bold;")
         info_row.addWidget(self.dicL0LabelLP)
@@ -4886,19 +4909,39 @@ class UTMApplication(QMainWindow):
             self.dicL0LabelLP.setText("— px")
         self.append_to_console("[Camera] Stopped")
 
+    # Load above which Px₀ is almost certainly being captured on an already-stretched specimen.
+    # 300 N on an 80 mm² 50 %-infill dogbone is 3.75 MPa; at E ~1.5 GPa that is ~2500 µε already in
+    # the specimen — 96x the 26 µε DIC noise floor, and strain referenced to it silently EXCLUDES
+    # that. This is the same effect that makes T9's creep/instantaneous ratio an upper bound.
+    PX0_LOAD_WARN_N = 25.0
+
     def on_tare_dic(self):
-        """Set the initial gauge length for DIC strain calculation"""
+        """Freeze Px₀ — the marker separation in pixels that every strain is measured against.
+
+        WHEN this is captured defines the zero of strain, so it is a measurement decision, not
+        bookkeeping. Capture it BEFORE preload, on a specimen that is straight but barely loaded:
+        strain is (Px − Px₀)/Px₀, so anything already stretched into the specimen at capture time is
+        invisible for the rest of the test.
+        """
         self.camera_manager.gauge_length_mm = self.gauge_length
         self.camera_manager.tare_dic()
-        if self.camera_manager.initial_distance is not None:
-            L0_px = self.camera_manager.initial_distance
-            L0_mm = self.gauge_length
-            self.dicL0Label.setText(f"{L0_px:.1f} px  ({L0_mm:.1f} mm)")
-            if hasattr(self, "dicL0LabelLP"):
-                self.dicL0LabelLP.setText(f"{L0_px:.1f} px  ({L0_mm:.1f} mm)")
+        if self.camera_manager.initial_distance is None:
+            return
+        px0 = self.camera_manager.initial_distance
+        load = abs(getattr(self, "current_load", 0.0) or 0.0)
+        self._px0_load_N = load
+        txt = f"{px0:.1f} px  @ {load:.0f} N"
+        for lbl in (getattr(self, "dicL0Label", None), getattr(self, "dicL0LabelLP", None)):
+            if lbl is not None:
+                lbl.setText(txt)
+        self.append_to_console(
+            f"[DIC] Px₀ = {px0:.1f} px  (gauge {self.gauge_length:.1f} mm → "
+            f"{self.camera_manager.px_per_mm:.2f} px/mm), captured at {load:.1f} N")
+        if load > self.PX0_LOAD_WARN_N:
             self.append_to_console(
-                f"[DIC] Tared — L0 = {L0_px:.1f} px | {L0_mm:.1f} mm | {self.camera_manager.px_per_mm:.2f} px/mm"
-            )
+                f"[DIC] ⚠ Px₀ was captured under {load:.0f} N. Strain is measured from HERE, so the "
+                "stretch already in the specimen is excluded from every reading. Release the load, "
+                "press Calibrate Px₀ again, THEN preload.")
 
 def main():
     """Main entry point for the application"""

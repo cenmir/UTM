@@ -185,18 +185,18 @@ QStatusBar {{ background: {window}; color: {text_dim}; }}
 # rule, so without them a disabled "Fracture test" would keep the emphasised look and read as armed
 # when it is not — the exact opposite of what emphasis is for.
 _EMPHASIS_QSS = """
-QPushButton#prepareSpecimenButton, QPushButton#fractureTestButton {{
+QPushButton#prepareTestButton, QPushButton#fractureTestButton {{
     background-color: {raised_hi};
     border: 1px solid {border_strong};
     border-radius: 4px; padding: 5px 12px; font-weight: bold;
 }}
-QPushButton#prepareSpecimenButton:hover, QPushButton#fractureTestButton:hover {{
+QPushButton#prepareTestButton:hover, QPushButton#fractureTestButton:hover {{
     background-color: {panel_alt}; border-color: {border_bright};
 }}
-QPushButton#prepareSpecimenButton:pressed, QPushButton#fractureTestButton:pressed {{
+QPushButton#prepareTestButton:pressed, QPushButton#fractureTestButton:pressed {{
     background-color: {raised};
 }}
-QPushButton#prepareSpecimenButton:disabled, QPushButton#fractureTestButton:disabled {{
+QPushButton#prepareTestButton:disabled, QPushButton#fractureTestButton:disabled {{
     background-color: {window}; color: {text_dim};
     border-color: {border}; font-weight: normal;
 }}
