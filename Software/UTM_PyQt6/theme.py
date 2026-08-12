@@ -31,7 +31,11 @@ DARK = {
     "text":        "#e4e7eb",
     "text_dim":    "#9aa3ae",
     "border":      "#3c444f",     # subtle dividers
-    "border_strong": "#5a6675",   # group-box outlines: must read against `panel`, not blend into it
+    # Group-box outlines are NEUTRAL by design — no hue. Separation is carried by lightness and
+    # line weight, so nothing competes with the status colours (green OK / amber warn / red stop),
+    # which are the only things on this GUI that should read as "coloured".
+    "border_strong": "#7f8b99",   # outer groups, 1 px
+    "border_bright": "#a8b2bf",   # nested groups, 2 px — near-white against the panel
     "accent":      "#4da3ff",
     "accent_text": "#0b1116",
     "ok":          "#3fb950",
@@ -63,6 +67,7 @@ LIGHT = {
     "text_dim":    "#333333",
     "border":      "#bbbbbb",
     "border_strong": "#999999",
+    "border_bright": "#777777",
     "accent":      "#0066cc",
     "accent_text": "#ffffff",
     "ok":          "#00aa66",
@@ -105,15 +110,13 @@ QGroupBox::title {{
     subcontrol-origin: margin; subcontrol-position: top left; left: 9px; padding: 0 5px;
     color: {text}; font-weight: bold;
 }}
-/* NESTED groups: one step lighter than their parent and outlined in the accent, so "this block sits
-   inside Motor Control" is legible at a glance instead of being inferred from the title. */
+/* NESTED groups are distinguished by WEIGHT and LIGHTNESS, not by hue: a 2 px near-white outline
+   and a background one step lighter than the parent. Keeping them neutral leaves green/amber/red
+   meaning exactly one thing on this GUI — machine state. */
 QGroupBox#advancedModesGroup, QGroupBox#specimenTestGroup {{
     background-color: {panel_alt};
-    border: 1px solid {accent};
+    border: 2px solid {border_bright};
     margin-top: 12px;
-}}
-QGroupBox#advancedModesGroup::title, QGroupBox#specimenTestGroup::title {{
-    color: {accent};
 }}
 
 QTabWidget::pane {{ border: 1px solid {border}; background: {panel}; }}
