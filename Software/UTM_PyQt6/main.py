@@ -216,17 +216,29 @@ class UTMApplication(QMainWindow):
         left.addStretch(1)
 
         outer = QHBoxLayout()
-        outer.setContentsMargins(6, 2, 6, 4); outer.setSpacing(10)
+        outer.setContentsMargins(4, 2, 4, 4); outer.setSpacing(6)
         outer.addLayout(left, 1)
         outer.addWidget(gauge, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         QWidget().setLayout(old)              # re-parent the dead layout so Qt destroys it
         self.speedControlGroup.setLayout(outer)
-        # 90 px is what the column can spare beside the controls: left rows need ~173 px of the
-        # 288 px group. Small, but the numeric readout is right next to it — the dial is the
-        # at-a-glance cue, not the measurement.
-        gauge.setFixedSize(90, 90)
-        self.setSpeedSpinBox.setFixedWidth(68)
+        # Width budget for the group is ~288 px: left rows + gauge + margins must fit inside it.
+        # Dropping the "mm/s" suffix after the spin box frees 48 px (the unit is already on the
+        # radio right above it and in the live readout), which is spent on BOTH a wider entry box
+        # and a bigger dial.
+        unit_suffix = getattr(self, "speedUnitValueLabel", None)
+        if unit_suffix is not None:
+            unit_suffix.hide()
+        self.setSpeedSpinBox.setFixedWidth(110)       # 68 was too narrow to read a 3-decimal speed
+
+        # NOT a fixed size. SpeedGauge paints from side = min(width, height) and scales, so it stays
+        # circular at whatever it is given — letting it EXPAND means it takes all the width the left
+        # column does not need, and grows further if the panel is ever dragged wider, instead of
+        # being frozen at whatever looked right in one column width.
+        from PyQt6.QtWidgets import QSizePolicy as _SP
+        gauge.setMinimumSize(104, 104)
+        gauge.setMaximumSize(16777215, 16777215)
+        gauge.setSizePolicy(_SP.Policy.Expanding, _SP.Policy.Expanding)
 
     def _setup_speed_gauge(self):
         """Replace the speed gauge placeholder with actual SpeedGauge widget"""
@@ -239,7 +251,7 @@ class UTMApplication(QMainWindow):
             if item and item.widget() == self.speedGaugePlaceholder:
                 # Create the speed gauge
                 self.speedGauge = SpeedGauge()
-                self.speedGauge.setFixedSize(90, 90)
+                self.speedGauge.setFixedSize(104, 104)
                 self.speedGauge.setMaxValue(self.MAX_RPM)
                 self.speedGauge.setUnit("RPM")
 
@@ -874,12 +886,12 @@ class UTMApplication(QMainWindow):
         # Connect camera buttons (must be after _setup_camera_display creates them)
         self.startCameraButton.clicked.connect(self.on_start_camera)
         self.stopCameraButton.clicked.connect(self.on_stop_camera)
-        self.tareDICButton.clicked.connect(self.on_tare_dic)
+        self.tareDICButton.clicked.connect(self.on_calibrate_px0)
         self.specimenModeCombo.currentTextChanged.connect(self.on_specimen_mode_changed)
         # Load Plot tab's duplicate controls drive the same handlers (state kept in sync)
         self.startCameraButtonLP.clicked.connect(self.on_start_camera)
         self.stopCameraButtonLP.clicked.connect(self.on_stop_camera)
-        self.tareDICButtonLP.clicked.connect(self.on_tare_dic)
+        self.tareDICButtonLP.clicked.connect(self.on_calibrate_px0)
         self.specimenModeComboLP.currentTextChanged.connect(self.on_specimen_mode_changed)
 
         # Added camera state variables 
@@ -4915,7 +4927,42 @@ class UTMApplication(QMainWindow):
     # that. This is the same effect that makes T9's creep/instantaneous ratio an upper bound.
     PX0_LOAD_WARN_N = 25.0
 
-    def on_tare_dic(self):
+    def on_calibrate_px0(self):
+        """The Calibrate Px₀ BUTTON. Confirms the specimen state first, then captures.
+
+        Separate from on_tare_dic() on purpose: Prepare test calls that internally, and a modal
+        dialog firing in the middle of Prepare would be noise. Also note `clicked` passes a bool as
+        the first positional argument, so the confirm flag cannot live on the slot itself — it would
+        arrive as False and silently skip the dialog."""
+        self.on_tare_dic(confirm=True)
+
+    def _confirm_px0(self, load):
+        """Ask before freezing the strain zero. This is the one click in the workflow whose TIMING
+        changes the numbers, so it is worth a question."""
+        from PyQt6.QtWidgets import QMessageBox
+        hot = load > self.PX0_LOAD_WARN_N
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Warning if hot else QMessageBox.Icon.Question)
+        msg.setWindowTitle("Calibrate Px₀")
+        msg.setText("Freeze the pixel reference now?")
+        body = ("Px₀ is the marker separation that every strain is measured against, so this sets "
+                "the ZERO of strain.\n\nConfirm that:\n"
+                "   •  the specimen is mounted in BOTH grips\n"
+                "   •  it is straight — not slack, not bowed\n"
+                "   •  preload has NOT been applied yet\n\n"
+                f"Load right now: {load:.1f} N")
+        if hot:
+            body += ("\n\n⚠  That is above %.0f N, so the specimen is already stretched. Anything "
+                     "already in it becomes invisible to every strain reading from here on — at "
+                     "300 N that is roughly 2500 µε. Release the load first unless you have a "
+                     "reason not to." % self.PX0_LOAD_WARN_N)
+        msg.setInformativeText(body)
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        msg.setDefaultButton(QMessageBox.StandardButton.Cancel if hot
+                             else QMessageBox.StandardButton.Yes)
+        return msg.exec() == QMessageBox.StandardButton.Yes
+
+    def on_tare_dic(self, confirm=False):
         """Freeze Px₀ — the marker separation in pixels that every strain is measured against.
 
         WHEN this is captured defines the zero of strain, so it is a measurement decision, not
@@ -4923,12 +4970,15 @@ class UTMApplication(QMainWindow):
         strain is (Px − Px₀)/Px₀, so anything already stretched into the specimen at capture time is
         invisible for the rest of the test.
         """
+        load = abs(getattr(self, "current_load", 0.0) or 0.0)
+        if confirm and not self._confirm_px0(load):
+            self.append_to_console("[DIC] Px₀ calibration cancelled — reference unchanged.")
+            return
         self.camera_manager.gauge_length_mm = self.gauge_length
         self.camera_manager.tare_dic()
         if self.camera_manager.initial_distance is None:
             return
         px0 = self.camera_manager.initial_distance
-        load = abs(getattr(self, "current_load", 0.0) or 0.0)
         self._px0_load_N = load
         txt = f"{px0:.1f} px  @ {load:.0f} N"
         for lbl in (getattr(self, "dicL0Label", None), getattr(self, "dicL0LabelLP", None)):
