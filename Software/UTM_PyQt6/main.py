@@ -2457,7 +2457,9 @@ class UTMApplication(QMainWindow):
             return w
 
         seg = QVBoxLayout()
-        line = QFrame(); line.setFrameShape(QFrame.Shape.HLine); line.setStyleSheet("color:#bbb"); seg.addWidget(line)
+        line = QFrame(); line.setFrameShape(QFrame.Shape.HLine)
+        self._modeSeparatorLine = line          # recoloured by apply_theme (#bbb glares on dark)
+        seg.addWidget(line)
         self.modeEnableCheck = QCheckBox("Advanced test modes (BETA) — enable to choose type + settings")
         self.modeEnableCheck.setStyleSheet("font-weight:bold")
         self.modeEnableCheck.setToolTip("Tick to arm the advanced closed-loop modes. Left off, the type/settings "
@@ -2740,6 +2742,16 @@ class UTMApplication(QMainWindow):
         backstops = ("Always-on safety net (any mode): 10 kN force · 30 mm travel · stall guard · E-Stop.  "
                      "Motor delivers ~3.2–3.4 kN normally (all six 100% infill specimens fractured there); "
                      "a session that stalls nearer ~2.6 kN is thermally derated, not a hard ceiling.")
+        # The three colours below were picked against a white dialog: #333 body text is all but
+        # invisible on a dark background, and the #0a6 / #a33 accents lose their punch. Read them
+        # from the active palette instead. The diagram itself is a white-background PNG generated
+        # offline, so rather than let it sit as a glaring hole it is mounted on an explicit white
+        # card with a border — it then reads as a FIGURE, which is the usual way to place a light
+        # diagram in a dark UI.
+        import theme as _theme
+        t = _theme.get(getattr(self, "_theme", _theme.DEFAULT))
+        dark = t["name"] == "dark"
+
         dlg = QDialog(self)
         dlg.setWindowTitle(f"{mode} test — parameters")
         lay = QVBoxLayout(dlg)
@@ -2748,16 +2760,21 @@ class UTMApplication(QMainWindow):
             img.setText(f"(diagram not found — run generate_mode_help.py)\n{path}")
         else:
             img.setPixmap(pix)
+        img.setStyleSheet(
+            "background: #ffffff; border: 1px solid %s; border-radius: 6px; padding: 6px;"
+            % (t["border"] if dark else "#cccccc"))
         lay.addWidget(img)
         wmax = max(360, pix.width())
         cap = QLabel(caps.get(mode, "")); cap.setWordWrap(True)
-        cap.setStyleSheet("color:#333; padding:4px 2px;"); cap.setMaximumWidth(wmax)
+        cap.setStyleSheet("color:%s; padding:4px 2px;" % t["text"]); cap.setMaximumWidth(wmax)
         lay.addWidget(cap)
         lim = QLabel(limits.get(mode, "")); lim.setWordWrap(True)
-        lim.setStyleSheet("color:#0a6; font-weight:bold; padding:2px;"); lim.setMaximumWidth(wmax)
+        lim.setStyleSheet("color:%s; font-weight:bold; padding:2px;" % t["ok"])
+        lim.setMaximumWidth(wmax)
         lay.addWidget(lim)
         net = QLabel(backstops); net.setWordWrap(True)
-        net.setStyleSheet("color:#a33; padding:2px 2px 6px 2px;"); net.setMaximumWidth(wmax)
+        net.setStyleSheet("color:%s; padding:2px 2px 6px 2px;" % t["bad"])
+        net.setMaximumWidth(wmax)
         lay.addWidget(net)
         dlg.exec()
 
@@ -4201,6 +4218,10 @@ class UTMApplication(QMainWindow):
             w = getattr(self, attr, None)
             if w is not None:
                 w.setStyleSheet("font-weight: bold; color: %s;" % t["amber_text"])
+
+        sep = getattr(self, "_modeSeparatorLine", None)
+        if sep is not None:
+            sep.setStyleSheet("color:%s;" % (t["border"] if name == "dark" else "#bbbbbb"))
 
         # The crop sliders are custom-painted, so QSS cannot reach them — a 200-grey groove reads as
         # a glaring white bar across a dark GUI.
