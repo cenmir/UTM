@@ -14,7 +14,7 @@ _APP = os.path.join(_ROOT, "Software", "UTM_PyQt6")
 sys.path.insert(0, _APP)
 import utm_analysis as ua                                    # noqa: E402
 
-DATA = os.path.join(_APP, "8.7")
+DATA = os.path.join(_APP, "SF9 - Advanced Test Modes")
 OUT = _HERE
 AREA, GAUGE = 80.0, 80.0
 
@@ -30,7 +30,18 @@ CSV = {
     "sf":         "Specimen_S18_V1_Spray_Staircase-Fracture/UTM_Test_20260809_154041_T7.2_Staircase-Failure.csv",
     "sf_stall":   "Specimen_S20_V2_Spray_Staircase-Fracture/UTM_Test_20260809_152644_T7.csv",
     "pc":         "Specimen_S21_V1_Spray_ProgressiveCyclic-Fracture/UTM_Test_20260809_173857_T8_Progressive-Fracture.csv",
+    # --- follow-up campaign 2026-08-11: the two re-runs that fixed T6.3 and T1 ---
+    "cyc_t64":    "Specimen_S22_V1_Spray_CyclicTest_Sine/UTM_Test_20260811_141121_T6.4_CyclicTest_Sine.csv",
+    "cyc_t65":    "Specimen_S22_V1_Spray_CyclicTest_Sine/UTM_Test_20260811_145039_T6.5_CyclicTest_Sine.csv",
+    "sf_t73":     "Specimen_S22_V1_Spray_Staircase-Fracture/UTM_Test_20260811_151515_T7.3.csv",
+    "t9_base":    "Specimen_S23_V1_Spray_CreepTest_T9/UTM_Test_20260811_160552_T9_Baseline.csv",
+    "t9_creep":   "Specimen_S23_V1_Spray_CreepTest_T9/UTM_Test_20260811_16461b2_T9_Creep_600N_900s.csv",
 }
+
+# ⚠ The `Infill` header field is a LABEL ONLY (it enters no calculation) and the app's 100 % default
+# reasserted itself after a restart: T6.4 / T6.5 / T9 all read "Infill: 100 %" in the CSV while the
+# specimens (S22, S23) are 50 %. T7.3 has it right. Trust the specimen register, not the header.
+INFILL = {"cyc_t64": 50, "cyc_t65": 50, "sf_t73": 50, "t9_base": 50, "t9_creep": 50}
 
 
 def rd(k):
@@ -109,6 +120,78 @@ def creep():
                 n_valid=len(ok), n_drop=n_drop, sigma=st.mean(F) / AREA)
 
 
+def creep_baseline(key="t9_base"):
+    """T9 run 1 — the 900 s ZERO-LOAD drift baseline that T1 never had.
+
+    The specimen sits mounted at ~20 N and nothing is commanded, so anything the DIC reports is
+    instrument/mount drift. Fitting the SLOPE (not an offset) is what makes it subtractable: the two
+    runs are tared separately, so only a rate carries across. The first 30 s are dropped — the
+    camera's own settle."""
+    r = [x for x in rd(key) if x["lpx"] > 100 and x["t"] >= 30.0]
+    t = [x["t"] for x in r]; e = [x["ec"] * 1e6 for x in r]
+    slope, R2 = _fit(t, e)
+    n = len(t); mt = sum(t) / n
+    res = [ee - (slope * tt + (sum(e) / n - slope * mt)) for tt, ee in zip(t, e)]
+    sd = st.pstdev(res)                                    # scatter ABOUT the trend = the noise floor
+    se = sd / math.sqrt(sum((tt - mt) ** 2 for tt in t))    # standard error of the slope
+    half = n // 2
+    s1, _ = _fit(t[:half], e[:half]); s2, _ = _fit(t[half:], e[half:])
+    F = [x["F"] for x in r]
+    return dict(r=r, dur=t[-1] - t[0], n=n, n_raw=len(rd(key)),
+                Fmean=st.mean(F), Fsd=st.pstdev(F), pos=r[0]["pos"],
+                slope=slope, R2=R2, sd=sd, se=se, ci95=1.96 * se,
+                total=slope * (t[-1] - t[0]), s1=s1, s2=s2, ratio=s2 / s1 if s1 else float("nan"),
+                sub_err=1.96 * se * 900.0)                 # subtraction uncertainty over a 900 s hold
+
+
+def creep_t9(key="t9_creep", drift=None, anchor=307.1):
+    """T9 run 2 — 600 N tared held for 900 s on S23 (50 % infill), drift-corrected against run 1.
+
+    The hold window is bounded by the load ARRIVING (first sample within 1 % of target after the
+    ramp) and by the controller RELEASING (last non-zero commanded speed). Everything after that is
+    a fixed-grip relaxation tail, which is a different experiment and must not be folded in.
+
+    Creep vs drift is decided by SHAPE, a criterion fixed before the run: material creep decelerates
+    (Findley n < 1, second-half slope < first-half), instrument drift is linear."""
+    if drift is None:
+        drift = creep_baseline()["slope"]
+    r = [x for x in rd(key) if x["lpx"] > 100]
+    i0 = next(i for i, x in enumerate(r) if x["F"] > 594.0 and x["t"] > 30.0)
+    i1 = max(i for i, x in enumerate(r) if abs(x["spd"]) > 1e-9)
+    h = r[i0:i1 + 1]; t0 = h[0]["t"]
+    T = [x["t"] - t0 for x in h]
+    E = [x["ec"] * 1e6 for x in h]
+    Ec = [e - drift * t for e, t in zip(E, T)]             # drift-corrected
+    e_inst = sum(Ec[:60]) / 60                             # strain on arrival at the hold load
+    F = [x["F"] for x in h]; Fm = st.mean(F)
+    raw = E[-1] - E[0]; net = Ec[-1] - Ec[0]
+    # Findley power law  Δε = A·t^n  (fit in log-log; n<1 ⇔ decelerating primary creep)
+    pts = [(t, e - e_inst) for t, e in zip(T, Ec) if t > 5 and e - e_inst > 1]
+    nA, nR2 = _fit([math.log(t) for t, d in pts], [math.log(d) for t, d in pts])
+    lA = math.exp((sum(math.log(d) for t, d in pts) - nA * sum(math.log(t) for t, d in pts)) / len(pts))
+    half = len(T) // 2
+    s1, _ = _fit(T[:half], Ec[:half]); s2, _ = _fit(T[half:], Ec[half:])
+    tail = [x for x in r if x["t"] > h[-1]["t"] + 5]
+    sig_e = Fm / AREA; sig_t = (Fm + anchor) / AREA
+    return dict(r=r, hold=h, T=T, E=E, Ec=Ec, i0=i0, i1=i1, drift=drift,
+                dur=T[-1], n=len(h), n_raw=len(rd(key)),
+                Fmean=Fm, Fsd=st.pstdev(F), Fmin=min(F), Fmax=max(F),
+                pos0=h[0]["pos"], pos1=h[-1]["pos"], dpos_um=(h[-1]["pos"] - h[0]["pos"]) * 1000,
+                ddic_um=raw * 1e-6 * GAUGE * 1000, raw=raw, net=net,
+                drift_ue=drift * T[-1], drift_pct=100 * drift * T[-1] / raw,
+                e_inst=e_inst, ratio_pct=100 * net / e_inst,
+                sigma_e=sig_e, sigma_t=sig_t, anchor=anchor,
+                J0=e_inst * 1e-6 / sig_e * 1000, J1=Ec[-1] * 1e-6 / sig_e * 1000,
+                findley_n=nA, findley_A=lA, findley_R2=nR2,
+                s1=s1, s2=s2, ratio=s2 / s1 if s1 else float("nan"),
+                spec_frac_um=100 * (raw * 1e-6 * GAUGE) / (h[-1]["pos"] - h[0]["pos"]),
+                tail_dur=(tail[-1]["t"] - tail[0]["t"]) if tail else 0.0,
+                tail_F0=tail[0]["F"] if tail else float("nan"),
+                tail_F1=tail[-1]["F"] if tail else float("nan"),
+                tail_drop=(tail[0]["F"] - tail[-1]["F"]) if tail else float("nan"),
+                tail_pct=(100 * (1 - tail[-1]["F"] / tail[0]["F"])) if tail else float("nan"))
+
+
 def relax():
     """Relaxation holds STRAIN, so the crosshead keeps nudging and commanded speed is never a
     clean zero — the dwell is found from the crosshead POSITION going flat instead."""
@@ -151,7 +234,7 @@ def cyclic(key, lo=100.0, hi=500.0):
     pk = [p for p in (max(r[a:b + 1], key=lambda x: x["F"])["F"] for d, a, b in ss if d == "up")
           if p > 0.6 * hi]
     tr = [t for t in (min(r[a:b + 1], key=lambda x: x["F"])["F"] for d, a, b in ss if d == "down")
-          if t < lo + 0.6 * (hi - lo)]
+          if 0.5 * lo < t < lo + 0.6 * (hi - lo)]
     return dict(r=r, peaks=pk, troughs=tr, lo=lo, hi=hi,
                 pk_err=[p - hi for p in pk], tr_err=[t - lo for t in tr],
                 pk_mae=st.mean(abs(p - hi) for p in pk) if pk else float("nan"),
@@ -159,8 +242,8 @@ def cyclic(key, lo=100.0, hi=500.0):
                 dur=r[-1]["t"])
 
 
-def stair_fracture():
-    r = rd("sf"); fi = _fracture(r)
+def stair_fracture(key="sf"):
+    r = rd(key); fi = _fracture(r)
     a, sd, n = _anchor(r, fi)
     pk = max(range(fi), key=lambda i: r[i]["F"])
     dw = ua.find_dwells(r, min_s=5.0, min_load=50.0)
@@ -322,7 +405,18 @@ def build():
                 stair_lin=staircase("stair_lin"), stair_smo=staircase("stair_smo"),
                 cyc_tri=cyclic("cyc_tri"), cyc_sin=cyclic("cyc_sin"), cyc_sin1=cyclic("cyc_sin1"),
                 cyc_sin2=cyclic("cyc_sin2"),
-                sf=stair_fracture(), pc=prog_cyclic())
+                sf=stair_fracture(), pc=prog_cyclic(),
+                # follow-up campaign — the two re-runs plus the fatigued-specimen fracture
+                cyc_t64=cyclic("cyc_t64", 400.0, 1100.0), cyc_t65=cyclic("cyc_t65", 400.0, 1100.0),
+                loops_t64=cyclic_loops("cyc_t64", 400.0, 1100.0),
+                loops_t65=cyclic_loops("cyc_t65", 400.0, 1100.0),
+                sf_t73=stair_fracture("sf_t73"),
+                # S22's fatigue exposure is T6.4 + T6.5. COUNT it from the load extrema rather than
+                # typing it: the deck, the registry and the posters all carried a hand-typed "15"
+                # for weeks and nothing recomputed it, so nothing could contradict it. It is 16.
+                n_cyc_s22=(len(cyclic("cyc_t64", 400.0, 1100.0)["peaks"])
+                           + len(cyclic("cyc_t65", 400.0, 1100.0)["peaks"])),
+                t9_base=creep_baseline(), t9=creep_t9())
 
 
 M = build()
@@ -494,6 +588,225 @@ def fig_creep():
           color=RED, fs=8.5, va="bottom", weight="bold")
     fig.tight_layout()
     return _save(fig, "sf9_creep.png")
+
+
+def fig_t9_baseline():
+    """T9 run 1 — the zero-load baseline. Two panels: the drift itself with its fit, and the proof
+    that it is LINEAR (so subtractable) rather than log-shaped (which would be creep)."""
+    plt = _plt()
+    b = M["t9_base"]; r = b["r"]
+    fig, (a, c) = plt.subplots(1, 2, figsize=(12.4, 4.2), gridspec_kw={"width_ratios": [1.35, 1]})
+    t = [x["t"] for x in r]; e = [x["ec"] * 1e6 for x in r]
+    a.plot(t, e, color=BLUE, lw=0.9, alpha=0.75, label="DIC strain, no load (%.1f N)" % b["Fmean"])
+    ic = sum(e) / len(e) - b["slope"] * (sum(t) / len(t))
+    a.plot(t, [b["slope"] * x + ic for x in t], color=RED, lw=2.2,
+           label="least-squares drift  %+.4f µε/s  (R² %.2f)" % (b["slope"], b["R2"]))
+    a.fill_between(t, [b["slope"] * x + ic - b["sd"] for x in t],
+                   [b["slope"] * x + ic + b["sd"] for x in t], color=RED, alpha=0.13,
+                   label="±1σ about the trend = ±%.0f µε NOISE FLOOR" % b["sd"])
+    a.set_xlabel("Time (s)"); a.set_ylabel("Engineering strain, DIC  (µε)")
+    a.legend(fontsize=8.5, loc="upper left")
+    a.set_title("Nothing is commanded — so ALL of this is instrument drift\n"
+                "%+.0f µε in %.0f s" % (b["total"], b["dur"]), fontsize=10)
+
+    c.bar([0, 1], [b["s1"], b["s2"]], color=[GREY, GREY], width=0.55)
+    c.axhline(b["slope"], ls="--", color=RED, lw=1.6, label="whole-run slope")
+    for i, v in enumerate((b["s1"], b["s2"])):
+        c.text(i, v + 0.012, "%+.3f" % v, ha="center", fontsize=10, fontweight="bold")
+    c.set_xticks([0, 1]); c.set_xticklabels(["first half", "second half"])
+    c.set_ylabel("Drift rate  (µε/s)"); c.set_ylim(0, max(b["s1"], b["s2"]) * 1.8)
+    c.legend(fontsize=9, loc="lower right")
+    c.set_title("Ratio %.2f — essentially CONSTANT.\nCreep would decelerate; this does not."
+                % b["ratio"], fontsize=10)
+    _note(c, 0.03, 0.90, "slope pinned to ±%.4f µε/s (95 %%)\n⇒ subtracting it over a 900 s hold\n"
+                         "costs only ±%.0f µε" % (b["ci95"], b["sub_err"]),
+          color=GREEN, fs=9, weight="bold")
+    fig.tight_layout()
+    return _save(fig, "sf9_t9_baseline.png")
+
+
+def fig_creep_t9():
+    """T9 run 2 — the creep hold itself. Force control · the drift-corrected creep curve with its
+    Findley fit · the fixed-grip relaxation tail that came free after the policy released."""
+    plt = _plt()
+    d = M["t9"]; h = d["hold"]; T, E, Ec = d["T"], d["E"], d["Ec"]
+    fig, (a, b, c) = plt.subplots(1, 3, figsize=(13.0, 4.2))
+
+    a.plot([x["t"] for x in d["r"]], [x["F"] for x in d["r"]], color=RED, lw=1.4, label="Load")
+    a.axvspan(h[0]["t"], h[-1]["t"], color=GREEN, alpha=0.12)
+    a.set_xlabel("Time (s)"); a.set_ylabel("Load (N)", color=RED); a.tick_params(axis="y", colors=RED)
+    a2 = a.twinx(); a2.grid(False)
+    a2.plot([x["t"] for x in d["r"]], [x["pos"] for x in d["r"]], color=BLUE, lw=1.6,
+            label="Crosshead position")
+    a2.set_ylabel("Crosshead position (mm)", color=BLUE); a2.tick_params(axis="y", colors=BLUE)
+    hh, ll = a.get_legend_handles_labels(); h2, l2 = a2.get_legend_handles_labels()
+    a.legend(hh + h2, ll + l2, loc="lower right", fontsize=8.5)
+    _note(a, 0.30, 0.55, "HOLD  %.1f ± %.1f N\n(±%.2f %% of target)"
+          % (d["Fmean"], d["Fsd"], 100 * d["Fsd"] / d["Fmean"]), color=GREEN, fs=9.5, weight="bold")
+    _note(a, 0.30, 0.33, "the crosshead must keep ADVANCING\n+%.0f µm to hold that force —\n"
+                         "that motion IS the creep" % d["dpos_um"], color="#333", fs=8.5)
+    a.set_title("Force held constant — by moving", fontsize=10)
+
+    b.plot(T, E, color=GREY, lw=1.0, alpha=0.8, label="raw DIC  (+%.0f µε)" % d["raw"])
+    b.plot(T, Ec, color=BLUE, lw=1.6, label="drift-corrected  (+%.0f µε)" % d["net"])
+    fit = [d["e_inst"] + d["findley_A"] * (t ** d["findley_n"]) if t > 0 else d["e_inst"] for t in T]
+    b.plot(T, fit, color=RED, lw=2.0, ls="--",
+           label="Findley  Δε = %.0f·t^%.2f" % (d["findley_A"], d["findley_n"]))
+    b.set_xlabel("Time into hold (s)"); b.set_ylabel("Engineering strain, DIC  (µε)")
+    b.legend(fontsize=8.5, loc="lower right")
+    _note(b, 0.03, 0.96, "n = %.2f < 1  ⇒  DECELERATING\n= primary creep, not linear drift"
+          % d["findley_n"], color=GREEN, fs=9, weight="bold")
+    _note(b, 0.03, 0.72, "net %.0f µε  =  %.0f× the %.0f µε noise floor"
+          % (d["net"], d["net"] / M["t9_base"]["sd"], M["t9_base"]["sd"]), color="#333", fs=8.5)
+    b.set_title("Creep curve — drift removed", fontsize=10)
+
+    tail = [x for x in d["r"] if x["t"] > h[-1]["t"]]
+    c.plot([x["t"] - h[-1]["t"] for x in tail], [x["F"] for x in tail], color=ORANGE, lw=1.8)
+    c.set_xlabel("Time after the policy released (s)"); c.set_ylabel("Load (N)")
+    c.set_title("BONUS — relaxation at frozen grip", fontsize=10)
+    _note(c, 0.95, 0.92, "position frozen at %.4f mm\n%.0f → %.0f N  (−%.1f N, −%.1f %%)"
+          % (d["pos1"], d["tail_F0"], d["tail_F1"], d["tail_drop"], d["tail_pct"]),
+          color="#333", fs=9, ha="right", weight="bold")
+    _note(c, 0.95, 0.16, "same specimen, same minute —\na free relaxation dataset", color=GREEN,
+          fs=8.5, ha="right")
+    fig.tight_layout()
+    return _save(fig, "sf9_creep_t9.png")
+
+
+def fig_creep_compare():
+    """T1 vs T9 — why the same MODE gave a negative result once and a clean one the next time."""
+    plt = _plt()
+    t1, t9, b = M["creep"], M["t9"], M["t9_base"]
+    fig, (a, c, e) = plt.subplots(1, 3, figsize=(13.0, 4.0))
+
+    lab = ["stress\n(% of UTS)", "hold\nduration (s)", "creep strain\nmeasured (µε)"]
+    v1 = [100 * t1["sigma"] / 46.2, t1["dur"], abs(t1["de"])]
+    v9 = [100 * t9["sigma_t"] / 21.2, t9["dur"], t9["net"]]
+    x = range(3)
+    a.bar([i - 0.2 for i in x], v1, width=0.4, color=GREY, label="T1 (S20, 100 %)")
+    a.bar([i + 0.2 for i in x], v9, width=0.4, color=GREEN, label="T9 (S23, 50 %)")
+    a.set_yscale("log"); a.set_xticks(list(x)); a.set_xticklabels(lab, fontsize=8.5)
+    for i, (p, q) in enumerate(zip(v1, v9)):
+        a.text(i - 0.2, p * 1.15, "%.0f" % p, ha="center", fontsize=8.5, fontweight="bold")
+        a.text(i + 0.2, q * 1.15, "%.0f" % q, ha="center", fontsize=8.5, fontweight="bold",
+               color=GREEN)
+    a.legend(fontsize=8.5, loc="upper left")
+    a.set_title("Three knobs, all turned the right way", fontsize=10)
+
+    names = ["T1\nmeasured", "T1\nnoise", "T9\nmeasured", "T9\nnoise"]
+    vals = [abs(t1["de"]), t1["e_sd"] * 1e6, t9["net"], b["sd"]]
+    cols = [GREY, RED, GREEN, RED]
+    c.bar(range(4), vals, color=cols)
+    for i, v in enumerate(vals):
+        c.text(i, v + 25, "%.0f" % v, ha="center", fontsize=9, fontweight="bold")
+    c.set_xticks(range(4)); c.set_xticklabels(names, fontsize=8.5)
+    c.set_ylabel("Strain  (µε)")
+    c.set_title("Signal vs noise — T1 %.1f× · T9 %.0f×"
+                % (abs(t1["de"]) / (t1["e_sd"] * 1e6), t9["net"] / b["sd"]), fontsize=10)
+    _note(c, 0.03, 0.95, "T1's 'creep' was smaller\nthan its own noise", color=RED, fs=8.5,
+          weight="bold")
+
+    e.plot(t9["T"], [x - t9["e_inst"] for x in t9["Ec"]], color=GREEN, lw=1.8, label="T9 — creep")
+    e.plot(t9["T"], [b["slope"] * t for t in t9["T"]], color=RED, lw=1.8, ls="--",
+           label="baseline drift (subtracted)")
+    e.axhline(b["sd"], color=GREY, ls=":", lw=1.2)
+    e.axhline(-b["sd"], color=GREY, ls=":", lw=1.2)
+    e.fill_between(t9["T"], -b["sd"], b["sd"], color=GREY, alpha=0.18,
+                   label="±%.0f µε noise floor" % b["sd"])
+    e.set_xlabel("Time into hold (s)"); e.set_ylabel("Strain change  (µε)")
+    e.legend(fontsize=8.5, loc="upper left")
+    e.set_title("Curved vs straight — the shape test", fontsize=10)
+    _note(e, 0.98, 0.42, "creep BENDS OVER, drift does not.\nThat is the discriminator —\n"
+                         "and it was fixed BEFORE the run.", color="#333", fs=8.5, ha="right")
+    fig.tight_layout()
+    return _save(fig, "sf9_creep_compare.png")
+
+
+def fig_cyclic_t65():
+    """T6.5 — the cyclic re-run at 400/1100 N. Loops that actually close, and a modulus that falls."""
+    plt = _plt()
+    L = M["loops_t65"]; c65 = M["cyc_t65"]
+    fig, (a, b, c) = plt.subplots(1, 3, figsize=(13.0, 4.2))
+
+    r = c65["r"]
+    a.plot([x["t"] for x in r], [x["F"] for x in r], color=RED, lw=1.3, label="Load")
+    a.axhline(1100, ls="--", color=GREEN, lw=1.3); a.axhline(400, ls="--", color=GREEN, lw=1.3)
+    a.set_xlabel("Time (s)"); a.set_ylabel("Load (N)")
+    a.legend(fontsize=9, loc="lower right")
+    _note(a, 0.03, 0.95, "8 cycles · peak error %.1f N\ntrough error %.1f N"
+          % (c65["pk_mae"], c65["tr_mae"]), color=GREEN, fs=9, weight="bold")
+    a.set_title("400 → 1100 N sine, 8 cycles", fontsize=10)
+
+    cm = plt.get_cmap("viridis")
+    for i, l in enumerate(L):
+        pts = l["up"] + l["dn"]
+        b.plot([x["ec"] * 1e6 for x in pts], [x["F"] / AREA for x in pts],
+               color=cm(i / max(1, len(L) - 1)), lw=1.5, label="cycle %d" % l["n"])
+    b.set_xlabel("Engineering strain, DIC  (µε)"); b.set_ylabel("Engineering stress  (MPa)")
+    b.legend(fontsize=8, loc="upper left", ncol=2)
+    b.set_title("Loops CLOSE and drift right\n(%.1f px excursion vs T6.3's %.1f)"
+                % (L[0]["px_span"], M["loops_sin"][0]["px_span"]), fontsize=10)
+
+    ns = [l["n"] for l in L]
+    c.plot(ns, [l["area_kJm3"] for l in L], "o-", color=ORANGE, lw=2.0, label="loop area (kJ/m³)")
+    c.set_xlabel("Cycle"); c.set_ylabel("Loop area  (kJ/m³)", color=ORANGE)
+    c.tick_params(axis="y", colors=ORANGE)
+    c2 = c.twinx(); c2.grid(False)
+    c2.plot(ns, [l["E_dn"] / 1000 for l in L], "s-", color=BLUE, lw=2.0, label="unload E (GPa)")
+    c2.set_ylabel("Unload modulus  (GPa)", color=BLUE); c2.tick_params(axis="y", colors=BLUE)
+    hh, ll = c.get_legend_handles_labels(); h2, l2 = c2.get_legend_handles_labels()
+    c.legend(hh + h2, ll + l2, fontsize=8.5, loc="upper right")
+    c.set_title("Both fall monotonically:\n%.1f → %.1f kJ/m³ · %.2f → %.2f GPa"
+                % (L[0]["area_kJm3"], L[-1]["area_kJm3"], L[0]["E_dn"] / 1000, L[-1]["E_dn"] / 1000),
+                fontsize=10)
+    fig.tight_layout()
+    return _save(fig, "sf9_cyclic_t65.png")
+
+
+def fig_cyclic_compare():
+    """T6.3 vs T6.5 — the load bounds are the whole story."""
+    plt = _plt()
+    l3, l5 = M["loops_sin"], M["loops_t65"]
+    fig, (a, b, c) = plt.subplots(1, 3, figsize=(13.0, 4.0))
+
+    for LL, col, lab in ((l3, GREY, "T6.3  100→500 N"), (l5, GREEN, "T6.5  400→1100 N")):
+        for i, l in enumerate(LL):
+            pts = l["up"] + l["dn"]
+            a.plot([x["ec"] * 1e6 for x in pts], [x["F"] / AREA for x in pts], color=col, lw=1.3,
+                   label=lab if i == 0 else None)
+    a.legend(fontsize=9, loc="upper left")
+    a.set_xlabel("Engineering strain, DIC  (µε)"); a.set_ylabel("Engineering stress  (MPa)")
+    a.set_title("Same mode, same specimen family —\nonly the BOUNDS changed", fontsize=10)
+
+    names = ["T6.3", "T6.5"]
+    px = [l3[0]["px_span"], l5[0]["px_span"]]
+    b.bar(range(2), px, color=[GREY, GREEN], width=0.5)
+    b.axhline(10, ls="--", color=GREEN, lw=1.5)
+    for i, v in enumerate(px):
+        b.text(i, v + 0.3, "%.1f px" % v, ha="center", fontsize=10, fontweight="bold")
+    b.set_xticks(range(2)); b.set_xticklabels(names)
+    b.set_ylabel("Strain excursion per cycle  (px)"); b.set_ylim(0, max(px) * 1.35)
+    _note(b, 0.03, 0.95, "≥10 px is where the loop\nstops being quantisation noise",
+          color=GREEN, fs=9, weight="bold")
+    b.set_title("The prediction on p189 was 13.1 px.\nMeasured: %.1f px." % px[1], fontsize=10)
+
+    r2 = [l3[0]["R2_dn"], l5[0]["R2_dn"]]
+    ar = [l3[0]["area_kJm3"], l5[0]["area_kJm3"]]
+    c.bar([i - 0.2 for i in range(2)], r2, width=0.38, color=BLUE, label="unload-fit R²")
+    c2 = c.twinx(); c2.grid(False)
+    c2.bar([i + 0.2 for i in range(2)], ar, width=0.38, color=ORANGE, label="loop area (kJ/m³)")
+    c.set_xticks(range(2)); c.set_xticklabels(names)
+    c.set_ylabel("Unload-fit R²", color=BLUE); c.set_ylim(0, 1.15)
+    c2.set_ylabel("Loop area (kJ/m³)", color=ORANGE)
+    for i, v in enumerate(r2):
+        c.text(i - 0.2, v + 0.03, "%.2f" % v, ha="center", fontsize=9, fontweight="bold")
+    for i, v in enumerate(ar):
+        c2.text(i + 0.2, v + 0.4, "%.1f" % v, ha="center", fontsize=9, fontweight="bold")
+    hh, ll = c.get_legend_handles_labels(); h2, l2 = c2.get_legend_handles_labels()
+    c.legend(hh + h2, ll + l2, fontsize=8.5, loc="upper left")
+    c.set_title("Modulus becomes fittable and the\nloop area becomes a real number", fontsize=10)
+    fig.tight_layout()
+    return _save(fig, "sf9_cyclic_compare.png")
 
 
 def fig_stair_fracture():
@@ -1115,7 +1428,9 @@ def make_plots():
             fig_stair_fracture(), fig_prog_cyclic(), fig_t7_stall(),
             fig_stress_strain(), fig_cyclic_hyst(), fig_stair_modulus(), fig_literature(),
             fig_teach_stiffness(), fig_teach_dissipation(), fig_dic_halt(),
-            fig_strain_terms(), fig_true_stress()]
+            fig_strain_terms(), fig_true_stress(),
+            fig_t9_baseline(), fig_creep_t9(), fig_creep_compare(),
+            fig_cyclic_t65(), fig_cyclic_compare()]
 
 
 if __name__ == "__main__":

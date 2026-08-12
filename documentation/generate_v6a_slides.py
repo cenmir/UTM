@@ -772,24 +772,45 @@ def pic_or_ph(sl, path, x, y, w, ph_h, note):
     else:
         flow(sl, x, y, w, ph_h, note, fill=LIGHT_GREY, border=FLOW_NEUTRAL, fs=11, bold=True, fg=GREY_TEXT)
 
-# ---- Slide 169: SMART-UTM feature set (SF 1-8) — proof slides FOLLOW in this order ----
+# ---- Slide 169: SMART-UTM feature set (SF1-SF16) — proof slides FOLLOW in this order ----
+# Rebuilt 2026-08-12: it showed only the original 8 cards and a banner promising "4 more modes"
+# that shipped on 2026-08-09. SF numbers are append-only IDs, so the grid runs SF1..SF16 in NUMERIC
+# order with status carried by colour. SF17 was carded and retired the same day — a card has to be
+# something the OPERATOR invokes or that acts on the machine during a run; a developer-only
+# simulation harness is neither, and it was the one entry that made "all rig-validated" false.
 s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "NEW — SMART-UTM FEATURE SET (2026-07)")
-tb(s, 0.4, 1.24, 12.55, 0.5, "Every card is built AND rig-validated (green). Proof slides FOLLOW in this same SF 1-8 order.", fs=12, italic=True, colour=GREY_TEXT)
-cards = [
-    ("DIC health HUD", "live 2/2 · jitter"), ("Prepare specimen", "1-click tare all"),
-    ("Settings save / load", "reuse a setup"), ("Generate report", "1-click PDF + PNG"),
-    ("Auto-stop at fracture", "halts on collapse"), ("Strain-rate fracture", "constant dε/dt"),
-    ("Stall guard", "halts frozen motor"), ("Release preload", "safe return to 0"),
+title(s, "SMART-UTM FEATURE SET — SF1 to SF16")
+tb(s, 0.4, 1.18, 12.55, 0.42,
+   "12 built and rig-validated (green) · 3 planned (blue) · 1 hardware-blocked (amber). "
+   "Numeric order, so a card can be found by its SF number; proof slides follow in the same order.",
+   fs=12, italic=True, colour=GREY_TEXT)
+_sf_cards = [
+    (1,  "DIC health HUD", "live 2/2 · jitter", "done"),
+    (2,  "Prepare specimen", "1-click tare all", "done"),
+    (3,  "Settings / recipes", "reuse a whole setup", "done"),
+    (4,  "Generate report", "1-click PDF + PNG", "done"),
+    (5,  "Auto-stop at fracture", "halts on collapse", "done"),
+    (6,  "Strain-rate fracture", "constant dε/dt", "done"),
+    (7,  "Stall guard", "halts a frozen motor", "done"),
+    (8,  "Release load", "safe return to true 0", "done"),
+    (9,  "6 closed-loop protocols", "cyclic…prog-cyclic→fracture", "done"),
+    (10, "Auto-preload", "0.2→0.1→0.02 mm/s", "done"),
+    (11, "Auto-metadata + foldering", "per-specimen deck", "plan"),
+    (12, "DIC auto-calibrate", "auto-exposure · follow ROI", "plan"),
+    (13, "Guided workflow + overlay", "wizard · live E / UTS", "plan"),
+    (14, "Poisson / true Cauchy", "optics-blocked, not code", "block"),
+    (15, "Test registry", "every run + force anchor", "done"),
+    (16, "Dead-DIC guard + backstops", "0.2 s freeze / 1.0 s halt", "done"),
 ]
-cx = [0.4, 3.62, 6.84, 10.06]; cy = [1.85, 3.75]
-for i, (t_, b_) in enumerate(cards):
-    flow(s, cx[i % 4], cy[i // 4], 3.0, 1.5, "SF %d\n%s\n\n%s" % (i + 1, t_, b_), fill=GREEN_PASS, border=DARK_GREEN, fs=12, bold=True, fg=DARK_GREEN)
-banner(s, 0.4, 5.6, 12.55, 0.95,
-       "3-layer safety on every driven test — load-collapse detector · stall guard · 10 kN / 30 mm backstop + dead-DIC "
-       "freeze.  Engine ready to add 4 more modes: cyclic · staircase · relaxation · creep.",
-       fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
-footer(s, "Details: Software/UTM_PyQt6/ROADMAP.md · TESTING_TODO.md. App wiring snapshot-committed (main.py a3b187f).")
+_fill = {"done": (GREEN_PASS, DARK_GREEN), "plan": (LIGHT_BLUE, BLACK), "block": (YELLOW_WARN, BLACK)}
+_cx = [0.40, 3.62, 6.84, 10.06]
+_cy = [1.70, 3.02, 4.34, 5.66]
+for _i, (_n, _t, _b, _st) in enumerate(_sf_cards):
+    _f, _fg = _fill[_st]
+    flow(s, _cx[_i % 4], _cy[_i // 4], 3.0, 1.20,
+         "SF%d  %s\n%s" % (_n, _t, _b), fill=_f, border=_fg, fs=10.5, bold=True, fg=_fg)
+footer(s, "Four safety layers on every driven test: load-collapse detector · stall guard · 10 kN / 30 mm "
+          "backstop · dead-DIC freeze.  Canonical list: Software/UTM_PyQt6/ROADMAP.md §3c.")
 pageno(s, 167)
 
 # ---- Slide 170: SF 1 · DIC health HUD — modes  [content unchanged, was slide 176] ----
@@ -1302,8 +1323,9 @@ banner(s, 0.45, 5.94, 12.45, 0.58,
        "the loop. Cycling at only 14 % of fracture load leaves little real hysteresis to compete with it.",
        fill=YELLOW_WARN, fg=BLACK, fs=11)
 banner(s, 0.45, 6.58, 12.45, 0.46,
-       "PROPOSED T6.4 — 50 % infill · Low 400 N · High 1100 N · 8 cycles · Sine · 0.10 mm/s  →  "
-       "13.1 px loop (3.6× today), floor stays above the backlash band, peak 79 % of fracture.",
+       "✅ RESOLVED — T6.4 / T6.5 ran 2026-08-11 on S22 at 400→1100 N and the loops closed: "
+       "%.1f px measured against the 13.1 px predicted here.  See p211-212."
+       % SF9["loops_t65"][0]["px_span"],
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
 footer(s, "The 400 N floor is the key: never unload through the slack band, so backlash is crossed "
           "once at the start instead of twice per cycle. Arm auto-stop — 1100 N is above the 694 N "
@@ -1424,9 +1446,11 @@ sf9_result(196, "CREEP", "T1", "documentation/sf9_creep.png",
                    "correctly reported."
                    % (cr["Fsd"], 100 * cr["Fsd"] / cr["Fmean"], cr["sigma"], 100 * cr["sigma"] / 46.2),
            vfill=YELLOW_WARN,
-           proposal="PROPOSED T9 — 50 % infill · hold 600 N tared (11.3 MPa = 53 % UTS, 86 % of the "
-                    "694 N yield knee) · 900 s · ramp 0.10 mm/s  →  a typical 6 % creep strain would "
-                    "be ≈450 µε = 20× the detection floor; even 1 % is still 3×.",
+           proposal="✅ RESOLVED — T9 ran 2026-08-11 on S23 at 600 N tared for %.0f s and creep IS "
+                    "resolved: %+.0f µε drift-corrected = %.0f× the noise floor, decelerating "
+                    "(Findley n = %.2f).  See p213-215."
+                    % (SF9["t9"]["dur"], SF9["t9"]["net"],
+                       SF9["t9"]["net"] / SF9["t9_base"]["sd"], SF9["t9"]["findley_n"]),
            foot="T1 could not have detected creep at all: fitted rate +0.002 ± 0.060 µε/s, so the 95 % "
                 "bound is <0.12 µε/s — under 5 µε across the whole 40 s hold. The hold was ~20× too "
                 "short and the stress ~2× too low. Run a 900 s ZERO-LOAD baseline first to separate "
@@ -1927,9 +1951,279 @@ banner(s, 0.45, 6.80, 12.45, 0.44,
 footer(s, "")
 pageno(s, 210)
 
+# =============================================================================================
+# FOLLOW-UP CAMPAIGN (pages 211-216) — the two re-runs that turned SF9's two NEGATIVE results
+# positive, each with a before/after comparison, plus the register for the new runs.
+# Same structure as the mode pages: RESULTS then WHY-IT-IS-BETTER.
+# =============================================================================================
+_t64, _t65 = SF9["cyc_t64"], SF9["cyc_t65"]
+_L64, _L65 = SF9["loops_t64"], SF9["loops_t65"]
+_L63 = SF9["loops_sin"]
+_dic = lambda k: 100.0 * sum(1 for x in SF9[k]["r"] if x["lpx"] > 100) / len(SF9[k]["r"])
+
+# ---- 211: CYCLIC re-run — results ----
+sf9_result(211, "CYCLIC — RE-RUN", "T6.4 · T6.5", "documentation/sf9_cyclic_t65.png",
+           kpis=[("Peak error", "± %.1f N" % _t65["pk_mae"]),
+                 ("Strain excursion", "%.1f px  (was %.1f)" % (_L65[0]["px_span"], _L63[0]["px_span"])),
+                 ("Loop area", "%.1f → %.1f kJ/m³" % (_L65[0]["area_kJm3"], _L65[-1]["area_kJm3"])),
+                 ("Unload modulus", "%.2f → %.2f GPa" % (_L65[0]["E_dn"] / 1000, _L65[-1]["E_dn"] / 1000)),
+                 ("Unload-fit R²", "%.2f  (was %.2f)" % (_L65[0]["R2_dn"], _L63[0]["R2_dn"]))],
+           tbl=[["Quantity", "T6.4  (1st run)", "T6.5  (2nd run)", "What it means"],
+                ["Closed loops recovered",
+                 "%d of 8  ·  %.0f %% frames" % (len(_L64), _dic("cyc_t64")),
+                 "%d of 8  ·  %.0f %% frames" % (len(_L65), _dic("cyc_t65")),
+                 "T6.4 lost the camera at t ≈ 145 s"],
+                ["Loop area, first → last",
+                 "%.1f → %.1f kJ/m³" % (_L64[0]["area_kJm3"], _L64[-1]["area_kJm3"]),
+                 "%.1f → %.1f kJ/m³" % (_L65[0]["area_kJm3"], _L65[-1]["area_kJm3"]),
+                 "falls monotonically — real energy, not noise"],
+                ["Unload modulus (R²), 1st → last",
+                 "%.2f → %.2f GPa  (%.2f)" % (_L64[0]["E_dn"] / 1000, _L64[-1]["E_dn"] / 1000, _L64[-1]["R2_dn"]),
+                 "%.2f → %.2f GPa  (≥ %.2f)" % (_L65[0]["E_dn"] / 1000, _L65[-1]["E_dn"] / 1000,
+                                                min(l["R2_dn"] for l in _L65)),
+                 "resolvable every cycle — impossible on T6.3"]],
+           verdict="T6.5 IS THE SLIDE-READY CYCLIC RESULT: 8 cycles at 400→1100 N, peak held to "
+                   "± %.1f N, %d closed loops, and BOTH damage metrics (loop area, unload E) fall "
+                   "monotonically. The negative result on p189 is closed."
+                   % (_t65["pk_mae"], len(_L65)),
+           proposal="STILL MISSING — a DAMAGE CURVE. T6.4 lost DIC mid-run and T6.5 ran on the "
+                    "already-cycled specimen, and E RECOVERED over the 40 min between them "
+                    "(cycle 3 = 1.52 → cycle 8 = 1.54 GPa), so recoverable softening cannot be "
+                    "separated from permanent damage. D = 1 − Eᵢ/E₀ is NOT computable here.",
+           foot="Both runs are S22, 50 %% infill. Cycle 1 is never a baseline — rig slack inflates it "
+                "(ratchet %+.0f µm on T6.4 cycle 1 vs %+.0f µm on cycle 2). The loop extraction needs a "
+                "trough-peak-trough triplet, so the first and last half-cycles are correctly not counted."
+                % (_L64[0]["ratchet_um"], _L64[1]["ratchet_um"]))
+
+# ---- 212: CYCLIC — why the re-run worked ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "T6.3 → T6.5 — WHY THE RE-RUN WORKED")
+tb(s, 0.5, 1.14, 12.4, 0.36,
+   "One parameter, not a new machine. Same mode, same engine, same camera, same code — the ONLY "
+   "change is where the cycle bottoms out and tops out. p189 predicted a 13.1 px loop from that "
+   "change alone; here is the measurement.", fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_cyclic_compare.png", 0.45, 1.52, 12.45, 3.05)
+
+_cmp = [["What was wrong on T6.3", "Why it was wrong", "What T6.5 changed", "Result"],
+        ["Loop area was mostly BACKLASH",
+         "unloading to 100 N re-crosses the slack band every cycle",
+         "floor raised to 400 N — crossed ONCE, at the start",
+         "loops close; ratchet %+.0f µm/cycle" % _L65[-1]["ratchet_um"]],
+        ["Strain excursion only %.1f px" % _L63[0]["px_span"],
+         "that swing is near the centroid quantisation limit",
+         "peak raised to 1100 N — %.1f× the load swing" % ((1100 - 400) / (500 - 100)),
+         "%.1f px, vs 13.1 px predicted" % _L65[0]["px_span"]],
+        ["Unload modulus unfittable (R² %.2f)" % _L63[0]["R2_dn"],
+         "the strain change in a small unload is under the noise floor",
+         "the unload now spans %.0f µε, not ~%.0f"
+         % (_L65[0]["e_max"] * 1e6 - _L65[0]["e_min"] * 1e6,
+            _L63[0]["e_max"] * 1e6 - _L63[0]["e_min"] * 1e6),
+         "R² %.2f–%.2f every cycle" % (min(l["R2_dn"] for l in _L65), max(l["R2_dn"] for l in _L65))]]
+table(s, 0.45, 4.72, 12.45, 0.30 * len(_cmp), _cmp,
+      cw=[2.85, 4.05, 3.45, 2.10], hf=9.5, bf=9,
+      ov={(r, 3): {"bg": GREEN_PASS, "bold": True} for r in range(1, len(_cmp))})
+
+banner(s, 0.45, 6.16, 12.45, 0.56,
+       "The lesson generalises: on a machine with slack, WHERE you cycle matters more than HOW "
+       "accurately you cycle. T6.3 already held its peaks to %.0f N — the control was never the "
+       "problem, the operating window was."
+       % SF9["cyc_sin"]["pk_mae"],
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
+footer(s, "Kept honest: T6.3's loop area was 7.6 kJ/m³, not zero — it was never 'no signal', it was "
+          "signal you cannot attribute, and the R² column is what separates those two cases. Different "
+          "specimens (S20 100 % vs S22 50 %), so absolute stress is not comparable; resolvability is.")
+pageno(s, 212)
+
+# ---- 213: CREEP re-run — the two-run protocol and its baseline ----
+_b9, _t9 = SF9["t9_base"], SF9["t9"]
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF9 · CREEP  [T9] — HOW IT WAS DESIGNED: TWO RUNS")
+tb(s, 0.5, 1.14, 12.4, 0.36,
+   "T1 failed because a creep signal below the noise floor is indistinguishable from the instrument "
+   "drifting. T9 therefore MEASURES the drift first — same specimen, same mounting, nothing "
+   "commanded — then subtracts its SLOPE from the real hold.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_t9_baseline.png", 0.45, 1.52, 12.45, 2.95)
+
+header(s, 0.5, 4.56, 6.05, "The protocol — order matters")
+table(s, 0.5, 4.92, 6.05, 0.27 * 5,
+      [["Step", "What runs", "Why"],
+       ["1  Preload + tare", "300 N, tare force & DIC", "one mounting state for both runs"],
+       ["2  RUN 1 — baseline", "%.0f s, nothing commanded" % _b9["dur"], "drift, with zero load applied"],
+       ["3  RUN 2 — creep", "600 N tared, %.0f s hold" % _t9["dur"], "the actual experiment"],
+       ["4  Subtract the SLOPE", "%+.4f µε/s" % _b9["slope"], "a rate survives a re-tare; an offset does not"]],
+      cw=[1.55, 2.10, 2.40], hf=9.5, bf=9,
+      ov={(4, c): {"bg": GREEN_PASS, "bold": c == 0} for c in range(3)})
+
+header(s, 6.85, 4.56, 6.05, "Settings, and how the target was sized")
+table(s, 6.85, 4.92, 6.05, 0.27 * 5,
+      [["Parameter", "Value", "Reasoning"],
+       ["Hold load", "600 N tared", "%.1f MPa true = %.0f %% of the 21.2 MPa UTS"
+        % (_t9["sigma_t"], 100 * _t9["sigma_t"] / 21.2)],
+       ["Hold duration", "900 s commanded", "%.0f s of settled hold measured" % _t9["dur"]],
+       ["Specimen", "S23 · 50 % infill", "50 % infill ⇒ ~2× the stress at the same load"],
+       ["Ramp speed", "0.100 mm/s", "same as every other SF9 mode"]],
+      cw=[1.35, 1.40, 3.30], hf=9.5, bf=9)
+
+banner(s, 0.45, 6.42, 12.45, 0.50,
+       "THE DISCRIMINATOR WAS FIXED BEFORE THE RUN: material creep DECELERATES (log-shaped), "
+       "instrument drift is LINEAR. The baseline's half-slopes are %.3f / %.3f µε/s (ratio %.2f) — "
+       "linear, exactly as a drift should be. Anything curved in run 2 is therefore the specimen."
+       % (_b9["s1"], _b9["s2"], _b9["ratio"]),
+       fill=LIGHT_BLUE, fg=BLACK, fs=11)
+footer(s, "The baseline also RE-MEASURED the DIC noise floor as ± %.0f µε over a full 900 s window "
+          "(p196's ± 12 µε is a 40 s window). %d of %d rows DIC-valid at %.1f ± %.2f N, crosshead frozen."
+          % (_b9["sd"], _b9["n"], _b9["n_raw"], _b9["Fmean"], _b9["Fsd"]))
+pageno(s, 213)
+
+# ---- 214: CREEP re-run — results ----
+sf9_result(214, "CREEP — RE-RUN", "T9", "documentation/sf9_creep_t9.png",
+           kpis=[("Force held", "%.1f ± %.1f N" % (_t9["Fmean"], _t9["Fsd"])),
+                 ("Creep strain", "%+.0f µε" % _t9["net"]),
+                 ("vs noise floor", "%.0f ×" % (_t9["net"] / _b9["sd"])),
+                 ("Findley exponent", "n = %.2f" % _t9["findley_n"]),
+                 ("DIC frames tracked", "%.0f %%" % (100.0 * len([x for x in SF9["t9"]["r"] if x["lpx"] > 100]) / _t9["n_raw"]))],
+           tbl=[["Quantity", "Value", "Interpretation"],
+                ["Load held over the %.0f s window" % _t9["dur"],
+                 "%.2f ± %.2f N   (%.1f–%.1f N)" % (_t9["Fmean"], _t9["Fsd"], _t9["Fmin"], _t9["Fmax"]),
+                 "± %.2f %% — the strain rise is not a load artefact" % (100 * _t9["Fsd"] / _t9["Fmean"])],
+                ["Raw strain rise → drift-corrected",
+                 "%+.0f µε  →  %+.0f µε" % (_t9["raw"], _t9["net"]),
+                 "drift only %.0f %% of raw; subtraction costs ± %.0f µε"
+                 % (_t9["drift_pct"], _b9["sub_err"])],
+                ["Shape — the pre-set discriminator",
+                 "Findley n = %.2f · half-slopes %.2f → %.2f µε/s"
+                 % (_t9["findley_n"], _t9["s1"], _t9["s2"]),
+                 "n < 1 and the rate halves: primary creep, not drift"],
+                ["Crosshead travel to hold the load",
+                 "%+.0f µm   (DIC gauge only %+.0f µm)" % (_t9["dpos_um"], _t9["ddic_um"]),
+                 "only %.0f %% of that motion is specimen — rest is rig" % _t9["spec_frac_um"]]],
+           verdict="CREEP RESOLVED: %+.0f µε drift-corrected = %.0f× the %.0f µε noise floor, "
+                   "decelerating (n = %.2f), while the load sat at %.0f ± %.1f N. The negative result "
+                   "on p196 is closed."
+                   % (_t9["net"], _t9["net"] / _b9["sd"], _b9["sd"], _t9["findley_n"],
+                      _t9["Fmean"], _t9["Fsd"]),
+           foot="Also measured: creep compliance J = %.3f → %.3f GPa⁻¹ (+%.1f %%), plus a free fixed-grip "
+                "relaxation tail, %.0f → %.0f N over %.0f s (−%.1f %%).  ⚠ The CSV header reads "
+                "'Infill: 100 %%' while S23 is 50 %% — a label that enters no calculation, so no number "
+                "here is affected."
+                % (_t9["J0"], _t9["J1"], 100 * (_t9["J1"] / _t9["J0"] - 1),
+                   _t9["tail_F0"], _t9["tail_F1"], _t9["tail_dur"], _t9["tail_pct"]))
+
+# ---- 215: CREEP — why the re-run worked ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "T1 → T9 — WHY CREEP IS NOW RESOLVED")
+tb(s, 0.5, 1.14, 12.4, 0.36,
+   "T1 was not a broken test — it was an UNDER-SIZED one, and it never could have succeeded. Three "
+   "things were too small at once, and each was fixed by a number, not by new hardware.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/sf9_creep_compare.png", 0.45, 1.52, 12.45, 3.00)
+
+_ccmp = [["What was wrong on T1", "Why it was fatal", "What T9 changed", "Result"],
+         ["Stress only %.0f %% of UTS" % (100 * SF9["creep"]["sigma"] / 46.2),
+          "creep scales with stress — at 11 % there is nothing to see",
+          "600 N on a 50 %%-infill specimen = %.0f %% of UTS" % (100 * _t9["sigma_t"] / 21.2),
+          "signal ×%.0f" % (_t9["net"] / max(1.0, abs(SF9["creep"]["de"])))],
+         ["Hold only %.0f s" % SF9["creep"]["dur"],
+          "primary creep is log-shaped — it plays out over minutes",
+          "%.0f s of settled hold" % _t9["dur"],
+          "%.0f× longer" % (_t9["dur"] / SF9["creep"]["dur"])],
+         ["No drift baseline existed",
+          "any slow rise could equally be the instrument, so nothing could be attributed",
+          "a %.0f s zero-load run FIRST, same mounting" % _b9["dur"],
+          "drift measured: %+.4f µε/s" % _b9["slope"]]]
+table(s, 0.45, 4.62, 12.45, 0.30 * len(_ccmp), _ccmp,
+      cw=[2.75, 4.15, 3.30, 2.25], hf=9.5, bf=9,
+      ov={(r, 3): {"bg": GREEN_PASS, "bold": True} for r in range(1, len(_ccmp))})
+
+banner(s, 0.45, 6.00, 12.45, 0.52,
+       "WHAT THE BASELINE BOUGHT: the drift was %+.0f µε over %.0f s — %.0f %% of the whole raw signal, "
+       "and about %.0f %% of what a textbook 6 %% creep would have been. Without run 1 the answer would "
+       "have been arguable; with it, the subtraction is good to ± %.0f µε."
+       % (_b9["total"], _b9["dur"], _t9["drift_pct"], 100 * _b9["total"] / 450.0, _b9["sub_err"]),
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
+banner(s, 0.45, 6.56, 12.45, 0.42,
+       "⚠ NOISE FLOOR DEPENDS ON THE WINDOW: ± 12 µε on p196 is T1's own 40 s scatter; over a full "
+       "900 s window it is ± %.0f µε. Any LONG-hold claim must be judged against %.0f, not 12."
+       % (_b9["sd"], _b9["sd"]),
+       fill=YELLOW_WARN, fg=BLACK, fs=10.5)
+footer(s, "Honest limits: the creep/instantaneous ratio of %.1f %% is an UPPER bound (ε_inst is tared at "
+          "preload), and n=1 — one specimen, one stress level. A compliance CURVE needs 3-4 levels."
+          % _t9["ratio_pct"])
+pageno(s, 215)
+
+# ---- 216: follow-up campaign register ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF9 — FOLLOW-UP CAMPAIGN REGISTER  (T6.4 – T9, 2026-08-11)")
+tb(s, 0.5, 1.14, 12.4, 0.34,
+   "Continues the T1–T8 register on p208. One session, two specimens, five runs — aimed squarely at "
+   "the two negative results (cyclic hysteresis, creep) and at the first fatigue-damage number.",
+   fs=11, italic=True, colour=GREY_TEXT)
+
+_sf73 = SF9["sf_t73"]
+_reg2 = [
+    ["Test", "Mode / variant", "Spec.", "When (2026)", "Headline result", "Slides"],
+    ["T6.4", "Cyclic · Sine 400/1100 N", "S22 50 %", SF9_WHEN("cyc_t64"),
+     "peak error %.1f N and the loop opens up — but the CAMERA stopped at t ≈ 145 s, so cycles 4-8 "
+     "have no strain (%.0f %% frames)" % (_t64["pk_mae"], _dic("cyc_t64")), "211-212"],
+    ["T6.5", "Cyclic · Sine 400/1100 N", "S22 50 %", SF9_WHEN("cyc_t65"),
+     "%d closed loops · area %.1f → %.1f kJ/m³ · unload E %.2f → %.2f GPa — the slide-ready cyclic result"
+     % (len(_L65), _L65[0]["area_kJm3"], _L65[-1]["area_kJm3"],
+        _L65[0]["E_dn"] / 1000, _L65[-1]["E_dn"] / 1000), "211-212"],
+    ["T7.3", "Staircase → FRACTURE (fatigued)", "S22 50 %", SF9_WHEN("sf_t73"),
+     "residual strength after %d cycles at 1100 N: %.0f N tared, TRUE UTS %.2f MPa = %.1f %% vs S18 "
+     "(same protocol); yield knee moved UP (load memory)"
+     % (SF9["n_cyc_s22"], _sf73["peak"], _sf73["uts"],
+        100 * (_sf73["uts"] / SF9["sf"]["uts"] - 1)), "208 · 216"],
+    ["T9-a", "Creep · zero-load BASELINE", "S23 50 %", SF9_WHEN("t9_base"),
+     "%.0f s at %.1f N, crosshead frozen: drift %+.4f µε/s (R² %.2f), noise floor ± %.0f µε"
+     % (_b9["dur"], _b9["Fmean"], _b9["slope"], _b9["R2"], _b9["sd"]), "213"],
+    ["T9-b", "Creep · 600 N tared", "S23 50 %", SF9_WHEN("t9_creep"),
+     "held %.1f ± %.1f N for %.0f s → %+.0f µε drift-corrected (%.0f× noise), Findley n = %.2f; "
+     "+%.0f µm crosshead needed to hold it"
+     % (_t9["Fmean"], _t9["Fsd"], _t9["dur"], _t9["net"], _t9["net"] / _b9["sd"],
+        _t9["findley_n"], _t9["dpos_um"]), "213-215"],
+]
+_ovr2 = {}
+for _r, _row in enumerate(_reg2):
+    if _row[0] == "T6.4":
+        _ovr2[(_r, 0)] = {"bg": YELLOW_WARN, "bold": True}; _ovr2[(_r, 4)] = {"bg": YELLOW_WARN}
+    elif _r:
+        _ovr2[(_r, 0)] = {"bg": GREEN_PASS, "bold": True}
+table(s, 0.45, 1.52, 12.45, 0.40 * len(_reg2), _reg2,
+      cw=[0.6, 2.35, 0.85, 1.05, 6.9, 0.7], hf=10, bf=9.5, ov=_ovr2)
+
+banner(s, 0.45, 4.10, 12.45, 0.62,
+       "Two negative results turned positive in ONE session, by changing NUMBERS only — no new "
+       "hardware, no code change to the control engine. Cyclic needed a higher window (400→1100 N "
+       "instead of 100→500 N); creep needed more stress, more time, and a baseline.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
+
+header(s, 0.5, 4.90, 6.05, "What is now CLOSED")
+tb(s, 0.5, 5.24, 6.05, 1.55,
+   "•  Cyclic hysteresis is measurable — loop area AND unload modulus both trend (p211-212).\n"
+   "•  Creep is measurable — %+.0f µε at %.0f× the noise floor, decelerating (p213-215).\n"
+   "•  The DIC noise floor is now MEASURED over a full 900 s window: ± %.0f µε.\n"
+   "•  Fatigue damage has a first number: %.1f %% TRUE UTS after %d cycles at 79 %% of fracture,\n"
+   "   measured against S18 — the run that used the SAME protocol (T7.3).\n"
+   "•  A fixed-grip relaxation tail comes free at the end of every creep run."
+   % (_t9["net"], _t9["net"] / _b9["sd"], _b9["sd"],
+      100 * (_sf73["uts"] / SF9["sf"]["uts"] - 1), SF9["n_cyc_s22"]), fs=10.5)
+
+header(s, 6.85, 4.90, 6.05, "What is still OPEN")
+tb(s, 6.85, 5.24, 6.05, 1.55,
+   "•  No damage curve D = 1 − Eᵢ/E₀ — T6.4 lost DIC, T6.5 started already damaged, and E RECOVERED "
+   "over the 40 min between them, so there is no valid E₀.  ▸ T6.6: fresh specimen, 12 cycles, ONE "
+   "continuous run, baseline E on cycle 2.\n"
+   "•  Creep at ONE stress level only — a compliance curve needs 3-4 levels.\n"
+   "•  The `Infill` CSV header still writes 100 % after an app restart (label only).", fs=10.5)
+footer(s, "Raw CSVs: Software/UTM_PyQt6/SF9 - Advanced Test Modes/<specimen folder>/. Every number on "
+          "this page is recomputed by documentation/sf9_data.py — the table is generated, not typed.")
+pageno(s, 216)
+
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print("Saved: V6a_8_6_20_slides.pptx (70 slides, pages 141-210)")
+    print("Saved: V6a_8_6_20_slides.pptx (76 slides, pages 141-216)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (70 slides)")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (76 slides)")

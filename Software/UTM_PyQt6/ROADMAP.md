@@ -5,7 +5,8 @@ Living source of truth; the V6a deck's roadmap slides are generated to match thi
 
 **Legend:** ✅ done + **rig-validated** · 🟢 built (offline/sim-validated) · 🟡 partial / in progress · ⬜ planned · 🔴 blocked by hardware
 
-_Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO.md`)._
+_Last updated: 2026-08-11 — T6.5 + T9 closed the cyclic-hysteresis and creep negative results; deck now
+pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign (see `TESTING_TODO.md`)._
 
 ---
 
@@ -52,12 +53,66 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
 ## 3. Remaining / planned  (checklist)
 
 ### 3a. Near-term deliverables  ⭐ next up
-- ⬜ **POSTER — "Smart features of the UTM" (one page).** A single visual summary of everything the rig
-  now does automatically, for the lab wall / open days / conference. Use the **SF registry in §3c** (SF1–SF14) so poster, deck and roadmap agree. Should cover: DIC health HUD ·
-  Prepare specimen · recipes (2 starter profiles) · one-click report · auto-stop at fracture ·
-  strain-rate closed loop · the **6 control modes** · the **3-layer safety net** (load-collapse detector ·
-  stall guard · 10 kN/30 mm backstop · dead-DIC guard). One proof plot per feature — all of them already
-  exist as `feat_*.png` / the new `ui_help/*.png` diagrams. Decide size (A0 vs A1) before laying out.
+
+> ## ▶ PICK UP HERE — carried over from the session of 2026-08-12
+>
+> **1. Apply three verified poster corrections** (found by an adversarial check of every claim against
+> the raw CSVs; all three confirmed, none yet applied). Each is a one-line edit in
+> `documentation/generate_poster.py` followed by a rebuild:
+> - **"After 15 cycles"** on the progress poster is **wrong — S22 saw 16** (8 in T6.4 + 8 in T6.5;
+>   re-extracting load extrema gives 8 peaks per run). The "15" is a hand-typed literal that also sits
+>   in `registry.json`, `ROADMAP.md` and `generate_v6a_slides.py` — **fix all four**, nothing
+>   recomputes it, which is why it survived.
+> - **"What remains is one rig run"** contradicts the same page's NEXT panel, which lists **two** "Now"
+>   rig runs (T6.6 and the black-specimen check). → "two rig runs".
+> - **"Two protocols agree to 0.9 %, so the number is a property of the material"** overclaims: those
+>   were two DIFFERENT specimens, n = 1 each, so 0.9 % confounds protocol with specimen scatter — and
+>   same-condition scatter is 2.5 % (n = 5), nearly 3× larger. §3a already mandates this caveat; add it.
+>
+> **2. Downstream of retiring SF17** (done 2026-08-12): the V6a deck's **slide 169 SF grid** still shows
+> 8 cards and a stale banner — rebuild it to **16**, not 17. Memory `project_smart_features_poster.md`
+> also still says 13 built / SF1–17.
+>
+> **3. Then the standing queue**, in the order I would take it: infill-label bug (minutes) ·
+> `main.py` snapshot commit (minutes) · **T6.6** damage curve (~40 min rig + 1 specimen) ·
+> black-specimen DIC check · **frame capture + the MOT extensometer cross-check** (spec below).
+
+- ✅ **POSTERS — BUILT 2026-08-12, THREE EDITIONS from one content spec.**
+  `documentation/generate_poster.py` → **`documentation/posters/`** (pptx + pdf for each):
+  - **`Smart_UTM_poster_A0`** — conference wall poster, 3 columns.
+  - **`Smart_UTM_poster_A4`** — conference handout, 2 columns. A genuine condensation, not a shrunken
+    A0 (scaling A0 → A4 puts body text at ~5 pt).
+  - **`Smart_UTM_progress_A4`** — progress report for a supervisor / manager. Different question,
+    different poster: status · milestones · results · **the decisions needed from the reader** · next.
+    The "asks" panel is the payload and carries the most visual weight after the headline.
+  - **Features run in NUMERIC order SF1 → SF16 on every edition**, as a full-width band UNDER the
+    column flow so they read left-to-right in order. They cannot go through the column flow: with 16
+    cards it split them so SF7 landed at the top of column 3 while SF1 sat at the bottom of column 2.
+    Status is carried by colour + chip instead of by grouping, so a **legend block is mandatory**.
+  - **Rig photographs are background-removed cutouts** (`documentation/rig_cutouts.py`), which is why
+    two of them can sit side by side without reading as a collage. Model choice matters: the default
+    u2net is a salient-object model and keeps the wall and carpet visible THROUGH the frame openings,
+    so the rig prints as a solid slab — **isnet-general-use** cuts the openings properly. A 15 px
+    morphological close first heals the slender members it otherwise chews through.
+  - **Layout follows the researched #evenbetterposter / "Generation-2" billboard format**, not a generic
+    grid: attendee studies show 82 % prefer a billboard headline for the main message, but 67 % still
+    prefer IMRaD for *rigor* — so METHODS ("How it works") and LIMITATIONS get full panels instead of
+    sidebars. Headline: *"One specimen now yields a CURVE, not a point."*
+  - Structure: title · billboard · 6-KPI strip · THE MACHINE (photo + labelled schematic) · WHY · HOW IT
+    WORKS · 3 EVIDENCE panels with figures · 16 feature cards · LIMITATIONS.
+  - **Feature cards carry no figure** — 16 thumbnails swamp even an A0 (first attempt overflowed 153 in
+    into 100 in of column). Visual proof lives in the 4 evidence panels.
+  - Every number is imported live from `sf9_data.py` + `registry.json`; nothing is typed by hand.
+  - New assets: `documentation/feat_prepare_specimen.png` + `feat_release_load.png` (SF2/SF8 had no proof
+    figure at all — generated by `documentation/poster_assets.py`); `rig_photo.jpg`, `rig_photo_detail.jpg`,
+    `rig_cut_full.png` / `rig_cut_detail.png` (background-removed cutouts of the 2026-08-12 rig
+    photos) and `rig_schematic.png`.
+  - **SF15/16 added to the registry below** — the test registry and the dead-DIC guard + hard backstops
+    were built and validated but had never been carded. (SF17 was added and then RETIRED the same day.)
+  - Layout engine notes: text heights are measured against the real Calibri metrics (a character-average
+    estimate over-wrapped the 104 pt headline and left 1.5 in of dead space); section headers must be
+    measured UPPERCASED because that is how they are drawn; columns are balanced by binary-searching the
+    shortest feasible column height, since greedy packing left the last column a third empty.
 - 🟡 **DECK — bring `documentation/V6a_8_6_20_slides.pptx` up to current progress.**
   ✅ **SF9 built 2026-08-10 — 15 slides, pages 186-200, deck now 60 slides:** overview of all six modes (real measured signatures, not schematics) · 2 slides per mode (how it works + settings + **software limits**, then results with graphs and tables) · **T7 failure analysis** (why it stalled, ranked causes, mitigations). Numbers are computed by `documentation/sf9_data.py` from the rig CSVs and imported by the generator, so nothing on these slides is transcribed by hand.
   ✅ **Also built 2026-08-10/11 — deck is now 70 slides, pages 141-210:** T7 Vref answer (p200) ·
@@ -79,6 +134,37 @@ _Last updated: 2026-07-29 — full rig-test campaign complete (see `TESTING_TODO
 - ⬜ **BLACK-SPECIMEN DIC TEST — rig run, not just research.** Tracked in §5 below; repeated here so it is
   not lost among the reading tasks. Every specimen to date is WHITE; the "Black" DIC preset has never been
   exercised on the rig.
+
+- ⬜ **RECORD THE FRACTURE TEST ON VIDEO — for independent analysis in the extensometer software at MOT.**
+  **This is the only INDEPENDENT check of the DIC channel that exists.** Everything validated so far
+  checks our DIC against itself or against the crosshead; nothing has ever compared it to a second,
+  established strain instrument. If MOT's extensometer software reads the same strain from the same
+  footage, the whole DIC chain — px/mm calibration, centroid algorithm, L₀ tare, engineering-strain
+  definition — is corroborated from outside. If it does not, we find out before publishing.
+  Two parts, and **the software half must land first** — a fracture run is one irreversible shot.
+  1. **App — frame capture (does not exist today).** The camera pipeline computes centroids and throws
+     the frames away. Add an opt-in **"Record frames"** toggle to the two fracture protocols that saves
+     the raw Basler frames as an image sequence (or a low-compression video) next to the CSV, plus a
+     sidecar mapping **frame index → PC and MCU timestamps** so any frame ties back to a load sample.
+     Reuse the three-timestamp architecture already in the CSV.
+     - **Compression is not free:** heavy H.264 destroys the sub-pixel correlation the extensometer
+       software depends on. Prefer an image sequence or a lossless/near-lossless codec.
+     - **Storage, at the current ROI** (2348 × 419 mono8 ≈ 0.98 MB/frame): ~10 MB/s at 10 fps, ~34 MB/s
+       at the camera's 35 fps. A 200 s pull is therefore ~2 GB at 10 fps or ~7 GB at 35 fps. Fine as a
+       one-off; do NOT leave it on by default.
+     - Confirm the sensor is **global shutter** before relying on the footage — a rolling shutter shears
+       a moving specimen and would corrupt the comparison.
+  2. **Rig run + cross-check.** Pull one specimen to fracture with recording on, then run the same
+     footage through the extensometer software at MOT and overlay its strain trace on ours.
+     - Put a **scale reference in the same focal plane** as the specimen (the software needs its own
+       px/mm; do not let it inherit ours, or the comparison is circular).
+     - Keep the LEDs on and DC-driven — mains flicker aliases against the frame rate.
+     - Record the ACTUAL frame rate, not the nominal one.
+  **Done =** a fracture run whose footage loads in MOT's software, and a plot of their strain vs ours
+  over the same interval with the deviation quoted — ideally within the **26 µε** noise floor in the
+  elastic region, and with any divergence past yield explained (their gauge and ours may not span the
+  same material).
+  *(If this gets carded as a feature it becomes **SF18** — numbering is append-only, see §3c.)*
 
 - 🟢 **Wire the control modes into the Motor-Control UI — DONE** ("Advanced test modes" segment, 6 modes incl. the two fracture protocols). ✅ **Recipes now store the mode + every mode's params** (`TestRecipe.mode` + `mode_params`, 2026-08-09) — one `_mode_widget_map()` drives both save and load. ✅ **All 6 modes rig-validated:** creep · relaxation · staircase · cyclic (T6.3) · staircase→fracture (T7.2) · **progressive-cyclic→fracture (T8, 2026-08-09 — 8 clean cycles, no false-fire, 25 % stiffness loss resolved, true UTS 21.38 MPa vs T7.2's 21.19 = 0.9 % apart)**. ⬜ Remaining: **deck slides** — scoped in §3a above.
 ### 3c. Smart-feature registry (SF numbers) — canonical list
@@ -103,9 +189,17 @@ this file all cite the same numbers.
 | **12** | **DIC auto-calibrate** — auto-exposure/threshold sweep · auto-follow ROI through the draw | ⬜ planned |
 | **13** | **Guided workflow + live analysis overlay** — wizard · live E / predicted UTS / fracture flag · dashboard + audio cue | ⬜ planned |
 | **14** | **Multi-marker Poisson / true Cauchy** — 4-marker preset, live ν | 🔴 hardware-blocked (optics) |
+| **15** | **Test registry** — every run auto-indexed with E/σ_y/UTS/ε_f/toughness **and its force anchor** | ✅ rig-validated |
+| **16** | **Dead-DIC guard + hard backstops** — freeze speed at 0.2 s of frozen strain, halt at 1.0 s; 10 kN / 30 mm caps | ✅ rig-validated |
+| ~~17~~ | ~~Simulate-first harness~~ — **RETIRED 2026-08-12, never publish it as an SF.** It is a DEVELOPER practice, not a rig feature: `control_sim` is imported 0 times by `main.py` and has no serial/camera path, so an operator can never invoke it — and it is the one entry that made "every feature validated on the rig" false, since its 9/9 checks are all against a simulated spring plant. It lives on, correctly, as a METHODS bullet on the posters ("Simulated before hardware"). The number is burnt, not reused: the next feature carded is SF18. | — retired |
 
-SF1–SF10 are built and rig-validated; SF11–SF14 are planned. **Group the poster by status, not by
-number** — the numbers are IDs, so a status-grouped layout reads correctly without renumbering anything.
+SF1–SF10 and SF15–SF16 (**12 features**) are built and rig-validated; SF11–SF13 are planned and SF14
+is hardware-blocked. **SF17 was retired** — see the struck row above. **Group the poster by status, not by number** — the numbers are IDs, so a
+status-grouped layout reads correctly without renumbering anything.
+
+⚠️ **SF15–SF17 were added 2026-08-12** while building the poster — all three were built and in daily use but had never been carded. **SF17 was then retired the same day**: a card has to be something the OPERATOR uses on the rig, and a developer-only simulation harness is not that. Test for admitting a feature: *can the person running a test invoke it, or does it act on the machine during a run?* If not, it belongs in METHODS, not in the feature registry.
+
+⚠️ **`utm_registry` (SF15) is also not wired into `main.py`** — it is a CLI you run (`scan`/`list`/`add`), not something that fires on save. It stays carded because it is operator/analyst-facing and produces a real artifact, but do NOT describe it as automatic; the automation is SF11, still planned.
 
 ⚠️ **SF10 (auto-preload) was not in the original SF1–SF8 set** — added here because the poster is meant to
 show *all* smart features and auto-preload is a real, validated one that was simply never carded.
@@ -116,31 +210,43 @@ show *all* smart features and auto-preload is a real, validated one that was sim
   which is where fracture happens). Change the spec to the minimum width along the gauge before
   building it. Cheap to fix now, expensive after the rig is built. Reasoning on deck p210.
 
-- ✅ **T6.4 / T6.5 / T7.3 DONE 2026-08-11 (S22).** Cyclic near yield validated (12.4 px vs 3.6, loop
-  21.7→10.9 kJ/m³, bounds ±1 N) and S22 pulled to fracture: **residual strength −8.5 %** after 15 cycles
-  at 79 % of UTS, **12× the 0.7 % virgin baseline spread**. Yield knee moved UP to 811-931 N (virgin 694)
-  = load memory at the prior cycling peak. ε_f 3.60 %.
+- ✅ **T6.4 / T6.5 / T7.3 DONE 2026-08-11 (S22).** Cyclic near yield validated: **12.3 px strain
+  excursion vs T6.3's 3.6** (p189 predicted 13.1), **6 closed loops**, area **14.2→10.9 kJ/m³** and
+  unload E **1.49→1.43 GPa** both falling monotonically at **R² ≥ 0.99**, peaks held to ±3.4 N.
+  T6.4 lost the camera at t ≈ 145 s (45 % of frames) so only 3 loops survive there — **T6.5 is the
+  slide-ready run**. S22 then pulled to fracture: **residual strength −8.5 % on tared load** after
+  **16** cycles (8 in T6.4 + 8 in T6.5) at 79 % of UTS. Yield knee moved UP to 811-931 N (virgin 694) = load memory at the prior
+  cycling peak. ε_f 3.60 %. Deck **p211-212**.
+  - ⚠️ **CORRECTION 2026-08-12 — the TRUE-stress fatigue loss was quoted wrong.** "−6.1 %" appears in
+    the registry and earlier notes but does not reproduce from its own inputs. Recomputed by
+    `sf9_data.py`: T7.3 19.74 MPa vs **S18 21.19 = −6.8 %** (same protocol, so this is the correct
+    baseline); vs the S18/S21 mean 21.285 = −7.2 %; vs S21 alone = −7.6 %. Virgin spread S18↔S21 is
+    **0.9 %**, not 0.7 %. Always quote the loss **with its baseline**, never bare. The conclusion is
+    unchanged — the loss is many times the virgin spread — only the number moves.
+- ✅ **T9 — CREEP RESOLVED, 2026-08-11 (S23, 50 % infill), two runs.** Deck **p213-215**.
+  - **Run 1, zero-load baseline (928 s, crosshead frozen, 20.57 ± 0.23 N):** drift **+0.2893 µε/s**
+    (R² 0.896) = **+268 µε**; slope 95 % CI ±0.0019 µε/s, so subtracting it over 900 s costs only
+    **±2 µε**. Half-slopes 0.345/0.277 (ratio 0.80) = **LINEAR**, the drift signature.
+    **DIC noise floor re-measured: 26 µε** over a full 900 s window — the ±12 µε quoted elsewhere is
+    a 40 s window and understates long-hold noise. Use 26 for any long-hold claim.
+  - **Run 2, 600 N tared for 877 s:** load held **596.55 ± 1.30 N (±0.22 %)** = 7.46 MPa engineering /
+    **11.30 MPa true** (anchor 307.1 N) = 53 % of UTS. Raw +1334 µε − 254 µε drift (19 % of raw) =
+    **net creep +1080 µε = 41× the noise floor**. **Findley n = 0.484** and half-slopes 1.48 → 0.59
+    µε/s (ratio 0.40) — decelerating primary creep, so the **pre-registered shape discriminator
+    passes on its own**, independent of the subtraction. J = 0.863 → 1.008 GPa⁻¹ (+16.7 %).
+    Crosshead had to advance **+172 µm** while the DIC gauge extended only +107 µm → only **62 % of
+    crosshead motion was specimen** (the strongest DIC-necessity argument in the creep mode).
+    DIC 100 % frames. **Bonus:** fixed-grip relaxation tail 598 → 582 N over 300 s (−2.8 %).
+  - Open: creep/instantaneous 16.8 % is an **upper bound** (ε_inst tared at preload); n = 1 specimen at
+    one stress level — a compliance CURVE needs 3-4 levels.
 - ⬜ **T6.6 — the clean damage curve.** Fresh 50 % specimen, 400→1100 N, **12 cycles**, sine, 0.100 mm/s,
   ONE continuous run (no pause — E recovers across a rest). Baseline E on **cycle 2**, never cycle 1.
-- ⬜ **T9 — creep that actually resolves** (rig run, ~17 min). T1 held 398 N for 40 s at 4.98 MPa and
-  saw **nothing**, correctly: the fitted rate was **+0.002 ± 0.060 µε/s**, so the 95 % bound is
-  **<0.12 µε/s = under 5 µε across the whole hold**. The hold was ~20× too short and the stress ~2×
-  too low — PLA is glassy at room temperature (Tg ≈ 60–63 °C) and barely creeps at 11 % of UTS.
-  **Settings: 50 % infill · hold 600 N tared (11.3 MPa = 53 % UTS, 86 % of the 694 N yield knee) ·
-  900 s · ramp 0.10 mm/s.** Stay BELOW the yield knee — above it you get tertiary creep running to
-  failure, which is a different experiment. A typical 6 % creep strain is ≈450 µε = **20× the
-  detection floor**; even 1 % is 3×. **Run a 900 s zero-load baseline first** so thermal drift can be
-  separated from creep (over 900 s even 0.05 µε/s of drift is 45 µε). Scoped on deck p196.
-
-- ⬜ **T6.4 — cyclic hysteresis near yield** (rig run, ~6 min). T5/T6.3 cycled at only **14 % of
-  fracture load**, so there was almost no hysteresis to measure, and what loop there was got
-  fabricated by a **2.1 s reversal lag** (load +97 N while strain −893 µε = backlash being re-taken).
-  DIC is NOT the limit — the centroid resolves 0.1 px steps at ±0.02 px noise.
-  **Settings: 50 % infill · Low 400 N · High 1100 N · 8 cycles · Sine · 0.10 mm/s.**
-  The **400 N floor is the point** — never unload through the slack band, so backlash is crossed once
-  at the start instead of twice every cycle. Gives a **13.1 px strain loop (3.6× T6.3)**; peak is 79 %
-  of fracture and 58 % above the 694 N yield knee, so loop area should GROW cycle-to-cycle if damage
-  accumulates. Arm auto-stop (T8 fractured at 1397 N). Scoped on deck p189.
+  Still the only missing piece: T6.4 lost DIC, T6.5 started already damaged, and E recovered over the
+  40 min between them, so **D = 1 − Eᵢ/E₀ is not computable from the T6.4/T6.5 pair**.
+- ⬜ **Infill label bug.** The CSV `Infill` header writes **100 %** after an app restart regardless of the
+  setting — T6.4 / T6.5 / T9a / T9b all say 100 % on 50 % specimens (T7.3 is correct). It is a label that
+  enters no calculation (area and gauge are entered separately), so **no measured number is affected**;
+  the registry carries the true value. Fix the field's restart default in `main.py`.
 
 ### 3b. Longer-range features
 - ✅ **Strain nomenclature settled (2026-08-11).** Everything user-facing now says **engineering**
@@ -178,6 +284,9 @@ show *all* smart features and auto-preload is a real, validated one that was sim
 - ⬜ **Moisture effect:** check whether specimen / ambient **moisture** shifts strength or stiffness vs literature (PLA is mildly hygroscopic) — dry / condition specimens and compare.
 - ⬜ **Camera-parameter sensitivity:** enumerate every camera parameter controlled in software (exposure, gain, threshold, ROI, px/mm, …) and study how varying each affects the DIC results and the **noise floor**.
 - ⬜ **Black-specimen DIC check (100% infill):** every specimen tested so far is WHITE (black dots, DIC "White" mode). Print/mark a **BLACK** specimen (white dots, DIC "Black" mode) and confirm the camera tracks strain just as reliably. **Done = ** a full pull with 2/2 markers held to fracture, tracking % and L_px jitter no worse than a white specimen, and E/UTS within the white-specimen scatter. Needs a `camera_setup.py --mode white` pre-flight (the flag names the DOT colour, not the body). Also unblocks the matte-black backdrop that multi-marker Poisson wants (§3).
+- ⬜ **Cross-validate the DIC against MOT's extensometer software** — record a fracture test and have a
+  second, established strain instrument read the same footage. Full spec in §3a; repeated here because
+  it is the one validation that comes from OUTSIDE this project.
 - ⬜ **UTM instruction manual (for students):** short, crisp usage guide with clear photos of the rig + UI screenshots — Connect → Calibrate → Mount → Prepare → Run → Save → Report.
 
 ---

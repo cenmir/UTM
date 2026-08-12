@@ -13,6 +13,7 @@ __version__ = "0.5.4"
 
 
 import sys
+import time            # module-level: _live_blob_count/_on_dic_blobs need it at signal time
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QProgressDialog, QVBoxLayout, QFileDialog
 from PyQt6.QtCore import QTimer, Qt, QSize
@@ -364,7 +365,7 @@ class UTMApplication(QMainWindow):
         self.ss_line, = self.ss_ax.plot([], [], 'b-', linewidth=1, label='Motor')
         self.ss_markers, = self.ss_ax.plot([], [], 'b.', markersize=3)
         # Second line for DIC overlay (hidden by default)
-        self.ss_dic_line, = self.ss_ax.plot([], [], 'r-', linewidth=1, label='DIC Cauchy')
+        self.ss_dic_line, = self.ss_ax.plot([], [], 'r-', linewidth=1, label='DIC engineering')
         self.ss_dic_markers, = self.ss_ax.plot([], [], 'r.', markersize=3)
         self.ss_dic_line.set_visible(False)
         self.ss_dic_markers.set_visible(False)
@@ -553,15 +554,18 @@ class UTMApplication(QMainWindow):
             return
 
         # Determine strain source from combo box
-        source = self.strainSourceCombo.currentText() if hasattr(self, 'strainSourceCombo') else "Motor"
+        # Stable key from userData, NOT the display text — renaming a combo entry must never be able
+        # to silently change which array gets plotted.
+        source = (self.strainSourceCombo.currentData()
+                  if hasattr(self, 'strainSourceCombo') else "motor") or "motor"
 
         # Get stress data (always the same)
         stresses = list(self.stress_strain_stresses)
 
         # Get primary strain data based on source
-        if source == "DIC Cauchy" or source.startswith("Both"):
-            strains = list(self.load_plot_dic_cauchy[:n_points])
-        elif source == "DIC True":
+        if source in ("eng", "both_motor", "both_true"):
+            strains = list(self.load_plot_dic_cauchy[:n_points])   # CSV col DIC_Cauchy = ΔL/L₀
+        elif source == "true":
             strains = list(self.load_plot_dic_true[:n_points])
         else:
             strains = list(self.stress_strain_strains)
@@ -580,12 +584,12 @@ class UTMApplication(QMainWindow):
         self.ss_line.set_data(strains, stresses)
         self.ss_line.set_visible(True)
 
-        # Handle "Both" modes — primary line is DIC Cauchy, secondary is Motor or DIC True
-        if source.startswith("Both"):
-            self.ss_line.set_label("DIC Cauchy")
-            if "True" in source:
+        # "Both" modes — primary line is DIC engineering, secondary is Motor or DIC true/log
+        if source in ("both_motor", "both_true"):
+            self.ss_line.set_label("DIC engineering")
+            if source == "both_true":
                 secondary_strains = list(self.load_plot_dic_true[:n_points])
-                self.ss_dic_line.set_label("DIC True")
+                self.ss_dic_line.set_label("DIC true / log")
             else:
                 secondary_strains = list(self.stress_strain_strains)
                 self.ss_dic_line.set_label("Motor")
@@ -784,6 +788,7 @@ class UTMApplication(QMainWindow):
         # Auto-preload controls (target-force jog) in the Motor Control group
         self._setup_preload_controls()
         self._setup_testmode_controls()
+        self._setup_control_modes_segment()
         self._setup_recipe_controls()
 
         # Replace HBoxLayout between tabs and right panel with a draggable splitter
@@ -818,6 +823,8 @@ class UTMApplication(QMainWindow):
         self.camera_manager.blobs_detected.connect(self._on_dic_blobs)
         self.camera_manager.error_occurred.connect(self._on_dic_error_count)
         self._dic_blob_count = 0
+        self._dic_blob_t = 0.0                            # when _dic_blob_count last CHANGED hands
+        self.DIC_BLOB_STALE_S = 1.0                       # older than this = the camera has stopped
         self._dic_blob_history = []                       # recent per-frame blob counts
         self._expected_markers = 2                        # 4 when a multi-marker preset is selected
         self._dic_health_timer = QTimer(self)
@@ -1445,6 +1452,9 @@ class UTMApplication(QMainWindow):
         # TODO: Implement with data storage - average last 50 force readings
         self.append_to_console("Tare: Adjusting force offset...")
         # For now, just use current load as offset adjustment
+        # Remember HOW MUCH load was zeroed away — "Release load" drives to -this so the specimen
+        # ends at TRUE zero absolute force (tared 0 N still holds the preload, e.g. 300 N).
+        self._tare_load_N = self.current_load
         self.force_offset = self.force_offset + self.current_load
         self.offsetSpinBox.blockSignals(True)
         self.offsetSpinBox.setValue(self.force_offset)
@@ -1738,6 +1748,9 @@ class UTMApplication(QMainWindow):
             self.releaseButton.setEnabled(direction_enabled)
         if getattr(self, 'strainRateButton', None) is not None:
             self.strainRateButton.setEnabled(direction_enabled)
+        if getattr(self, 'modeStartButton', None) is not None:
+            self._testmode_direction_ok = direction_enabled
+            self._update_control_mode_enabled()
 
         # Emergency stop - always enabled when connected (safety!)
         self.emergencyStopButton.setEnabled(connected)
@@ -1851,13 +1864,18 @@ class UTMApplication(QMainWindow):
                                   # decays ~2 % after the motor stops) so the held load lands >= target
     PRELOAD_OVERSHOOT_CAP = 1.25  # hard safety: force-halt if load exceeds this multiple of target
     PRELOAD_TIMEOUT_S = 180       # runaway safety: abort auto-preload after this long without reaching target
-    RELEASE_SPEED_MM_S = 0.30     # release: constant gentle back-off speed (mm/s)
+    RELEASE_SPEED_MM_S = 0.20     # release: constant gentle back-off speed (mm/s) - 0.30 felt too fast
     RELEASE_TARGET_N = 5.0        # release: stop once load drops to/below this (~zero tension)
     RELEASE_MIN_LOAD_N = -50.0    # release safety: hard stop if load goes this far into compression
     RELEASE_RISE_CAP_N = 50.0     # release safety: halt if load RISES this far (wrong direction / snag)
     RELEASE_TIMEOUT_S = 180       # release runaway safety (s)
     STALL_WINDOW_S = 6.0          # stall guard: crosshead must advance within this window while pulling
     STALL_MIN_ADVANCE_MM = 0.05   # ...by at least this much, else it is stalled (near-zero movement only)
+    STALL_SHORTFALL_FRAC = 0.35   # ...or this fraction of the travel actually COMMANDED, whichever is
+                                  # smaller. A flat 0.05 mm assumed every mode runs near 0.1 mm/s
+                                  # (0.6 mm expected = an 8% bar); a tapered approach floors at
+                                  # 0.01-0.02 mm/s = 0.06-0.12 mm expected, where 0.05 mm demands
+                                  # 42-83% of commanded and a healthy motor trips on rounding alone.
     STALL_MIN_LOAD_N = 200.0      # ...only guard under load (avoids slack / start-up false trips)
 
     # Closed-loop test-mode (Phase B) safety net — independent of any policy
@@ -2009,7 +2027,7 @@ class UTMApplication(QMainWindow):
         if getattr(self, '_release_active', False):
             self._release_active = False
             if getattr(self, 'releaseButton', None) is not None:
-                self.releaseButton.setText("Release preload")
+                self.releaseButton.setText("Release load")
         if getattr(self, 'active_policy', None) is not None:
             self.active_policy = None                       # manual takeover ends any test-mode policy
             if getattr(self, '_policy_button', None) is not None:
@@ -2112,10 +2130,11 @@ class UTMApplication(QMainWindow):
         self.preloadButton = QPushButton("Preload tension")
         self.preloadButton.setToolTip(
             "Auto-move the gripper in tension until Current Load reaches the target, then stop. Click again to cancel.")
-        self.releaseButton = QPushButton("Release preload")
+        self.releaseButton = QPushButton("Release load")
         self.releaseButton.setToolTip(
-            "Back off the tension — move the gripper in the release direction until the load returns to ~0 N, "
-            "so you can preload again. Click again to cancel.")
+            "Release ALL load: back off until the specimen reaches TRUE zero force.\n"
+            "The reading is tared at the preload, so tared 0 N still holds it — this drives on to\n"
+            "-(tared-away load), e.g. -300 N, leaving the specimen free to unclamp. Click again to cancel.")
         row.addWidget(self.preloadTargetSpinBox)
         row.addWidget(self.preloadButton)
         row.addWidget(self.releaseButton)
@@ -2165,6 +2184,14 @@ class UTMApplication(QMainWindow):
             f"[Preload] Approaching {target:.0f} N (tension) — speed ramps 0.20 → 0.10 → 0.05 mm/s "
             f"(smooth, around 10 % / 75 %)...")
         self.set_status(f"Preloading to {target:.0f} N ...")
+
+    def _stall_threshold_mm(self, cmd_speed_mm_s):
+        """How far the crosshead must advance within STALL_WINDOW_S before we call it stalled.
+        Scales with what was actually commanded so a legitimate tapered crawl is not mistaken for a
+        stall, and never exceeds the original fixed bar (so behaviour at normal speeds is unchanged).
+        Returns 0 when nothing was commanded -> the guard cannot fire."""
+        expected = max(0.0, cmd_speed_mm_s) * self.STALL_WINDOW_S
+        return min(self.STALL_MIN_ADVANCE_MM, self.STALL_SHORTFALL_FRAC * expected)
 
     def _fw_speed(self, mm_s):
         """Convert mm/s to the firmware SetSpeed value (RPM x 10), clamped to MAX_RPM."""
@@ -2252,7 +2279,12 @@ class UTMApplication(QMainWindow):
 
     # ---- Release preload: back off the tension so you can preload again ----
     def on_release_preload_start(self):
-        """Start (or, if running, cancel) a controlled release of the applied tension back to ~0 N."""
+        """Start (or, if running, cancel) a controlled release of ALL applied load.
+
+        The force reading is TARED at the preload, so tared 0 N still holds that preload (e.g. 300 N
+        of real tension). To free the specimen completely we drive on past tared zero, down to
+        -(tared-away load), which is TRUE zero absolute force. `_tare_load_N` is captured by the tare
+        itself; if the user never tared we fall back to the preload target box."""
         if getattr(self, '_release_active', False):
             self._stop_release("cancelled by user"); return
         if not self.connected:
@@ -2261,7 +2293,13 @@ class UTMApplication(QMainWindow):
             self.append_to_console("[Release] Enable motors first."); return
         if self.preload_active or getattr(self, 'active_policy', None) is not None:
             self.append_to_console("[Release] Cancel the preload / test mode first."); return
-        if self.current_load <= self.RELEASE_TARGET_N:
+        tared_away = getattr(self, '_tare_load_N', 0.0)
+        if tared_away <= 0.0:
+            tared_away = max(0.0, self.preloadTargetSpinBox.value())
+        # stop RELEASE_TARGET_N above true zero, same margin the old ~0 N release used
+        self._release_target_N = self.RELEASE_TARGET_N - tared_away
+        self._release_floor_N = self._release_target_N + self.RELEASE_MIN_LOAD_N   # relative safety floor
+        if self.current_load <= self._release_target_N:
             self.append_to_console(f"[Release] Load already {self.current_load:.1f} N — nothing to release."); return
         import time
         self._release_active = True
@@ -2277,9 +2315,9 @@ class UTMApplication(QMainWindow):
         self._start_movement_grace_period()
         self.releaseButton.setText("Cancel release")
         self.append_to_console(
-            f"[Release] Releasing tension from {self.current_load:.1f} N to <= {self.RELEASE_TARGET_N:.0f} N "
-            f"at {self.RELEASE_SPEED_MM_S:.2f} mm/s ...")
-        self.set_status("Releasing preload ...")
+            f"[Release] Releasing from {self.current_load:.1f} N to <= {self._release_target_N:.0f} N "
+            f"(= true zero, {tared_away:.0f} N was tared away) at {self.RELEASE_SPEED_MM_S:.2f} mm/s ...")
+        self.set_status("Releasing load to true zero ...")
 
     def _release_check(self):
         """Live-load loop for the release: gentle back-off until load ~0, with safety nets. The direction
@@ -2291,22 +2329,26 @@ class UTMApplication(QMainWindow):
                 self.serial_manager.send_command("Stop"); self.serial_manager.send_command("EStop")
             self._stop_release(f"SAFETY — load ROSE to {self.current_load:.1f} N during release; halted", warn=True)
             return
-        # SAFETY: do not drive into compression
-        if self.current_load <= self.RELEASE_MIN_LOAD_N:
+        # SAFETY: do not drive past true zero into real compression. The floor is RELATIVE to the
+        # target (target - 50 N), otherwise the old fixed -50 N would abort a release that has to
+        # travel to e.g. -300 N tared just to reach true zero.
+        floor = getattr(self, '_release_floor_N', self.RELEASE_MIN_LOAD_N)
+        if self.current_load <= floor:
             self._stop_release(f"reached {self.current_load:.1f} N (compression limit)", warn=True)
             return
         if time.monotonic() - self._release_start_t > self.RELEASE_TIMEOUT_S:
             self._stop_release("timed out", warn=True)
             return
-        # DONE: tension released to ~zero
-        if self.current_load <= self.RELEASE_TARGET_N:
-            self._stop_release(f"released to {self.current_load:.1f} N — ready to preload again")
+        target = getattr(self, '_release_target_N', self.RELEASE_TARGET_N)
+        # DONE: all load released (tared reading is now -preload => true zero absolute force)
+        if self.current_load <= target:
+            self._stop_release(f"released to {self.current_load:.1f} N tared = ~0 N true — specimen free")
             return
         now = time.monotonic()
         if now - getattr(self, '_release_last_log', 0.0) >= 1.0:
             self._release_last_log = now
             self.append_to_console(
-                f"[Release] current {self.current_load:.1f} N  ->  target <= {self.RELEASE_TARGET_N:.0f} N")
+                f"[Release] current {self.current_load:.1f} N  ->  target <= {target:.0f} N")
 
     def _stop_release(self, message, warn=False):
         """Stop the motor and end the release, restoring the button."""
@@ -2320,7 +2362,7 @@ class UTMApplication(QMainWindow):
         if self.connected:
             self.serial_manager.send_command("Stop")
         if getattr(self, 'releaseButton', None) is not None:
-            self.releaseButton.setText("Release preload")
+            self.releaseButton.setText("Release load")
         self.append_to_console(f"[Release] {message}")
         self.set_status(f"Release: {message}", is_warning=warn)
 
@@ -2367,15 +2409,358 @@ class UTMApplication(QMainWindow):
                                   # NOT the stall cause — that is the motor's variable torque ceiling; see memory.)
         self._start_policy(policy, self.strainRateButton, "Start strain-rate fracture test")
 
-    def _start_policy(self, policy, button=None, start_label="Start mode"):
-        """Arm a control policy: latch tension ONCE, then live SetSpeed only (preload discipline)."""
+    def _setup_control_modes_segment(self):
+        """SEPARATE segment to pick an advanced closed-loop test type (cyclic / staircase / relaxation /
+        creep) and set its parameters. Each maps to a control_policies policy and runs through the SAME
+        _policy_step loop + safety net (stall guard · force/travel backstop · timeout) as strain-rate.
+        A QStackedWidget shows only the chosen mode's fields."""
+        from PyQt6.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QDoubleSpinBox,
+                                     QSpinBox, QPushButton, QStackedWidget, QWidget, QFrame, QToolButton,
+                                     QCheckBox)
+
+        def dsb(lo, hi, dec, step, val, suf=""):
+            b = QDoubleSpinBox(); b.setRange(lo, hi); b.setDecimals(dec); b.setSingleStep(step); b.setValue(val)
+            if suf:
+                b.setSuffix(suf)
+            return b
+
+        def isb(lo, hi, val):
+            b = QSpinBox(); b.setRange(lo, hi); b.setValue(val); return b
+
+        def page(pairs):
+            w = QWidget(); h = QHBoxLayout(w); h.setContentsMargins(0, 0, 0, 0)
+            for lab, widget in pairs:
+                h.addWidget(QLabel(lab)); h.addWidget(widget)
+            h.addStretch(1)
+            return w
+
+        seg = QVBoxLayout()
+        line = QFrame(); line.setFrameShape(QFrame.Shape.HLine); line.setStyleSheet("color:#bbb"); seg.addWidget(line)
+        self.modeEnableCheck = QCheckBox("Advanced test modes (BETA) — enable to choose type + settings")
+        self.modeEnableCheck.setStyleSheet("font-weight:bold")
+        self.modeEnableCheck.setToolTip("Tick to arm the advanced closed-loop modes. Left off, the type/settings "
+                                        "stay greyed so they can't be changed by accident.")
+        self.modeEnableCheck.toggled.connect(self._update_control_mode_enabled)
+        seg.addWidget(self.modeEnableCheck)
+        crow = QHBoxLayout(); crow.addWidget(QLabel("Test type:"))
+        self.modeCombo = QComboBox()
+        self.modeCombo.addItems(["Cyclic", "Staircase", "Relaxation", "Creep",
+                                 "Staircase → FRACTURE", "Progressive cyclic → FRACTURE"])
+        crow.addWidget(self.modeCombo)
+        self.modeHelpButton = QToolButton(); self.modeHelpButton.setText("?")
+        self.modeHelpButton.setFixedSize(24, 24)
+        self.modeHelpButton.setToolTip("Show a diagram of the selected test type and what each setting means")
+        self.modeHelpButton.clicked.connect(self.on_mode_help)
+        crow.addWidget(self.modeHelpButton); crow.addStretch(1); seg.addLayout(crow)
+
+        self.modeStack = QStackedWidget()
+        # Cyclic — load/unload between two FORCE bounds, N cycles
+        self.cyc_lo = dsb(0, 5000, 0, 10, 50, " N"); self.cyc_hi = dsb(0, 5000, 0, 10, 500, " N")
+        self.cyc_n = isb(1, 1000, 5); self.cyc_spd = dsb(0.005, 0.5, 3, 0.01, 0.1, " mm/s")
+        self.cyc_wave = QComboBox(); self.cyc_wave.addItems(["Triangle", "Sine"])
+        self.cyc_wave.setToolTip("Triangle = constant-speed ramps. Sine = eases to a crawl at each "
+                                 "bound → smooth, rounded cycles (low frequency only).")
+        self.modeStack.addWidget(page([("Low", self.cyc_lo), ("High", self.cyc_hi),
+                                       ("Cycles", self.cyc_n), ("Speed", self.cyc_spd),
+                                       ("Waveform", self.cyc_wave)]))
+        # Staircase — step load up (start + i·step), hold each level for dwell
+        self.stc_start = dsb(0, 5000, 0, 10, 200, " N"); self.stc_step = dsb(10, 2000, 0, 10, 200, " N")
+        self.stc_n = isb(1, 20, 4); self.stc_dwell = dsb(1, 600, 0, 5, 30, " s")
+        self.stc_spd = dsb(0.005, 0.5, 3, 0.01, 0.1, " mm/s")
+        self.stc_shape = QComboBox(); self.stc_shape.addItems(["Linear", "Smooth"])
+        self.stc_shape.setToolTip("Linear = constant-speed ramp to each level. Smooth = eases to a crawl "
+                                  "approaching each level (gentler arrival, less overshoot past the target).")
+        self.modeStack.addWidget(page([("Start", self.stc_start), ("Step", self.stc_step),
+                                       ("Levels", self.stc_n), ("Dwell", self.stc_dwell),
+                                       ("Speed", self.stc_spd), ("Ramp", self.stc_shape)]))
+        # Relaxation — ramp to a target STRAIN, then hold still and log force decay
+        self.rlx_strain = dsb(0.001, 0.2, 4, 0.005, 0.02); self.rlx_dur = dsb(1, 3600, 0, 10, 120, " s")
+        self.rlx_spd = dsb(0.005, 0.5, 3, 0.01, 0.1, " mm/s")
+        self.modeStack.addWidget(page([("Hold strain", self.rlx_strain), ("Duration", self.rlx_dur),
+                                       ("Speed", self.rlx_spd)]))
+        # Creep — ramp to a target LOAD, then hold force ~constant and log strain creep
+        self.crp_load = dsb(10, 5000, 0, 10, 500, " N"); self.crp_dur = dsb(1, 3600, 0, 10, 120, " s")
+        self.crp_spd = dsb(0.005, 0.5, 3, 0.01, 0.1, " mm/s")
+        self.modeStack.addWidget(page([("Load", self.crp_load), ("Duration", self.crp_dur),
+                                       ("Speed", self.crp_spd)]))
+        # --- DESTRUCTIVE protocols: keep stepping/cycling until the specimen breaks ---
+        # Staircase → fracture: modulus + a mini relaxation at EVERY level, and a sharp yield onset
+        # (the dwell drop stays small while elastic, then grows abruptly past yield).
+        self.sfr_start = dsb(0, 5000, 0, 10, 400, " N"); self.sfr_step = dsb(10, 2000, 0, 10, 400, " N")
+        self.sfr_dwell = dsb(1, 600, 0, 5, 15, " s"); self.sfr_spd = dsb(0.005, 0.5, 3, 0.01, 0.1, " mm/s")
+        self.sfr_shape = QComboBox(); self.sfr_shape.addItems(["Smooth", "Linear"])
+        self.sfr_shape.setToolTip("Smooth eases into each level (less overshoot). Past yield the specimen is "
+                                  "much softer, so the eased approach gets slow — Linear is faster there.")
+        self.modeStack.addWidget(page([("Start", self.sfr_start), ("Step", self.sfr_step),
+                                       ("Dwell", self.sfr_dwell), ("Speed", self.sfr_spd),
+                                       ("Ramp", self.sfr_shape)]))
+        # Progressive cyclic → fracture: every unload measures the modulus at that damage state.
+        self.pcy_start = dsb(0, 5000, 0, 10, 600, " N"); self.pcy_step = dsb(10, 2000, 0, 10, 400, " N")
+        self.pcy_low = dsb(20, 2000, 0, 10, 150, " N"); self.pcy_spd = dsb(0.005, 0.5, 3, 0.01, 0.1, " mm/s")
+        self.pcy_low.setToolTip("Unload floor — kept well above 0 N so the specimen never goes slack "
+                                "or into compression between cycles.")
+        self.modeStack.addWidget(page([("1st peak", self.pcy_start), ("Peak step", self.pcy_step),
+                                       ("Unload to", self.pcy_low), ("Speed", self.pcy_spd)]))
+        seg.addWidget(self.modeStack)
+        self.modeCombo.currentIndexChanged.connect(self.modeStack.setCurrentIndex)
+
+        self.modeStartButton = QPushButton("Start test")
+        self.modeStartButton.setToolTip("Run the chosen closed-loop mode. Use a SCRAP specimen first and keep a hand near "
+                                        "Emergency Stop.\nRelaxation/creep just HOLD; cyclic REVERSES load↔unload. Same "
+                                        "stall / force-travel safety net as the strain-rate mode.")
+        self.modeStartButton.clicked.connect(self.on_control_mode_start)
+        self.modeStartButton.setEnabled(False)
+        seg.addWidget(self.modeStartButton)
+
+        lay = self.motorControlGroup.layout()
+        idx = lay.indexOf(self.emergencyStopButton)
+        lay.insertLayout(idx, seg) if idx >= 0 else lay.addLayout(seg)
+        self._update_control_mode_enabled()                 # start greyed until the operator enables it
+
+    def _update_control_mode_enabled(self):
+        """Grey the advanced-mode entries unless the segment is enabled (the header checkbox). The
+        Start button additionally needs a live connection (tracked in self._testmode_direction_ok).
+        While an advanced test is running the type/settings lock, but the Stop button stays live."""
+        if getattr(self, "modeEnableCheck", None) is None:
+            return
+        running = getattr(self, "active_policy", None) is not None
+        en = self.modeEnableCheck.isChecked()
+        for w in (self.modeCombo, self.modeHelpButton, self.modeStack):
+            w.setEnabled(en and not running)                # disabling the stack greys every spin box in it
+        # keep help available even mid-run; only the editable type/settings lock
+        self.modeHelpButton.setEnabled(en)
+        if running:
+            self.modeStartButton.setEnabled(True)           # never lock the operator out of Stop
+        else:
+            self.modeStartButton.setEnabled(en and getattr(self, "_testmode_direction_ok", False))
+
+    def on_control_mode_start(self):
+        """Start (or, if running, cancel) the advanced closed-loop mode chosen in the segment."""
+        if getattr(self, "active_policy", None) is not None:
+            self._stop_policy("cancelled by user"); return
+        if not self.connected or not self.motorsSwitch.isChecked():
+            self.append_to_console("[Mode] Connect and enable motors first."); return
+        if self.preload_active:
+            self.append_to_console("[Mode] Finish or cancel the preload first."); return
+        from control_policies import CyclicPolicy, StaircasePolicy, RelaxationPolicy, CreepPolicy
+        m = self.modeCombo.currentText()
+        expected = None
+        if m == "Cyclic":
+            lo, hi = self.cyc_lo.value(), self.cyc_hi.value()
+            if hi <= lo:
+                self.append_to_console("[Mode] Cyclic: High force must be > Low force."); return
+            if lo < 20:
+                # keep the specimen in tension between cycles: a ~0 N floor lets an inter-sample
+                # overshoot push a thin dogbone into compression / buckling.
+                self.append_to_console("[Mode] Cyclic: keep Low ≥ 20 N so the specimen stays in tension."); return
+            policy = CyclicPolicy(lo, hi, int(self.cyc_n.value()), speed=self.cyc_spd.value(),
+                                  waveform=self.cyc_wave.currentText().lower())
+            # Cyclic used to pass no expected duration, so it inherited the bare 900 s runaway
+            # timeout no matter how much work was asked for. A wide-bound run is far slower than a
+            # narrow one (T6.3 took 27.6 s/cycle over 0.87 mm; a 400->1100 N sweep is ~3.4x the
+            # travel, ~93 s/cycle), so 8 wide cycles project to ~770 s = 86 % of the guard — it
+            # would abort a legitimate test near the end. Budget per cycle instead.
+            expected = int(self.cyc_n.value()) * 120.0
+        elif m == "Staircase":
+            start, step, n = self.stc_start.value(), self.stc_step.value(), int(self.stc_n.value())
+            levels = [start + i * step for i in range(n)]
+            policy = StaircasePolicy(levels, self.stc_dwell.value(), speed=self.stc_spd.value(),
+                                     ramp_shape=self.stc_shape.currentText().lower())
+            expected = n * self.stc_dwell.value()          # total dwell time (ramps covered by the +300 s margin)
+        elif m == "Relaxation":
+            policy = RelaxationPolicy(self.rlx_strain.value(), self.rlx_dur.value(), speed=self.rlx_spd.value())
+            expected = self.rlx_dur.value()
+        elif m == "Creep":
+            policy = CreepPolicy(self.crp_load.value(), self.crp_dur.value(), ramp_speed=self.crp_spd.value())
+            expected = self.crp_dur.value()
+        elif m.startswith("Staircase →"):
+            if not self._confirm_destructive(
+                    "Staircase to FRACTURE",
+                    f"Steps the load up in {self.sfr_step.value():.0f} N increments from "
+                    f"{self.sfr_start.value():.0f} N, dwelling {self.sfr_dwell.value():.0f} s at each level, "
+                    "and KEEPS STEPPING until the specimen breaks."):
+                return
+            from control_policies import StaircaseToFracturePolicy
+            policy = StaircaseToFracturePolicy(self.sfr_start.value(), self.sfr_step.value(),
+                                               self.sfr_dwell.value(), speed=self.sfr_spd.value(),
+                                               ramp_shape=self.sfr_shape.currentText().lower())
+            expected = 40 * self.sfr_dwell.value()     # unknown level count -> allow a long run
+        else:  # Progressive cyclic → FRACTURE
+            if self.pcy_start.value() <= self.pcy_low.value():
+                self.append_to_console("[Mode] Progressive cyclic: 1st peak must be > the unload floor."); return
+            if not self._confirm_destructive(
+                    "Progressive cyclic to FRACTURE",
+                    f"Load-unload-reload with the peak rising {self.pcy_step.value():.0f} N each cycle "
+                    f"(first peak {self.pcy_start.value():.0f} N, unloading to {self.pcy_low.value():.0f} N), "
+                    "and KEEPS CYCLING until the specimen breaks."):
+                return
+            from control_policies import ProgressiveCyclicPolicy
+            policy = ProgressiveCyclicPolicy(self.pcy_start.value(), self.pcy_step.value(),
+                                             f_low=self.pcy_low.value(), speed=self.pcy_spd.value())
+            expected = 900.0
+        self._start_policy(policy, self.modeStartButton, "Start test", expected_duration_s=expected)
+
+    # ---- small cross-session memory (Qt's own store; no new file to manage) -------------------
+    def _remember(self, key, value):
+        """Persist one operator setting across restarts. Deliberately tiny: only things whose reset
+        would silently corrupt a RECORD, not general UI state."""
+        try:
+            from PyQt6.QtCore import QSettings
+            QSettings("JU", "UTM_DIC").setValue(key, value)
+        except Exception:
+            pass
+
+    def _recall(self, key, default=None):
+        try:
+            from PyQt6.QtCore import QSettings
+            v = QSettings("JU", "UTM_DIC").value(key, default)
+            return default if v is None else v
+        except Exception:
+            return default
+
+    def _restore_infill(self):
+        """Reinstate the last infill %, and SAY SO — a restored value that appears silently is just
+        a different way to be wrong."""
+        last = self._recall("specimen/infill_pct", None)
+        if last is None:
+            return
+        try:
+            val = int(last)
+        except (TypeError, ValueError):
+            return
+        if 0 <= val <= 100:
+            self.infillSpinBox.setValue(val)
+            # The console does not exist yet during widget construction, so defer the notice to the
+            # first turn of the event loop.
+            try:
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(0, lambda: self.append_to_console(
+                    f"[Settings] Infill restored to {val} % from the last session. "
+                    "It is a LABEL only — change it now if this specimen differs."))
+            except Exception:
+                pass
+
+    def _confirm_destructive(self, title, what):
+        """Fracture protocols destroy the specimen, so make the operator confirm — same discipline as
+        the Fracture test button. Returns True to proceed."""
+        from PyQt6.QtWidgets import QMessageBox
+        # Echo the specimen metadata back: a destructive run cannot be repeated, so a stale label
+        # (e.g. Infill left at 100 % for a 50 % specimen — happened on T7.2) is only catchable here.
+        try:
+            meta = (f"Specimen: {self.areaSpinBox.value():.1f} mm² · gauge "
+                    f"{self.gaugeLengthSpinBox.value():.1f} mm · INFILL {self.infillSpinBox.value()} %")
+        except Exception:
+            meta = ""
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setWindowTitle(f"{title} — destructive test")
+        msg.setText(f"Run {title}?  This DESTROYS the specimen.")
+        msg.setInformativeText(what + "\n\n" + meta +
+                               "\n\nConfirm you have:\n   •  mounted the specimen\n"
+                               "   •  applied preload\n   •  pressed Prepare specimen (tared)\n"
+                               "   •  set the specimen dimensions + INFILL above correctly\n\n"
+                               "Stop / E-Stop aborts at any time.")
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        return msg.exec() == QMessageBox.StandardButton.Yes
+
+    def on_mode_help(self):
+        """Pop up an annotated diagram of the currently-selected test type + a one-line caption, so the
+        operator sees exactly what each setting in the row controls. Images from ui_help/ (generated by
+        generate_mode_help.py)."""
+        import os
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel
+        from PyQt6.QtGui import QPixmap
+        mode = self.modeCombo.currentText()
+        # slug: the fracture modes contain "→" and spaces, which don't belong in a filename
+        slug = mode.lower().replace("→", "to").replace(" ", "_").strip("_")
+        while "__" in slug:
+            slug = slug.replace("__", "_")
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui_help", f"{slug}.png")
+        caps = {
+            "Cyclic": "Repeatedly loads then unloads the specimen between Low and High force for the given "
+                      "number of Cycles (Speed = peak ramp rate). Reveals hysteresis / stiffness change per "
+                      "cycle. Waveform: Triangle (constant-speed ramps) or Sine (eases at each peak — smooth "
+                      "cycles). Both stay within Low/High; period is emergent, not set — low frequency only.",
+            "Staircase": "Steps the load up — Start, Start+Step, Start+2·Step … for Levels steps — holding "
+                         "(Dwell) at each so you can read the stress-relaxation at every level. Ramp: Linear "
+                         "(constant speed) or Smooth (eases into each level — gentler arrival).",
+            "Relaxation": "Ramps to a fixed strain (needs DIC), then holds the crosshead still for Duration "
+                          "while the force decays — the material's stress-relaxation response.",
+            "Creep": "Ramps to a fixed Load, then holds that force ~constant for Duration while the strain "
+                     "slowly grows — the material's creep response.",
+            "Staircase → FRACTURE": "DESTRUCTIVE. Like Staircase, but it keeps adding steps until the specimen "
+                     "breaks. One specimen gives the modulus re-measured at every level, a mini "
+                     "stress-relaxation at every level, and a sharp yield onset — the dwell drop stays small "
+                     "while elastic then grows abruptly once a level passes yield.",
+            "Progressive cyclic → FRACTURE": "DESTRUCTIVE. Load–unload–reload with the peak rising each cycle "
+                     "until fracture. Every unload measures the modulus at that damage state, so one specimen "
+                     "yields the stiffness-degradation curve D = 1 − Eᵢ/E₀ vs stress, the permanent set per "
+                     "cycle, and the hysteresis energy as it evolves toward failure.",
+        }
+        limits = {
+            "Cyclic": "Limits — Low 20–5000 N (kept in tension) · High > Low, ≤5000 N · Cycles 1–1000 · "
+                      "Speed 0.005–0.5 mm/s.  Keep High below yield to avoid fatigue fracture.",
+            "Staircase": "Limits — Start 0–5000 N · Step 10–2000 N · Levels 1–20 · Dwell 1–600 s · "
+                         "Speed 0.005–0.5 mm/s.  Keep the top level (Start+(Levels−1)·Step) below yield.",
+            "Relaxation": "Limits — Hold strain 0.001–0.2 (keep below yield ≈0.015 for an elastic hold) · "
+                          "Duration 1–3600 s · Speed 0.005–0.5 mm/s.  Needs DIC green 2/2.",
+            "Creep": "Limits — Load 10–5000 N (use ≤60–70% of UTS to avoid runaway) · Duration 1–3600 s · "
+                     "Speed 0.005–0.5 mm/s.",
+            "Staircase → FRACTURE": "Limits — Start 0–5000 N · Step 10–2000 N · Dwell 1–600 s · "
+                     "Speed 0.005–0.5 mm/s · max 60 levels.  Pick Step so ~8–12 levels reach fracture "
+                     "(100% infill breaks ≈3.2–3.4 kN, 50% ≈1.3–1.8 kN): too fine and the run drags, "
+                     "too coarse and you lose resolution near yield.",
+            "Progressive cyclic → FRACTURE": "Limits — 1st peak 0–5000 N (> unload floor) · Peak step "
+                     "10–2000 N · Unload to 20–2000 N · Speed 0.005–0.5 mm/s · max 40 cycles.  Keep the "
+                     "unload floor ≥20 N so the specimen never goes slack.",
+        }
+        backstops = ("Always-on safety net (any mode): 10 kN force · 30 mm travel · stall guard · E-Stop.  "
+                     "Motor delivers ~3.2–3.4 kN normally (all six 100% infill specimens fractured there); "
+                     "a session that stalls nearer ~2.6 kN is thermally derated, not a hard ceiling.")
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"{mode} test — parameters")
+        lay = QVBoxLayout(dlg)
+        img = QLabel(); pix = QPixmap(path)
+        if pix.isNull():
+            img.setText(f"(diagram not found — run generate_mode_help.py)\n{path}")
+        else:
+            img.setPixmap(pix)
+        lay.addWidget(img)
+        wmax = max(360, pix.width())
+        cap = QLabel(caps.get(mode, "")); cap.setWordWrap(True)
+        cap.setStyleSheet("color:#333; padding:4px 2px;"); cap.setMaximumWidth(wmax)
+        lay.addWidget(cap)
+        lim = QLabel(limits.get(mode, "")); lim.setWordWrap(True)
+        lim.setStyleSheet("color:#0a6; font-weight:bold; padding:2px;"); lim.setMaximumWidth(wmax)
+        lay.addWidget(lim)
+        net = QLabel(backstops); net.setWordWrap(True)
+        net.setStyleSheet("color:#a33; padding:2px 2px 6px 2px;"); net.setMaximumWidth(wmax)
+        lay.addWidget(net)
+        dlg.exec()
+
+    def _start_policy(self, policy, button=None, start_label="Start mode", expected_duration_s=None):
+        """Arm a control policy: latch tension ONCE, then live SetSpeed only (preload discipline).
+        `expected_duration_s` (relaxation/creep/staircase holds) extends the runaway timeout so a
+        legitimately long hold is not cut off at the 900 s default."""
         import time
         from control_policies import Signals
+        from control_policies import StrainRatePolicy, RelaxationPolicy, CyclicPolicy, StaircasePolicy
         self.active_policy = policy
+        # Waveform modes sweep the speed continuously, so the 0.01 mm/s SetSpeed deadband would
+        # quantise a 0.01-0.10 mm/s sine into only ~10 velocity steps (visible as straight, stepped
+        # flanks in T6). Use a finer deadband for those; the 0.15 s throttle still caps the command
+        # rate. Strain-rate keeps the coarse deadband (its speed is near-constant; avoids jitter).
+        self._policy_speed_eps = 0.002 if isinstance(policy, (CyclicPolicy, StaircasePolicy)) else 0.01
+        self._policy_timeout_s = (self.POLICY_TIMEOUT_S if expected_duration_s is None
+                                  else max(self.POLICY_TIMEOUT_S, expected_duration_s + 300))
         self._policy_button = button
         self._policy_start_label = start_label
         self._policy_last_speed = 0.0; self._policy_last_speed_t = 0.0
         self._policy_start_t = time.monotonic()
+        self._policy_msg_t = 0.0                             # throttle for the ~1 Hz live-progress status line
+        self._policy_dir = "tension"                        # firmware direction currently latched (tension|compression|hold)
+        self._policy_uses_dic = isinstance(policy, (StrainRatePolicy, RelaxationPolicy))  # DIC-steered → dead-DIC guard
         self._policy_dic_watch = (self.latest_dic_cauchy, self._policy_start_t)
         self._stall_hist = []                               # arm the stall guard for this run
         first = policy.step(Signals(t=self._policy_start_t, load=self.current_load,
@@ -2386,11 +2771,16 @@ class UTMApplication(QMainWindow):
         self._start_movement_grace_period()
         if button is not None:
             button.setText("Stop mode")
+        self._update_control_mode_enabled()                 # lock type/settings while a test runs
         self.append_to_console(f"[Mode] {policy.start_message()}")
         self.set_status(f"Test mode: {policy.name} ...")
 
     def _policy_step(self):
-        """Per-load-sample control step (mirrors _preload_check): safety net → policy → SetSpeed."""
+        """Per-load-sample control step (mirrors _preload_check): safety net → policy → direction/SetSpeed.
+        Handles tension / compression / hold so cyclic·staircase·relaxation·creep run, not just the
+        tension-only strain-rate pull. Guards are PHASE-AWARE: the stall guard is silent during an
+        intentional HOLD (dwell/relaxation/creep hold), and the dead-DIC guard applies only to
+        DIC-steered modes (strain-rate / relaxation ramp)."""
         import time
         from control_policies import Signals
         now = time.monotonic()
@@ -2400,51 +2790,84 @@ class UTMApplication(QMainWindow):
                 self.serial_manager.send_command("Stop"); self.serial_manager.send_command("EStop")
             self._stop_policy(f"SAFETY halt — {self.current_load:.0f} N / {self.motor_displacement_mm:.1f} mm", warn=True)
             return
-        if now - self._policy_start_t >= self.POLICY_TIMEOUT_S:
+        if now - self._policy_start_t >= self._policy_timeout_s:
             self._stop_policy("timed out", warn=True); return
-        # STALL GUARD (same as the auto-stop path): commanded to pull but crosshead frozen under load ->
-        # halt. The DIC-staleness guard MISSES a motor stall at its force ceiling because the specimen
-        # keeps creeping (strain still advances) — S17 jittered 62 s at ~2.9 kN with no auto-halt.
-        # Near-zero movement only, so a legitimately slow pull to fracture does not trip it.
-        self._stall_hist.append((now, self.motor_displacement_mm))
-        while self._stall_hist and now - self._stall_hist[0][0] > self.STALL_WINDOW_S:
-            self._stall_hist.pop(0)
-        if (self.current_load > self.STALL_MIN_LOAD_N and self._stall_hist
-                and now - self._stall_hist[0][0] >= self.STALL_WINDOW_S - 0.5
-                and abs(self.motor_displacement_mm - self._stall_hist[0][1]) < self.STALL_MIN_ADVANCE_MM):
-            if self.connected:
-                self.serial_manager.send_command("Stop"); self.serial_manager.send_command("EStop")
-            self._stop_policy(f"STALL — crosshead frozen (< {self.STALL_MIN_ADVANCE_MM:.2f} mm in "
-                              f"{self.STALL_WINDOW_S:.0f} s) at {self.current_load:.0f} N — motor hit its force limit",
-                              warn=True)
-            return
-        # DIC-staleness guard, staged so a strain-rate loop can never ramp the speed up blind:
-        #   (a) FREEZE the speed once the strain has been stale > STALE_FREEZE_S (no acceleration on a
-        #       frozen/stale reading), then (b) hard-HALT if it stays frozen > DEAD_DIC_S (camera lost).
-        last_val, last_t = self._policy_dic_watch
-        if abs(self.latest_dic_cauchy - last_val) > 1e-5:
-            self._policy_dic_watch = (self.latest_dic_cauchy, now)
-        stale = now - last_t
-        if self._policy_last_speed > 0 and stale > self.POLICY_DEAD_DIC_S:
-            if self.connected:
-                self.serial_manager.send_command("Stop")
-            self._stop_policy("DIC strain frozen (camera lost?) — halted for safety", warn=True); return
+        moving = self._policy_dir in ("tension", "compression")
+        # STALL GUARD — only while the motor is COMMANDED to move (never during an intentional hold, or
+        # the dwell/relaxation/creep holds would false-trip it). Commanded to move but crosshead frozen
+        # under load -> halt. The DIC-staleness guard MISSES a motor stall at its force ceiling because
+        # the specimen keeps creeping (S17 jittered 62 s at ~2.9 kN with no auto-halt).
+        if moving:
+            self._stall_hist.append((now, self.motor_displacement_mm, self._policy_last_speed))
+            while self._stall_hist and now - self._stall_hist[0][0] > self.STALL_WINDOW_S:
+                self._stall_hist.pop(0)
+            if (self.current_load > self.STALL_MIN_LOAD_N and self._stall_hist
+                    and now - self._stall_hist[0][0] >= self.STALL_WINDOW_S - 0.5):
+                advanced = abs(self.motor_displacement_mm - self._stall_hist[0][1])
+                cmd_avg = sum(h[2] for h in self._stall_hist) / len(self._stall_hist)
+                need = self._stall_threshold_mm(cmd_avg)
+                if need > 0 and advanced < need:
+                    if self.connected:
+                        self.serial_manager.send_command("Stop"); self.serial_manager.send_command("EStop")
+                    self._stop_policy(
+                        f"STALL — crosshead advanced {advanced:.3f} mm in {self.STALL_WINDOW_S:.0f} s "
+                        f"(needed {need:.3f}; commanded ~{cmd_avg:.4f} mm/s = {cmd_avg * self.STALL_WINDOW_S:.3f} mm) "
+                        f"at {self.current_load:.0f} N — motor hit its force limit", warn=True)
+                    return
+        # DIC-staleness guard (DIC-steered modes only), staged so a strain-rate loop can never ramp the
+        # speed up blind: (a) FREEZE the speed once strain has been stale > STALE_FREEZE_S, then
+        # (b) hard-HALT if it stays frozen > DEAD_DIC_S (camera lost). Force-steered modes (cyclic /
+        # staircase / creep) read the load cell, which never goes stale, so they skip this.
+        stale = 0.0
+        if self._policy_uses_dic:
+            last_val, last_t = self._policy_dic_watch
+            if abs(self.latest_dic_cauchy - last_val) > 1e-5:
+                self._policy_dic_watch = (self.latest_dic_cauchy, now)
+            stale = now - last_t
+            if self._policy_last_speed > 0 and stale > self.POLICY_DEAD_DIC_S:
+                if self.connected:
+                    self.serial_manager.send_command("Stop")
+                self._stop_policy("DIC strain frozen (camera lost?) — halted for safety", warn=True); return
         cmd = self.active_policy.step(Signals(t=now, load=self.current_load,
                                               pos=self.motor_displacement_mm, strain=self.latest_dic_cauchy))
         if cmd.done:
             self._stop_policy(cmd.message); return
-        if cmd.direction != "tension":
-            # beta wiring is tension-only; never re-latch / reverse blindly
-            self._stop_policy(f"unsupported command '{cmd.direction}' in beta mode", warn=True); return
+        if cmd.message and now - getattr(self, "_policy_msg_t", 0.0) >= 1.0:
+            self.set_status(f"Test mode: {cmd.message}")   # ~1 Hz live heartbeat (e.g. "creep 12/60 s")
+            self._policy_msg_t = now
+        want = cmd.direction
+        # ---- HOLD: stop the crosshead; holding torque keeps position (rig-confirmed) ----
+        if want == "hold":
+            if self._policy_dir != "hold":
+                if self.connected:
+                    self.serial_manager.send_command("Stop")
+                self.stopRadioButton.blockSignals(True); self.stopRadioButton.setChecked(True); self.stopRadioButton.blockSignals(False)
+                self._policy_dir = "hold"; self._policy_last_speed = 0.0; self._stall_hist = []
+            return
+        # ---- MOVE: tension (firmware Down) or compression (firmware Up) ----
+        fw = "Down" if want == "tension" else "Up"
         spd = cmd.speed
-        if stale > self.POLICY_STALE_FREEZE_S:
+        if self._policy_uses_dic and want == "tension" and stale > self.POLICY_STALE_FREEZE_S:
             spd = self._policy_last_speed          # strain stale -> HOLD last good speed, never accelerate blind
-        if abs(spd - self._policy_last_speed) >= 0.01 and now - self._policy_last_speed_t >= 0.15:
+        if want != self._policy_dir:
+            # direction change / resume from hold: latch the new direction (direct reversal is clean —
+            # rig-confirmed auto-decel ~1 s). SetSpeed first, then the direction command.
+            if self.connected:
+                self.serial_manager.send_command(f"SetSpeed {self._fw_speed(max(spd, 0.02))}")
+                self.serial_manager.send_command(fw)
+            rb = self.upRadioButton if want == "tension" else self.downRadioButton
+            rb.blockSignals(True); rb.setChecked(True); rb.blockSignals(False)
+            self._policy_dir = want; self._policy_last_speed = spd; self._policy_last_speed_t = now
+            self._stall_hist = []                  # fresh baseline after a reversal (net travel resets)
+        elif (abs(spd - self._policy_last_speed) >= getattr(self, "_policy_speed_eps", 0.01)
+                and now - self._policy_last_speed_t >= 0.15):
             self._policy_last_speed = spd; self._policy_last_speed_t = now
-            self.serial_manager.send_command(f"SetSpeed {self._fw_speed(spd)}")
+            if self.connected:
+                self.serial_manager.send_command(f"SetSpeed {self._fw_speed(spd)}")
 
     def _stop_policy(self, message, warn=False):
         """Stop the motor and end the active test-mode policy (mirrors _stop_preload)."""
+        self._dump_policy_log(getattr(self, 'active_policy', None))
         self.active_policy = None
         self.movement_start_grace_period = False
         if getattr(self, 'grace_period_timer', None) is not None:
@@ -2455,8 +2878,47 @@ class UTMApplication(QMainWindow):
         btn = getattr(self, '_policy_button', None)
         if btn is not None:
             btn.setText(getattr(self, '_policy_start_label', 'Start mode'))
+        self._update_control_mode_enabled()                 # restore type/settings now the test ended
         self.append_to_console(f"[Mode] {message}")
         self.set_status(f"Test mode: {message}", is_warning=warn)
+
+    def _dump_policy_log(self, policy):
+        """Fracture protocols accumulate a per-level / per-cycle record in `policy.log`. Print it as a
+        table when the mode ends so the operator can read the result immediately — the CSV still has
+        the full time series for proper offline analysis."""
+        log = getattr(policy, "log", None)
+        if not log:
+            return
+        try:
+            name = getattr(policy, "name", "mode")
+            self.append_to_console(f"[Mode] --- {name} summary ({len(log)} records) ---")
+            if name == "staircase-fracture":
+                self.append_to_console("[Mode]  level   target    arrive      end   relax-drop")
+                for e in log:
+                    if e.get("event") == "fracture":
+                        self.append_to_console(f"[Mode]  FRACTURE on level {e['level']} "
+                                               f"(target {e['level_N']:.0f} N) at {e['load']:.0f} N")
+                    else:
+                        self.append_to_console(
+                            f"[Mode]  {e['level']:5d}  {e['level_N']:7.0f}  {e['arrive_load']:8.0f}  "
+                            f"{e['end_load']:7.0f}  {e['relax_drop_N']:9.1f} N")
+            elif name == "progressive-cyclic":
+                self.append_to_console("[Mode]  cycle   target     peak   trough    unload-K (N/mm)")
+                for e in log:
+                    if e.get("event") == "fracture":
+                        self.append_to_console(f"[Mode]  FRACTURE on cycle {e['cycle']} "
+                                               f"at peak {e['fracture_peak']:.0f} N")
+                        continue
+                    if "trough_load" not in e or "peak_load" not in e:
+                        continue
+                    dF = e["peak_load"] - e["trough_load"]
+                    dP = e["peak_pos"] - e["trough_pos"]
+                    ku = (dF / dP) if abs(dP) > 1e-6 else float("nan")
+                    self.append_to_console(
+                        f"[Mode]  {e['cycle']:5d}  {e['target_N']:7.0f}  {e['peak_load']:7.0f}  "
+                        f"{e['trough_load']:7.0f}  {ku:14.0f}")
+        except Exception as e:
+            self.append_to_console(f"[Mode] could not print summary: {e}")
 
     # ===== Recipes / Prepare-specimen / Auto-stop-at-fracture (offline-built helpers) =====
     def _setup_recipe_controls(self):
@@ -2467,7 +2929,9 @@ class UTMApplication(QMainWindow):
         r1 = QHBoxLayout()
         settings_help = ("Save your specimen & test settings — dimensions, DIC mode, preload, speed, infill — "
                          "under a name and reuse them in one click. Pick a saved profile here, then press Load "
-                         "to apply it; press Save… to store the current inputs. 'Default' is always available.")
+                         "to apply it; press Save… to store the current inputs. The two starter profiles — "
+                         "'Default 100% infill' and 'Default 50% infill' — are always available and carry "
+                         "sensible settings for every test type, including the fracture protocols.")
         settings_label = QLabel("Settings:"); settings_label.setToolTip(settings_help)
         r1.addWidget(settings_label)
         self.recipeCombo = QComboBox(); self.recipeCombo.setMinimumWidth(150)
@@ -2484,7 +2948,16 @@ class UTMApplication(QMainWindow):
         self.infillSpinBox.setRange(0, 100)
         self.infillSpinBox.setValue(100)
         self.infillSpinBox.setToolTip("Infill % does NOT change any recorded test data. It is a label only — "
-                                      "kept for the saved settings, the CSV header and the report.")
+                                      "kept for the saved settings, the CSV header and the report.\n"
+                                      "Remembered across restarts, so set it once per SPECIMEN.")
+        # Infill is a LABEL, so nothing downstream ever catches a stale one, and the only gate that
+        # echoes it back is the destructive-test confirm dialog. A NON-destructive run (cyclic,
+        # creep) has no such gate — which is exactly how T6.4, T6.5 and both T9 runs recorded
+        # "Infill: 100 %" on 50 % specimens while T7.3, a destructive run, came out right.
+        # Fix: remember it across restarts so it is set once per SPECIMEN, not once per session.
+        self._restore_infill()
+        self.infillSpinBox.valueChanged.connect(
+            lambda v: self._remember("specimen/infill_pct", int(v)))
         r1.addWidget(self.infillSpinBox)
         r2 = QHBoxLayout()
         self.prepareSpecimenButton = QPushButton("Prepare specimen")
@@ -2515,9 +2988,23 @@ class UTMApplication(QMainWindow):
         except Exception:
             pass
         self._refresh_recipes()
-        i = self.recipeCombo.findText("Default")
+        # 100 % infill is the headline specimen type, so it is the profile the app opens on. The
+        # combo is name-sorted and "1" < "5", so it is also index 0 — the findText keeps the
+        # intent explicit (and correct) if a user later adds a profile that sorts above it.
+        from utm_recipes import DEFAULT_100
+        # Reopen on the profile last used, falling back to the 100 % default. Always reopening on
+        # DEFAULT_100 is what made the infill label reset every session (see _restore_infill).
+        i = self.recipeCombo.findText(str(self._recall("settings/last_profile", DEFAULT_100)))
+        if i < 0:
+            i = self.recipeCombo.findText(DEFAULT_100)
         if i >= 0:
+            self.recipeCombo.blockSignals(True)      # widgets may not all exist yet
             self.recipeCombo.setCurrentIndex(i)
+            self.recipeCombo.blockSignals(False)
+        # PICKING a profile now APPLIES it. Previously the combo only changed the label and the
+        # operator had to notice the separate Load button, so selecting "Default 50% infill" looked
+        # like it did nothing at all -- and a test could be run under whatever was on screen before.
+        self.recipeCombo.currentIndexChanged.connect(self._on_recipe_selected)
 
     def _refresh_recipes(self):
         """Repopulate the recipe dropdown from recipes/*.json, preserving the selection."""
@@ -2537,6 +3024,83 @@ class UTMApplication(QMainWindow):
         if i >= 0:
             self.recipeCombo.setCurrentIndex(i)
         self.recipeCombo.blockSignals(False)
+
+    def _mode_widget_map(self):
+        """Advanced-test-mode parameter widgets, keyed by the EXACT dropdown label then by the
+        recipe key. Used by BOTH recipe save and load, so the two can never drift apart — adding
+        a mode means adding one entry here and nothing else."""
+        m = {}
+        def add(label, **kw):
+            if all(v is not None for v in kw.values()):   # skip if the UI isn't built yet
+                m[label] = kw
+        add("Cyclic", low=getattr(self, "cyc_lo", None), high=getattr(self, "cyc_hi", None),
+            cycles=getattr(self, "cyc_n", None), speed=getattr(self, "cyc_spd", None),
+            waveform=getattr(self, "cyc_wave", None))
+        add("Staircase", start=getattr(self, "stc_start", None), step=getattr(self, "stc_step", None),
+            levels=getattr(self, "stc_n", None), dwell=getattr(self, "stc_dwell", None),
+            speed=getattr(self, "stc_spd", None), ramp=getattr(self, "stc_shape", None))
+        add("Relaxation", strain=getattr(self, "rlx_strain", None),
+            duration=getattr(self, "rlx_dur", None), speed=getattr(self, "rlx_spd", None))
+        add("Creep", load=getattr(self, "crp_load", None), duration=getattr(self, "crp_dur", None),
+            speed=getattr(self, "crp_spd", None))
+        add("Staircase → FRACTURE", start=getattr(self, "sfr_start", None),
+            step=getattr(self, "sfr_step", None), dwell=getattr(self, "sfr_dwell", None),
+            speed=getattr(self, "sfr_spd", None), ramp=getattr(self, "sfr_shape", None))
+        add("Progressive cyclic → FRACTURE", first_peak=getattr(self, "pcy_start", None),
+            peak_step=getattr(self, "pcy_step", None), unload_to=getattr(self, "pcy_low", None),
+            speed=getattr(self, "pcy_spd", None))
+        return m
+
+    def _read_mode_params(self):
+        """Snapshot EVERY mode's settings (not just the selected one) so switching mode after a
+        load still gives sane values."""
+        out = {}
+        for label, widgets in self._mode_widget_map().items():
+            vals = {}
+            for key, w in widgets.items():
+                try:
+                    vals[key] = w.currentText() if hasattr(w, "currentText") else w.value()
+                except Exception:
+                    continue
+            if vals:
+                out[label] = vals
+        return out
+
+    def _apply_mode_params(self, params):
+        """Restore per-mode settings. Silently skips anything unknown so an older/newer recipe
+        never blocks a load."""
+        if not isinstance(params, dict):
+            return
+        wm = self._mode_widget_map()
+        for label, vals in params.items():
+            widgets = wm.get(label)
+            if not widgets or not isinstance(vals, dict):
+                continue
+            for key, v in vals.items():
+                w = widgets.get(key)
+                if w is None:
+                    continue
+                try:
+                    if hasattr(w, "currentText"):
+                        i = w.findText(str(v))
+                        if i >= 0:
+                            w.setCurrentIndex(i)
+                    else:
+                        w.setValue(type(w.value())(v))      # int for QSpinBox, float for QDoubleSpinBox
+                except Exception:
+                    continue
+
+    def _on_recipe_selected(self, _index):
+        """Selecting a profile applies it immediately, and says so in the console."""
+        name = self.recipeCombo.currentText()
+        if not name:
+            return
+        self.on_recipe_load()
+        self._remember("settings/last_profile", name)
+        self.append_to_console(
+            f"[Settings] applied '{name}' — dimensions, preload, speed, DIC preset, auto-stop "
+            "and ALL SIX advanced-mode parameter sets. Edit any field afterwards to override it, "
+            "or press Save… to store your edits as a new profile.")
 
     def on_recipe_load(self):
         """Apply the selected recipe to the dimension / preload / speed / DIC-mode inputs."""
@@ -2560,8 +3124,23 @@ class UTMApplication(QMainWindow):
             self.autoStopFractureCheck.setChecked(bool(r.auto_stop_fracture))
         if getattr(self, 'infillSpinBox', None) is not None:
             self.infillSpinBox.setValue(int(round(r.infill_pct)))
+        # --- advanced test mode: per-mode params, then the selected mode itself ---
+        self._apply_mode_params(getattr(r, "mode_params", None))
+        mode_txt = ""
+        if getattr(self, 'modeCombo', None) is not None and getattr(self, 'modeEnableCheck', None) is not None:
+            i = self.modeCombo.findText(str(getattr(r, "mode", "manual")))
+            if i >= 0:
+                self.modeCombo.setCurrentIndex(i)
+                self.modeEnableCheck.setChecked(True)
+                mode_txt = f", mode {self.modeCombo.currentText()}"
+            else:
+                # "manual" (or an unknown label from a newer app) -> leave the advanced segment OFF
+                self.modeEnableCheck.setChecked(False)
+                mode_txt = ", mode manual"
+            self._update_control_mode_enabled()
         self.append_to_console(f"[Settings] loaded '{r.name}' — "
-                               f"preload {r.preload_N:.0f} N, {r.test_speed_mm_s:.3f} mm/s, DIC {r.specimen_mode}")
+                               f"preload {r.preload_N:.0f} N, {r.test_speed_mm_s:.3f} mm/s, "
+                               f"DIC {r.specimen_mode}{mode_txt}")
         self.set_status(f"Settings '{r.name}' applied")
 
     def on_recipe_save(self):
@@ -2581,6 +3160,13 @@ class UTMApplication(QMainWindow):
             test_speed_mm_s=self.get_speed_rpm() * self.MM_PER_S_PER_RPM,
             strain_rate=(self.strainRateSpinBox.value() if getattr(self, 'strainRateSpinBox', None) is not None else 0.001),
             auto_stop_fracture=(self.autoStopFractureCheck.isChecked() if getattr(self, 'autoStopFractureCheck', None) is not None else True),
+            # the advanced mode is only "selected" when the segment is actually armed
+            mode=(self.modeCombo.currentText()
+                  if (getattr(self, 'modeEnableCheck', None) is not None
+                      and self.modeEnableCheck.isChecked()
+                      and getattr(self, 'modeCombo', None) is not None)
+                  else "manual"),
+            mode_params=self._read_mode_params(),
         )
         try:
             path = r.save()
@@ -2596,14 +3182,17 @@ class UTMApplication(QMainWindow):
     def on_prepare_specimen(self):
         """One click: clear the consoles, then tare position + force + DIC for a clean start.
         DIC is only tared when markers are actually tracked (2 or 4 blobs)."""
-        # Fresh start — clear both consoles + the stress-strain plot (load plot kept)
+        # Fresh start — clear both consoles + BOTH plots, so the new specimen starts on empty axes
         self.consoleTextEdit.clear()
         if hasattr(self, 'cameraConsoleTextEdit'):
             self.cameraConsoleTextEdit.clear()
-        try:
-            self.on_clear_stress_strain_plot()
-        except Exception as e:
-            self.append_to_console(f"[Prepare] could not clear stress-strain plot: {e}")
+        for label, fn in [("stress-strain", getattr(self, 'on_clear_stress_strain_plot', None)),
+                          ("load", getattr(self, 'on_clear_load_plot', None))]:
+            if callable(fn):
+                try:
+                    fn()
+                except Exception as e:
+                    self.append_to_console(f"[Prepare] could not clear {label} plot: {e}")
         done, skipped = [], []
         # Position + force always tare
         for label, fn in [("position", getattr(self, 'on_tare_location', None)),
@@ -2614,7 +3203,7 @@ class UTMApplication(QMainWindow):
                 except Exception as e:
                     self.append_to_console(f"[Prepare] {label} tare failed: {e}")
         # DIC only tares when markers are being tracked
-        blobs = getattr(self, '_dic_blob_count', 0)
+        blobs = self._live_blob_count()
         if callable(getattr(self, 'on_tare_dic', None)):
             if blobs in (2, 4):
                 try:
@@ -2688,18 +3277,30 @@ class UTMApplication(QMainWindow):
         # legitimately slow approach to fracture (still advancing) does NOT trip it.
         import time as _t
         _now = _t.monotonic()
-        self._stall_hist.append((_now, self.motor_displacement_mm))
+        try:
+            # the spin box holds RPM when the unit toggle is on RPM -- convert so the guard always
+            # compares mm/s against mm of travel
+            _cmd = float(self.setSpeedSpinBox.value())
+            if not self.speedUnitMmRadio.isChecked():
+                _cmd *= self.MM_PER_S_PER_RPM
+        except Exception:
+            _cmd = 0.1
+        self._stall_hist.append((_now, self.motor_displacement_mm, _cmd))
         while self._stall_hist and _now - self._stall_hist[0][0] > self.STALL_WINDOW_S:
             self._stall_hist.pop(0)
+        _advanced = abs(self.motor_displacement_mm - self._stall_hist[0][1]) if self._stall_hist else 0.0
+        _need = self._stall_threshold_mm(sum(h[2] for h in self._stall_hist) / len(self._stall_hist)) \
+            if self._stall_hist else 0.0
         if (self.current_load > self.STALL_MIN_LOAD_N and self._stall_hist
                 and _now - self._stall_hist[0][0] >= self.STALL_WINDOW_S - 0.5
-                and abs(self.motor_displacement_mm - self._stall_hist[0][1]) < self.STALL_MIN_ADVANCE_MM):
+                and _need > 0 and _advanced < _need):
             if self.connected:
                 self.serial_manager.send_command("Stop"); self.serial_manager.send_command("EStop")
             self.stopRadioButton.blockSignals(True); self.stopRadioButton.setChecked(True); self.stopRadioButton.blockSignals(False)
             self._autostop_detector = None; self._stall_hist = []
-            self.append_to_console(f"[Stall guard] STALL — crosshead frozen (< {self.STALL_MIN_ADVANCE_MM:.2f} mm in "
-                                   f"{self.STALL_WINDOW_S:.0f} s) at {self.current_load:.0f} N while commanded to move. Motor halted.")
+            self.append_to_console(f"[Stall guard] STALL — crosshead advanced {_advanced:.3f} mm in "
+                                   f"{self.STALL_WINDOW_S:.0f} s (needed {_need:.3f}) at {self.current_load:.0f} N "
+                                   "while commanded to move. Motor halted.")
             self.set_status("⚠ Stall guard — motor halted (no crosshead movement)", is_warning=True)
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "Stall guard activated",
@@ -2730,7 +3331,7 @@ class UTMApplication(QMainWindow):
         self.active_policy = None                           # EStop also kills any closed-loop test mode
         self._release_active = False
         if getattr(self, 'releaseButton', None) is not None:
-            self.releaseButton.setText("Release preload")
+            self.releaseButton.setText("Release load")
         self.set_status("⚠ EMERGENCY STOP - Motors halted", is_warning=True)
         if self.connected:
             self.serial_manager.send_command("EStop")
@@ -3357,7 +3958,7 @@ class UTMApplication(QMainWindow):
             self.load_plot_dic_timestamps.append(dic_ts)
             self.load_plot_dic_L_px.append(dic_L_px)
             self.load_plot_dic_dx_px.append(dic_dx_px)
-            self.load_plot_dic_blobs.append(int(getattr(self, '_dic_blob_count', 2)))
+            self.load_plot_dic_blobs.append(int(self._live_blob_count()))
 
             # Calculate stress and strain for stress-strain plot
             # Strain = displacement / gauge_length (dimensionless)
@@ -3573,7 +4174,7 @@ class UTMApplication(QMainWindow):
         self.dicL0Label.setStyleSheet("font-weight: bold;")
         info_row.addWidget(self.dicL0Label)
         info_row.addSpacing(20)
-        info_row.addWidget(QLabel("Cauchy ε:"))
+        info_row.addWidget(QLabel("Eng ε:"))
         self.dicCauchyLabel = QLabel("—")
         self.dicCauchyLabel.setStyleSheet("font-weight: bold; color: #0066cc;")
         info_row.addWidget(self.dicCauchyLabel)
@@ -3635,8 +4236,25 @@ class UTMApplication(QMainWindow):
         from PyQt6.QtWidgets import QComboBox
         pc_grid.addWidget(QLabel("Strain source:"), 4, 0)
         self.strainSourceCombo = QComboBox()
-        self.strainSourceCombo.addItems(["Motor", "DIC Cauchy", "DIC True", "Both (Cauchy + Motor)", "Both (Cauchy + True)"])
-        self.strainSourceCombo.setCurrentIndex(1)  # Default to DIC Cauchy
+        # Display text says what the quantity IS. "Cauchy strain" is a synonym for ENGINEERING
+        # strain, but sitting next to "True" it reads as if Cauchy = true (which is only correct
+        # for STRESS) — that mislabelling reached the report axes. userData carries a stable key so
+        # the plotting code never has to match on display text again.
+        for _label, _key in (("Motor (crosshead)", "motor"),
+                             ("DIC engineering  ΔL/L₀", "eng"),
+                             ("DIC true / log  ln(L/L₀)", "true"),
+                             ("Both (engineering + Motor)", "both_motor"),
+                             ("Both (engineering + true)", "both_true")):
+            self.strainSourceCombo.addItem(_label, _key)
+        self.strainSourceCombo.setCurrentIndex(1)  # default: DIC engineering
+        self.strainSourceCombo.setToolTip(
+            "Which strain the stress-strain plot uses.\n\n"
+            "DIC engineering  ΔL/L₀  — the reported basis. Matches ISO 527 and the add:north TDS,\n"
+            "and pairs correctly with engineering stress F/A₀.\n"
+            "DIC true / log  ln(L/L₀) — same measurement, log definition. Both are exact; they\n"
+            "differ by only ~1.6 % at our 3 % failure strain.\n\n"
+            "CSV columns keep their original names (DIC_Cauchy = engineering, DIC_True = log) so\n"
+            "existing analysis scripts and past tests still work.")
         self.strainSourceCombo.currentIndexChanged.connect(self._on_strain_source_changed)
         pc_grid.addWidget(self.strainSourceCombo, 4, 1)
         old_pc_layout = self.ssPlotControlsGroup.layout()
@@ -3715,7 +4333,7 @@ class UTMApplication(QMainWindow):
         self.dicL0LabelLP.setStyleSheet("font-weight: bold;")
         info_row.addWidget(self.dicL0LabelLP)
         info_row.addSpacing(20)
-        info_row.addWidget(QLabel("Cauchy ε:"))
+        info_row.addWidget(QLabel("Eng ε:"))
         self.dicCauchyLabelLP = QLabel("—")
         self.dicCauchyLabelLP.setStyleSheet("font-weight: bold; color: #0066cc;")
         info_row.addWidget(self.dicCauchyLabelLP)
@@ -3778,10 +4396,23 @@ class UTMApplication(QMainWindow):
             print(f"Feed error: {e}")
 
     # ===== Live DIC health badge (Phase C) =====
+    def _live_blob_count(self):
+        """Marker count, or 0 if no frame has arrived recently.
+
+        `_dic_blob_count` is a scalar snapshot that only changes when a frame arrives, so if the
+        camera stops it FREEZES at its last value and every consumer keeps reading a healthy "2".
+        In T6.4 (S22, 2026-08-11) the DIC pipeline died at t=145 s and this reported 2/2 for the
+        remaining 152 s -- the CSV header claimed "100 % frames tracked (3364/3364)" across a total
+        blackout, and half the test's strain data was lost with no warning. Age it out instead."""
+        if not self._dic_blob_t or (time.monotonic() - self._dic_blob_t) > self.DIC_BLOB_STALE_S:
+            return 0
+        return self._dic_blob_count
+
     def _on_dic_blobs(self, blobs):
         """A good frame: record its marker count for the health badge."""
         n = len(blobs)
         self._dic_blob_count = n
+        self._dic_blob_t = time.monotonic()          # freshness stamp - see _live_blob_count()
         self._dic_blob_history.append(n)
         if len(self._dic_blob_history) > 60:
             del self._dic_blob_history[:-60]
@@ -3794,6 +4425,7 @@ class UTMApplication(QMainWindow):
             return
         n = int(m.group(1))
         self._dic_blob_count = n
+        self._dic_blob_t = time.monotonic()
         self._dic_blob_history.append(n)
         if len(self._dic_blob_history) > 60:
             del self._dic_blob_history[:-60]
