@@ -484,14 +484,30 @@ class UTMApplication(QMainWindow):
         self.tabWidget.setParent(None)
         self.controlPanelFrame.setParent(None)
 
+        # The right-hand control column stacks Connection · Data streams · Speed · Motor control ·
+        # Crosshead · Incremental move, and MEASURES 1192 px of minimum height. A 15" laptop offers
+        # about 650 px of viewport, so that single column was forcing the OUTER mainScrollArea to
+        # scroll — and because the camera sits at the bottom of the LEFT column, the specimen ended
+        # up below the fold. Giving the control column its own scroll area caps what it can demand
+        # of the window: the left side (plot + camera) now always fits, and only the controls scroll.
+        from PyQt6.QtWidgets import QScrollArea, QFrame
+        panel_scroll = QScrollArea()
+        panel_scroll.setWidgetResizable(True)
+        panel_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        panel_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        panel_scroll.setWidget(self.controlPanelFrame)
+        panel_scroll.setMinimumWidth(self.controlPanelFrame.minimumWidth() + 20)  # + scrollbar
+        self.controlPanelScroll = panel_scroll
+
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.tabWidget)
-        splitter.addWidget(self.controlPanelFrame)
+        splitter.addWidget(panel_scroll)
         # Remove the max width constraint so the right panel is resizable
         self.controlPanelFrame.setMaximumWidth(16777215)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([800, 300])
+        splitter.setSizes([800, 320])
+        splitter.setChildrenCollapsible(False)
 
         parent_layout.insertWidget(0, splitter)
 
@@ -4213,6 +4229,11 @@ class UTMApplication(QMainWindow):
         self.dicHealthLabel = QLabel("DIC —")
         self.dicHealthLabel.setStyleSheet("font-weight: bold; padding: 1px 6px; border-radius: 6px; color: white; background: #8a8f98;")
         self.dicHealthLabel.setToolTip("Live DIC tracking health: markers found / % of recent frames tracked / pixel jitter.")
+        # It is a status CHIP, so pin it to the height of its own text. A bare QLabel keeps the
+        # default growable policy, so it happily absorbed the row's spare height and rendered as a
+        # 150 px slab of colour — space that belongs to the camera feed underneath.
+        self.dicHealthLabel.setFixedHeight(22)
+        self.dicHealthLabel.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         info_row.addWidget(self.dicHealthLabel)
         info_row.addSpacing(16)
         info_row.addWidget(QLabel("L0:"))
@@ -4250,7 +4271,11 @@ class UTMApplication(QMainWindow):
         self.cameraFeedLabel.setStyleSheet(
             "background-color: #1a1a1a; color: #888888; border: 1px solid #444;"
         )
-        camera_layout.addWidget(self.cameraFeedLabel)
+        # Stretch = 1 is what actually gives the feed the leftover height. QSizePolicy.Ignored kills
+        # the pixmap ratchet but, unlike Expanding, it carries no ExpandFlag — so on its own it does
+        # NOT claim spare space, and the button/info rows above quietly took it instead. An explicit
+        # stretch factor makes the claim independent of the size policy.
+        camera_layout.addWidget(self.cameraFeedLabel, 1)
 
         # --- Insert group box below the stress-strain plot ---
         # stressStrainTab has no layout (absolute positioning from .ui)
@@ -4261,7 +4286,7 @@ class UTMApplication(QMainWindow):
         # Top panel: plot + controls + cropping
         top_widget = QWidget()
         top_layout = QVBoxLayout(top_widget)
-        top_layout.setContentsMargins(4, 4, 4, 4)
+        top_layout.setContentsMargins(2, 2, 2, 2)
         top_layout.setSpacing(2)
 
         self.stressStrainPlotFrame.setParent(top_widget)
@@ -4272,7 +4297,7 @@ class UTMApplication(QMainWindow):
         controls_row.setSpacing(4)
         for group in [self.stressDataGroup, self.ssPlotControlsGroup, self.specimenDimensionsGroup]:
             group.setParent(top_widget)
-            group.setMaximumHeight(120)
+            group.setMaximumHeight(108)
             controls_row.addWidget(group)
         top_layout.addLayout(controls_row)
 
@@ -4319,7 +4344,7 @@ class UTMApplication(QMainWindow):
         # Data cropping — compact layout
         self.ssDataCroppingGroup.setParent(top_widget)
         self.ssDataCroppingGroup.setMinimumHeight(0)
-        self.ssDataCroppingGroup.setMaximumHeight(70)
+        self.ssDataCroppingGroup.setMaximumHeight(54)
         crop_layout = QVBoxLayout()
         crop_layout.setContentsMargins(4, 2, 4, 2)
         crop_layout.setSpacing(2)
@@ -4334,13 +4359,27 @@ class UTMApplication(QMainWindow):
         self.ssDataCroppingGroup.setLayout(crop_layout)
         top_layout.addWidget(self.ssDataCroppingGroup)
 
-        # Splitter: top (plot+controls) | bottom (camera) — draggable
+        # Splitter: top (plot+controls) | bottom (camera) — draggable.
+        # The plot frame arrives from the .ui with a minimum tall enough to pin the splitter open,
+        # which is why the camera was squeezed to a sliver at the bottom of the tab no matter what
+        # sizes were requested. Relax it so the splitter can honour the split, then give the camera
+        # a real share: on a 700 px window the specimen has to be visible without scrolling.
+        # Keep the LEFT column's own minimum under the ~650 px a 15" laptop offers, or it re-triggers
+        # the outer scroll that the control-panel fix just removed. Measured budget at a 700 px
+        # window: plot 150 + controls 112 + cropping 58 + camera 250 + margins ≈ 600.
+        # The plot is the thing that can afford to shrink here — the point of the screen is to SEE
+        # THE SPECIMEN, and the plot is still fully readable on the Load Plot tab.
+        self.stressStrainPlotFrame.setMinimumHeight(140)
+        self.cameraGroupBox.setMinimumHeight(235)
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(top_widget)
         splitter.addWidget(self.cameraGroupBox)
-        splitter.setStretchFactor(0, 2)
+        # 1:1 so extra height on a bigger window is SHARED — on the operator's maximised 1146 px
+        # screen the feed grows with the plot instead of the plot taking all of it.
+        splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([450, 300])
+        splitter.setSizes([340, 320])
+        splitter.setChildrenCollapsible(False)
 
         # Install the splitter into the tab
         tab_layout = QVBoxLayout(tab)
@@ -4380,6 +4419,8 @@ class UTMApplication(QMainWindow):
         self.dicHealthLabelLP = QLabel("DIC —")
         self.dicHealthLabelLP.setStyleSheet("font-weight: bold; padding: 1px 6px; border-radius: 6px; color: white; background: #8a8f98;")
         self.dicHealthLabelLP.setToolTip("Live DIC tracking health: markers found / % of recent frames tracked / pixel jitter.")
+        self.dicHealthLabelLP.setFixedHeight(22)          # a chip, not a slab — see dicHealthLabel
+        self.dicHealthLabelLP.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         info_row.addWidget(self.dicHealthLabelLP)
         info_row.addSpacing(16)
         info_row.addWidget(QLabel("L0:"))
@@ -4408,7 +4449,7 @@ class UTMApplication(QMainWindow):
         self.cameraFeedLabelLP.setStyleSheet(
             "background-color: #1a1a1a; color: #888888; border: 1px solid #444;"
         )
-        lay.addWidget(self.cameraFeedLabelLP)
+        lay.addWidget(self.cameraFeedLabelLP, 1)         # stretch — see cameraFeedLabel
         return box
 
     def update_camera_feed(self, frame):
