@@ -33,6 +33,16 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 - **Strain-rate fracture test** — closed-loop constant *gauge* strain rate → fracture → auto-stop.
 - **Safety net (3 layers):** load-collapse fracture detector · **stall guard** (crosshead frozen <0.05 mm/6 s under load — in BOTH the auto-stop path and the strain-rate loop) · **10 kN / 30 mm** force/travel backstop · **dead-DIC guard** (freeze speed at 0.2 s, halt at 1.0 s).
 - **CSV richness** — `DIC_Blobs` health column + `# DIC Health` header + infill label.
+- **Dark / light theme** (2026-08-12) — **dark is the default**; `View ▸ Appearance` or Ctrl+Shift+D /
+  Ctrl+Shift+L, remembered across restarts. `theme.py` holds both palettes. A theme is not just a Qt
+  stylesheet: the two embedded matplotlib canvases are plain artists that know nothing about Qt and
+  must be restyled explicitly (facecolour, spines, ticks, labels, grid, hover box, crosshairs, traces)
+  and redrawn, and the custom-painted `RangeSlider` groove needs its own setter because QSS cannot
+  reach a `paintEvent`. LIGHT is deliberately an EMPTY stylesheet — the app's original look — so
+  switching back is a true revert rather than a second theme to keep in sync.
+  ⚠️ **Not given an SF number, on purpose:** the SF registry tracks TEST capability, not chrome. The
+  admission test ("can the operator invoke it?") is necessary but not sufficient — it also has to
+  change what the rig can measure or how safely it runs.
 
 ### Rig-validation highlights (2026-07-28/29)
 - **S16** — first successful 100 % infill fracture: UTS 47.4 MPa (anchor-corrected), auto-stop caught it, stall guard correctly silent through the ductile draw.

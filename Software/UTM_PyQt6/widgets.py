@@ -497,6 +497,16 @@ class SpeedGauge(QWidget):
 
 
 class RangeSlider(QWidget):
+    """Two-handle range slider.
+
+    `set_groove_color(QColor)` lets the theme darken the groove; everything else is drawn in accent
+    blue and greys that already read correctly on both a light and a dark background.
+    """
+
+    def set_groove_color(self, colour):
+        self._groove_color = colour
+        self.update()
+
     """
     A custom range slider widget with two handles for selecting a range.
 
@@ -580,7 +590,9 @@ class RangeSlider(QWidget):
         track_rect = QRectF(self._handle_width / 2, track_y,
                            self.width() - self._handle_width, self._track_height)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(200, 200, 200))
+        # Groove colour is themeable: a 200-grey groove is a glaring white bar on a dark GUI. The
+        # handles and the selected range stay Fluent blue — they read correctly on both themes.
+        painter.setBrush(getattr(self, "_groove_color", QColor(200, 200, 200)))
         painter.drawRoundedRect(track_rect, 3, 3)
 
         # Selected range highlight

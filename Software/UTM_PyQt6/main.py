@@ -60,6 +60,12 @@ class UTMApplication(QMainWindow):
         # Initialize application state
         self.init_state()
 
+        # Appearance LAST: the plots, toolbars and DIC badges must all exist before the theme walks
+        # them. Dark is the default; a previous choice is restored.
+        self._build_view_menu()
+        import theme as _theme
+        self.apply_theme(self._recall("ui/theme", _theme.DEFAULT), announce=False)
+
         print("UTM Application initialized")
 
     def apply_styles(self):
@@ -4125,6 +4131,104 @@ class UTMApplication(QMainWindow):
 
 
     # ========== Application Lifecycle ==========
+
+    # ---- appearance -------------------------------------------------------------------------
+    def _build_view_menu(self):
+        """View ▸ Appearance ▸ Dark / Light, in the menu bar the .ui already carries."""
+        from PyQt6.QtGui import QAction, QActionGroup
+        bar = self.menuBar()
+        menu = bar.addMenu("&View")
+        appearance = menu.addMenu("&Appearance")
+        self._themeActions = {}
+        group = QActionGroup(self)
+        group.setExclusive(True)
+        for key, label, keyseq in (("dark", "&Dark", "Ctrl+Shift+D"),
+                                   ("light", "&Light", "Ctrl+Shift+L")):
+            act = QAction(label, self, checkable=True)
+            act.setShortcut(keyseq)
+            act.triggered.connect(lambda _checked, k=key: self.apply_theme(k))
+            group.addAction(act)
+            appearance.addAction(act)
+            self._themeActions[key] = act
+
+    def apply_theme(self, name, *, announce=True):
+        """Switch the whole GUI between dark and light, and remember the choice.
+
+        Three things have to move together or the result is a dark shell around white rectangles:
+        the Qt stylesheet, the two embedded matplotlib canvases (plain artists that know nothing
+        about Qt), and the handful of colours hard-coded at their call sites."""
+        import theme as _theme
+        from PyQt6.QtWidgets import QApplication
+        t = _theme.get(name)
+        name = t["name"]
+        self._theme = name
+
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(_theme.stylesheet(name))
+
+        # --- matplotlib: restyle in place, then force a redraw -------------------------------
+        for fig, ax, note, guides, traces, canvas in (
+            (getattr(self, "load_figure", None), getattr(self, "load_ax", None),
+             getattr(self, "load_annotation", None),
+             (getattr(self, "load_crosshair_h", None), getattr(self, "load_crosshair_v", None)),
+             ((getattr(self, "load_line", None), 1), (getattr(self, "load_markers", None), 1)),
+             getattr(self, "load_canvas", None)),
+            (getattr(self, "ss_figure", None), getattr(self, "ss_ax", None),
+             getattr(self, "ss_annotation", None),
+             (getattr(self, "ss_crosshair_h", None), getattr(self, "ss_crosshair_v", None)),
+             ((getattr(self, "ss_line", None), 1), (getattr(self, "ss_markers", None), 1),
+              (getattr(self, "ss_dic_line", None), 2), (getattr(self, "ss_dic_markers", None), 2)),
+             getattr(self, "ss_canvas", None)),
+        ):
+            if fig is None or ax is None:
+                continue
+            _theme.style_axes(fig, ax, name, annotation=note, guides=guides, traces=traces)
+            if canvas is not None:
+                canvas.draw_idle()
+
+        # --- the toolbars sit on the figure background, so they follow it --------------------
+        for tb in (getattr(self, "load_toolbar", None), getattr(self, "ss_toolbar", None)):
+            if tb is not None:
+                tb.setStyleSheet("background-color: %s;" % t["plot_bg"])
+
+        # --- colours written into call sites -------------------------------------------------
+        for attr in ("dicCauchyLabel", "dicCauchyLabelLP"):
+            w = getattr(self, attr, None)
+            if w is not None:
+                w.setStyleSheet("font-weight: bold; color: %s;" % t["info"])
+        for attr in ("dicTrueLabel", "dicTrueLabelLP"):
+            w = getattr(self, attr, None)
+            if w is not None:
+                w.setStyleSheet("font-weight: bold; color: %s;" % t["amber_text"])
+
+        # The crop sliders are custom-painted, so QSS cannot reach them — a 200-grey groove reads as
+        # a glaring white bar across a dark GUI.
+        from PyQt6.QtGui import QColor
+        groove = QColor(t["raised_hi"]) if name == "dark" else QColor(200, 200, 200)
+        for attr in ("cropRangeSlider", "ssCropRangeSlider"):
+            sl = getattr(self, attr, None)
+            if sl is not None and hasattr(sl, "set_groove_color"):
+                sl.set_groove_color(groove)
+
+        self._refresh_dic_badges()
+
+        if getattr(self, "_themeActions", None):
+            act = self._themeActions.get(name)
+            if act is not None and not act.isChecked():
+                act.setChecked(True)
+
+        self._remember("ui/theme", name)
+        if announce:
+            self.append_to_console("[View] %s mode." % name.capitalize())
+
+    def _refresh_dic_badges(self):
+        """Re-push the DIC health chips so they pick up the new palette immediately rather than at
+        the next camera frame (they are repainted from a timer that only runs with a live camera)."""
+        try:
+            self._update_dic_health()
+        except Exception:
+            pass
 
     # ---- window geometry: fit the screen it actually opens on --------------------------------
     #
