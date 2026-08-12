@@ -2554,6 +2554,7 @@ class UTMApplication(QMainWindow):
         # always cancel. The enable checkbox therefore stays an ordinary child.
         from PyQt6.QtWidgets import QGroupBox
         self.advancedModesGroup = QGroupBox("Advanced test modes  (BETA)")
+        self.advancedModesGroup.setObjectName("advancedModesGroup")   # styled as a NESTED group
         self.advancedModesGroup.setLayout(seg)
         self.advancedModesGroup.setToolTip("The six closed-loop protocols. Left disabled, the type and "
                                            "settings stay greyed so they cannot be changed by accident.")
@@ -3040,6 +3041,7 @@ class UTMApplication(QMainWindow):
         # pick a settings profile, Prepare specimen, then Fracture test.
         from PyQt6.QtWidgets import QGroupBox, QVBoxLayout
         self.specimenTestGroup = QGroupBox("Specimen  ·  prepare and fracture")
+        self.specimenTestGroup.setObjectName("specimenTestGroup")     # styled as a NESTED group
         _stg = QVBoxLayout(self.specimenTestGroup)
         _stg.setContentsMargins(6, 4, 6, 4); _stg.setSpacing(4)
         _stg.addLayout(r1)          # settings profile + infill  (set up first)
@@ -4462,7 +4464,7 @@ class UTMApplication(QMainWindow):
             # 91, and Plot Controls 137 — its grid is five rows deep. Capping the row at 108 clipped
             # the Clear Plot / Tare buttons, the display-rate spin box and the strain-source combo.
             # A maximum below a widget's own sizeHint does not compress it gracefully, it truncates.
-            group.setMaximumHeight(140)
+            group.setMaximumHeight(146)   # natural 141 after the wider group-box title margins
             controls_row.addWidget(group)
         top_layout.addLayout(controls_row)
 
@@ -4509,7 +4511,7 @@ class UTMApplication(QMainWindow):
         # Data cropping — compact layout
         self.ssDataCroppingGroup.setParent(top_widget)
         self.ssDataCroppingGroup.setMinimumHeight(0)
-        self.ssDataCroppingGroup.setMaximumHeight(78)   # measured natural height 75; 54 clipped Crop Data
+        self.ssDataCroppingGroup.setMaximumHeight(84)   # natural 79; 54 clipped the Crop Data button
         crop_layout = QVBoxLayout()
         crop_layout.setContentsMargins(4, 2, 4, 2)
         crop_layout.setSpacing(2)
@@ -4534,7 +4536,10 @@ class UTMApplication(QMainWindow):
         # window: plot 150 + controls 112 + cropping 58 + camera 250 + margins ≈ 600.
         # The plot is the thing that can afford to shrink here — the point of the screen is to SEE
         # THE SPECIMEN, and the plot is still fully readable on the Load Plot tab.
-        self.stressStrainPlotFrame.setMinimumHeight(140)
+        # The stronger group-box outlines cost ~4 px per box; the plot gives that back at the
+        # smallest window so no page scroll returns. It is the draggable pane, and 1180x700 is
+        # the floor case — at any realistic window the splitter gives it far more.
+        self.stressStrainPlotFrame.setMinimumHeight(125)
         # 200 is the camera group's own natural floor (button row + info row + a 120 px feed); asking
         # for more just wastes height. The 50 px the controls reclaimed above comes out of the
         # camera's SHARE below, not its floor.

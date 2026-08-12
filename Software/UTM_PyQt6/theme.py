@@ -25,11 +25,13 @@ DARK = {
     "window":      "#1f2329",
     "base":        "#262b33",     # input backgrounds
     "panel":       "#2b313a",     # group boxes, tabs
+    "panel_alt":   "#323945",     # NESTED group boxes — a step lighter so the nesting is visible
     "raised":      "#333a45",     # buttons
     "raised_hi":   "#3d4652",
     "text":        "#e4e7eb",
     "text_dim":    "#9aa3ae",
-    "border":      "#3c444f",
+    "border":      "#3c444f",     # subtle dividers
+    "border_strong": "#5a6675",   # group-box outlines: must read against `panel`, not blend into it
     "accent":      "#4da3ff",
     "accent_text": "#0b1116",
     "ok":          "#3fb950",
@@ -56,9 +58,11 @@ LIGHT = {
     "panel":       "#f0f0f0",
     "raised":      "#e6e6e6",
     "raised_hi":   "#dcdcdc",
+    "panel_alt":   "#e8e8e8",
     "text":        "#1a1a1a",
     "text_dim":    "#333333",
     "border":      "#bbbbbb",
+    "border_strong": "#999999",
     "accent":      "#0066cc",
     "accent_text": "#ffffff",
     "ok":          "#00aa66",
@@ -91,13 +95,25 @@ QWidget {{ background-color: {window}; color: {text}; }}
 QMainWindow, QDialog {{ background-color: {window}; }}
 QToolTip {{ background-color: {panel}; color: {text}; border: 1px solid {border}; padding: 3px; }}
 
+/* Group boxes carry the whole visual hierarchy of the control column, so their outline has to be
+   clearly darker/lighter than the panel it sits on rather than a hairline that blends in. */
 QGroupBox {{
-    background-color: {panel}; border: 1px solid {border}; border-radius: 5px;
-    margin-top: 9px; padding-top: 6px;
+    background-color: {panel}; border: 1px solid {border_strong}; border-radius: 5px;
+    margin-top: 11px; padding-top: 8px;
 }}
 QGroupBox::title {{
-    subcontrol-origin: margin; subcontrol-position: top left; left: 8px; padding: 0 4px;
-    color: {text_dim};
+    subcontrol-origin: margin; subcontrol-position: top left; left: 9px; padding: 0 5px;
+    color: {text}; font-weight: bold;
+}}
+/* NESTED groups: one step lighter than their parent and outlined in the accent, so "this block sits
+   inside Motor Control" is legible at a glance instead of being inferred from the title. */
+QGroupBox#advancedModesGroup, QGroupBox#specimenTestGroup {{
+    background-color: {panel_alt};
+    border: 1px solid {accent};
+    margin-top: 12px;
+}}
+QGroupBox#advancedModesGroup::title, QGroupBox#specimenTestGroup::title {{
+    color: {accent};
 }}
 
 QTabWidget::pane {{ border: 1px solid {border}; background: {panel}; }}
