@@ -4374,11 +4374,15 @@ class UTMApplication(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(top_widget)
         splitter.addWidget(self.cameraGroupBox)
-        # 1:1 so extra height on a bigger window is SHARED — on the operator's maximised 1146 px
-        # screen the feed grows with the plot instead of the plot taking all of it.
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([340, 320])
+        # setSizes is the lever that actually sets the default split (the stretch factors only govern
+        # how FURTHER resizing is shared). Calibrated against the operator's own screenshot: 340 was
+        # the split that left the graph looking squeezed, and the response is linear at roughly
+        # +0.7 px of plot per +1 px here, so 390 buys the graph ~35 px while the feed keeps ~390 px —
+        # still comfortably more than the ~310 px it had when the specimen was already clearly
+        # visible. The splitter is draggable, so this is only the starting position.
+        splitter.setStretchFactor(0, 6)
+        splitter.setStretchFactor(1, 5)
+        splitter.setSizes([390, 320])
         splitter.setChildrenCollapsible(False)
 
         # Install the splitter into the tab
