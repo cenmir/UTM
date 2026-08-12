@@ -91,7 +91,11 @@ def _plot_ed(ax, test, gauge, last_d):
         mt = max(tr) * 1.02
         ax.plot([0, mt], [0, mt / gauge], ":", color=GREY, lw=1.2, label="ideal (all travel→gauge)")
     ax.set_xlabel("Crosshead travel  (mm)"); ax.set_ylabel("Engineering strain, DIC")
-    ax.set_title("Gauge strain vs crosshead", fontsize=11, fontweight="bold")
+    # Named for what the reader should take from it. The dotted line is "if every millimetre of
+    # crosshead became gauge strain"; the gap between it and the measured curve IS the machine
+    # compliance — the same effect that makes the crosshead read stiffer while the specimen softens.
+    # NOT "strain rate": neither axis is time, so there is no dε/dt on this plot.
+    ax.set_title("DIC strain vs crosshead — the compliance gap", fontsize=11, fontweight="bold")
     ax.grid(alpha=0.3); ax.legend(fontsize=7.5, loc="upper left")
 
 
