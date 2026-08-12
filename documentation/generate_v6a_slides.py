@@ -1723,15 +1723,17 @@ tb(s, 0.5, 5.34, 6.05, 1.5,
    "never drift apart. Adding a mode means one entry there and nothing else.",
    fs=10.5)
 
-header(s, 6.85, 5.00, 6.0, "The two profiles that ship")
-table(s, 6.85, 5.34, 6.05, 0.27 * 3,
+header(s, 6.85, 5.00, 6.0, "The profile that ships")
+table(s, 6.85, 5.34, 6.05, 0.27 * 2,
       [["Profile", "Infill", "Preload", "Fracture protocols sized for"],
-       ["Default 100% infill", "100 %", "470 N", "~3.2 kN in ~10 levels"],
-       ["Default 50% infill", "50 %", "300 N", "the validated T7.2 / T8 settings"]],
+       ["Default", "100 %", "300 N", "~3.2 kN in ~10 levels"]],
       cw=[2.0, 0.8, 0.9, 2.3], hf=9.5, bf=9)
-tb(s, 6.85, 6.30, 6.05, 0.5,
-   "Recreated automatically if missing, so a fresh clone always has them. A profile you have "
-   "customised is never overwritten.", fs=10, italic=True, colour=GREY_TEXT)
+tb(s, 6.85, 6.03, 6.05, 0.75,
+   "Recreated automatically if missing, so a fresh clone always has it. A profile you have saved "
+   "under your own name is never overwritten. Was two profiles (100 % / 50 % infill) until "
+   "2026-08-12 — one is enough, since infill is a label that enters no calculation and every force "
+   "here is a starting point the operator adjusts per specimen anyway.",
+   fs=10, italic=True, colour=GREY_TEXT)
 footer(s, "Stored as plain JSON in Software/UTM_PyQt6/recipes/ — readable, diffable, and easy to hand "
           "to someone else. The folder is gitignored as user-local; the two defaults regenerate on launch.")
 pageno(s, 205)

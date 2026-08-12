@@ -84,25 +84,34 @@ def find(name, directory=RECIPES_DIR):
     return None
 
 
-DEFAULT_100 = "Default 100% infill"
-DEFAULT_50 = "Default 50% infill"
+DEFAULT = "Default"
+
+# Superseded 2026-08-12 by the single "Default" profile below. Kept only so ensure_default() can
+# recognise and retire the files it wrote in earlier sessions.
+_RETIRED_DEFAULTS = ("Default 100% infill", "Default 50% infill")
+
+# Back-compat alias: main.py and older code referred to the 100 % starter by name.
+DEFAULT_100 = DEFAULT
 
 
 def _starter_recipes():
-    """The two profiles the app always offers, one per specimen type.
+    """The one profile the app always offers.
 
-    Every force parameter is sized from the rig-validated runs so that a fracture protocol reaches
-    failure in ~10 levels/cycles: 100 % infill breaks near 3.2-3.4 kN, 50 % near 1.4 kN tared.
-    Both carry params for EVERY mode, so switching the Test type after a Load still gives sane
-    values instead of leftovers from the previous recipe.
+    Was two (100 % and 50 % infill). One is enough: infill is a LABEL that enters no calculation,
+    and every force parameter here is a starting point the operator adjusts per specimen anyway —
+    two near-identical profiles just meant two things to keep in sync and one more decision at the
+    start of a test. Carries params for EVERY mode, so switching Test type after a Load gives sane
+    values rather than leftovers from whatever was loaded before.
 
-    The dropdown is name-sorted and "1" sorts before "5", so DEFAULT_100 lands on top.
+    Force parameters are sized for a 100 % infill specimen (fractures near 3.2-3.4 kN). On a 50 %
+    specimen (~1.4 kN tared) they are conservative: the fracture protocols simply take more levels
+    to get there, which costs time, not a specimen.
     """
     common = dict(material="PLA", specimen_mode="White", area_mm2=80.0, gauge_mm=80.0,
                   test_speed_mm_s=0.1, mode="manual", strain_rate=0.0005, auto_stop_fracture=True)
     return [
         TestRecipe(
-            name=DEFAULT_100, infill_pct=100.0, preload_N=470.0, **common,
+            name=DEFAULT, infill_pct=100.0, preload_N=300.0, **common,
             mode_params={
                 "Cyclic": {"low": 200.0, "high": 1500.0, "cycles": 5, "speed": 0.1,
                            "waveform": "Sine"},
@@ -115,43 +124,33 @@ def _starter_recipes():
                 "Progressive cyclic → FRACTURE": {"first_peak": 600.0, "peak_step": 300.0,
                                                   "unload_to": 200.0, "speed": 0.1},
             },
-            notes="100 % infill starter. Non-destructive modes stay well below yield (~45 MPa). "
-                  "Fracture protocols step to ~3.2 kN in ~10 levels/cycles. WARNING: a thermally "
-                  "derated session stalls before 100 % infill fractures (T7 on S20 stalled at "
-                  "2355 N tared) — let the motor cool, or use the 50 % profile."),
-        TestRecipe(
-            name=DEFAULT_50, infill_pct=50.0, preload_N=300.0, **common,
-            mode_params={
-                "Cyclic": {"low": 100.0, "high": 500.0, "cycles": 5, "speed": 0.1,
-                           "waveform": "Sine"},
-                "Staircase": {"start": 200.0, "step": 200.0, "levels": 4, "dwell": 30.0,
-                              "speed": 0.1, "ramp": "Smooth"},
-                "Relaxation": {"strain": 0.004, "duration": 120.0, "speed": 0.1},
-                "Creep": {"load": 500.0, "duration": 120.0, "speed": 0.1},
-                "Staircase → FRACTURE": {"start": 200.0, "step": 120.0, "dwell": 10.0,
-                                         "speed": 0.1, "ramp": "Smooth"},
-                "Progressive cyclic → FRACTURE": {"first_peak": 300.0, "peak_step": 150.0,
-                                                  "unload_to": 100.0, "speed": 0.1},
-            },
-            notes="50 % infill starter. Both fracture protocols are the exact settings validated "
-                  "2026-08-09: staircase 200/120/10 s = T7.2 on S18 (yield knee 694 N, 21.19 MPa) "
-                  "and progressive cyclic 300/150/100 = T8 on S21 (8 cycles, 21.38 MPa). Safe "
-                  "choice when the motor has been working hard."),
+            notes="Starter profile. Preload 300 N, infill label 100 %. Non-destructive modes stay "
+                  "well below yield; fracture protocols step to ~3.2 kN in ~10 levels/cycles. "
+                  "WARNING: a thermally derated session can stall before a 100 % infill specimen "
+                  "fractures (T7 on S20 stalled at 2355 N tared) — let the motor cool, or run a "
+                  "50 % specimen. Adjust the forces to the specimen before a destructive run."),
     ]
 
 
 def ensure_default(directory=RECIPES_DIR):
-    """Guarantee both starter profiles exist, creating only the ones that are missing.
-    Idempotent — a profile the user has customised is left untouched. Returns the 100 % one
-    (the app's initial selection)."""
-    made = []
-    for r in _starter_recipes():
-        cur = find(r.name, directory)
-        if cur is None:
-            r.save(directory)
-            cur = r
-        made.append(cur)
-    return made[0]
+    """Guarantee the starter profile exists, and retire the two it replaced.
+
+    Idempotent, and a profile the operator has customised under a different name is untouched. The
+    two old starters ARE deleted: they were written by the app, not by the operator, and leaving
+    them would defeat the point of collapsing to one."""
+    for old in _RETIRED_DEFAULTS:
+        try:
+            path = os.path.join(directory, _slug(old) + ".json")
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass                                  # a stale starter is cosmetic; never block startup
+    r = _starter_recipes()[0]
+    cur = find(r.name, directory)
+    if cur is None:
+        r.save(directory)
+        cur = r
+    return cur
 
 
 def main():

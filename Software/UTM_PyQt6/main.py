@@ -2991,9 +2991,10 @@ class UTMApplication(QMainWindow):
         r1 = QHBoxLayout()
         settings_help = ("Save your specimen & test settings — dimensions, DIC mode, preload, speed, infill — "
                          "under a name and reuse them in one click. Pick a saved profile here, then press Load "
-                         "to apply it; press Save… to store the current inputs. The two starter profiles — "
-                         "'Default 100% infill' and 'Default 50% infill' — are always available and carry "
-                         "sensible settings for every test type, including the fracture protocols.")
+                         "to apply it; press Save… to store the current inputs. The starter profile — "
+                         "'Default' — is always available and carries sensible settings for every test "
+                         "type, including the fracture protocols. Adjust the forces to the specimen "
+                         "before a destructive run.")
         settings_label = QLabel("Settings:"); settings_label.setToolTip(settings_help)
         r1.addWidget(settings_label)
         self.recipeCombo = QComboBox(); self.recipeCombo.setMinimumWidth(150)
@@ -3068,18 +3069,19 @@ class UTMApplication(QMainWindow):
         # 100 % infill is the headline specimen type, so it is the profile the app opens on. The
         # combo is name-sorted and "1" < "5", so it is also index 0 — the findText keeps the
         # intent explicit (and correct) if a user later adds a profile that sorts above it.
-        from utm_recipes import DEFAULT_100
+        from utm_recipes import DEFAULT
         # Reopen on the profile last used, falling back to the 100 % default. Always reopening on
-        # DEFAULT_100 is what made the infill label reset every session (see _restore_infill).
-        i = self.recipeCombo.findText(str(self._recall("settings/last_profile", DEFAULT_100)))
+        # Always reopening on the starter is what made the infill label reset every session
+        # (see _restore_infill).
+        i = self.recipeCombo.findText(str(self._recall("settings/last_profile", DEFAULT)))
         if i < 0:
-            i = self.recipeCombo.findText(DEFAULT_100)
+            i = self.recipeCombo.findText(DEFAULT)
         if i >= 0:
             self.recipeCombo.blockSignals(True)      # widgets may not all exist yet
             self.recipeCombo.setCurrentIndex(i)
             self.recipeCombo.blockSignals(False)
         # PICKING a profile now APPLIES it. Previously the combo only changed the label and the
-        # operator had to notice the separate Load button, so selecting "Default 50% infill" looked
+        # operator had to notice the separate Load button, so selecting another profile looked
         # like it did nothing at all -- and a test could be run under whatever was on screen before.
         self.recipeCombo.currentIndexChanged.connect(self._on_recipe_selected)
 
