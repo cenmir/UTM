@@ -2488,9 +2488,16 @@ class UTMApplication(QMainWindow):
         # Cyclic — load/unload between two FORCE bounds, N cycles
         self.cyc_lo = dsb(0, 5000, 0, 10, 50, " N"); self.cyc_hi = dsb(0, 5000, 0, 10, 500, " N")
         self.cyc_n = isb(1, 1000, 5); self.cyc_spd = dsb(0.005, 0.5, 3, 0.01, 0.1, " mm/s")
-        self.cyc_wave = QComboBox(); self.cyc_wave.addItems(["Triangle", "Sine"])
-        self.cyc_wave.setToolTip("Triangle = constant-speed ramps. Sine = eases to a crawl at each "
-                                 "bound → smooth, rounded cycles (low frequency only).")
+        # Sine FIRST because it is measurably better, not by preference: peak error on the rig was
+        # 71.2 N with Triangle (T5) against 15.3 N with Sine (T6.3) and 3.4 N once the load window
+        # was raised (T6.5). Triangle drives at constant speed into each bound and overshoots on the
+        # reversal; Sine eases to a crawl there.
+        self.cyc_wave = QComboBox(); self.cyc_wave.addItems(["Sine", "Triangle"])
+        self.cyc_wave.setToolTip("Sine (default) eases to a crawl at each bound → smooth, rounded "
+                                 "cycles and far less reversal overshoot: peak error 15.3 N vs "
+                                 "71.2 N for Triangle on the same rig.\n"
+                                 "Triangle = constant-speed ramps; use it only if you need a "
+                                 "constant strain rate within each stroke.")
         self.modeStack.addWidget(page([("Low", self.cyc_lo), ("High", self.cyc_hi),
                                        ("Cycles", self.cyc_n), ("Speed", self.cyc_spd),
                                        ("Waveform", self.cyc_wave)]))
@@ -2498,9 +2505,14 @@ class UTMApplication(QMainWindow):
         self.stc_start = dsb(0, 5000, 0, 10, 200, " N"); self.stc_step = dsb(10, 2000, 0, 10, 200, " N")
         self.stc_n = isb(1, 20, 4); self.stc_dwell = dsb(1, 600, 0, 5, 30, " s")
         self.stc_spd = dsb(0.005, 0.5, 3, 0.01, 0.1, " mm/s")
-        self.stc_shape = QComboBox(); self.stc_shape.addItems(["Linear", "Smooth"])
-        self.stc_shape.setToolTip("Linear = constant-speed ramp to each level. Smooth = eases to a crawl "
-                                  "approaching each level (gentler arrival, less overshoot past the target).")
+        # Smooth FIRST, for the same reason and with a bigger margin: arrival overshoot per level was
+        # +45.5 / +46.8 / +52.6 N with Linear (T3) against +6.0 / +4.8 / +7.8 N with Smooth (T4) —
+        # about 8x better. It also matches Staircase → FRACTURE, which already defaulted to Smooth.
+        self.stc_shape = QComboBox(); self.stc_shape.addItems(["Smooth", "Linear"])
+        self.stc_shape.setToolTip("Smooth (default) eases to a crawl approaching each level, so it "
+                                  "lands on target instead of sailing past: overshoot ~5-8 N vs "
+                                  "~46-53 N for Linear on the same rig.\n"
+                                  "Linear = constant-speed ramp to each level.")
         self.modeStack.addWidget(page([("Start", self.stc_start), ("Step", self.stc_step),
                                        ("Levels", self.stc_n), ("Dwell", self.stc_dwell),
                                        ("Speed", self.stc_spd), ("Ramp", self.stc_shape)]))
