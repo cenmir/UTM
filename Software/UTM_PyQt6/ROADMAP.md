@@ -54,28 +54,25 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 
 ### 3a. Near-term deliverables  ⭐ next up
 
-> ## ▶ PICK UP HERE — carried over from the session of 2026-08-12
+> ## ▶ NEXT UP — everything above the line was CLEARED on 2026-08-12
 >
-> **1. Apply three verified poster corrections** (found by an adversarial check of every claim against
-> the raw CSVs; all three confirmed, none yet applied). Each is a one-line edit in
-> `documentation/generate_poster.py` followed by a rebuild:
-> - **"After 15 cycles"** on the progress poster is **wrong — S22 saw 16** (8 in T6.4 + 8 in T6.5;
->   re-extracting load extrema gives 8 peaks per run). The "15" is a hand-typed literal that also sits
->   in `registry.json`, `ROADMAP.md` and `generate_v6a_slides.py` — **fix all four**, nothing
->   recomputes it, which is why it survived.
-> - **"What remains is one rig run"** contradicts the same page's NEXT panel, which lists **two** "Now"
->   rig runs (T6.6 and the black-specimen check). → "two rig runs".
-> - **"Two protocols agree to 0.9 %, so the number is a property of the material"** overclaims: those
->   were two DIFFERENT specimens, n = 1 each, so 0.9 % confounds protocol with specimen scatter — and
->   same-condition scatter is 2.5 % (n = 5), nearly 3× larger. §3a already mandates this caveat; add it.
+> **✅ Cleared 2026-08-12** (all verified against the raw CSVs, then re-checked in the rendered files):
+> the S22 cycle count (15 → **16**, and now **computed** by `sf9_data.n_cyc_s22` from the load extrema
+> so it cannot drift again) · "one rig run" → **two** · the 0.9 % cross-protocol caveat · the stale
+> **13/17** KPI tiles (now derived from `N_DONE`) · deck slide 169 rebuilt **8 → 16 cards** ·
+> the **infill-label reset** (root-caused and fixed) · the **`main.py` snapshot commit**.
 >
-> **2. Downstream of retiring SF17** (done 2026-08-12): the V6a deck's **slide 169 SF grid** still shows
-> 8 cards and a stale banner — rebuild it to **16**, not 17. Memory `project_smart_features_poster.md`
-> also still says 13 built / SF1–17.
+> **⬜ Rig time — these need a specimen and the machine; nothing else blocks them:**
+> 1. **T6.6, the damage curve.** Fresh 50 % specimen, 400→1100 N, 12 cycles, sine, 0.100 mm/s, ONE
+>    uninterrupted run, baseline E on cycle 2. ~40 min. The only route to D = 1 − Eᵢ/E₀.
+> 2. **Black-specimen DIC check.** Every specimen to date is white; the Black preset has never run.
 >
-> **3. Then the standing queue**, in the order I would take it: infill-label bug (minutes) ·
-> `main.py` snapshot commit (minutes) · **T6.6** damage curve (~40 min rig + 1 specimen) ·
-> black-specimen DIC check · **frame capture + the MOT extensometer cross-check** (spec below).
+> **⬜ Software, in the order I would take it:**
+> 3. **Frame capture** during a test — the prerequisite for the MOT extensometer cross-check (§3a).
+> 4. **SF11** auto-metadata + foldering. 5. **SF12** DIC auto-calibrate. 6. **SF13** guided wizard.
+>
+> **⬜ Hardware decision, not mine to make:** the motor torque ceiling — driver Vref, or wire the
+> TMC2160's SPI to the ESP32 so current and thermal status become a logged channel (§4).
 
 - ✅ **POSTERS — BUILT 2026-08-12, THREE EDITIONS from one content spec.**
   `documentation/generate_poster.py` → **`documentation/posters/`** (pptx + pdf for each):

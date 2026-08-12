@@ -112,7 +112,7 @@ BILLBOARD_SUB = (
     "instead of measuring itself.")
 
 KPIS = [
-    ("13 / 17", "smart features\nbuilt & validated"),
+    ("%d / %d" % (N_DONE, N_DONE + N_PLAN + N_BLOCK), "smart features\nbuilt & validated"),
     ("6", "closed-loop test\nprotocols"),
     ("%d" % N["n_runs"], "runs auto-indexed,\n%d specimens" % N["n_spec"]),
     ("± %.1f N" % N["t9_Fsd"], "force hold over\n%.0f s" % N["t9_dur"]),
@@ -271,7 +271,7 @@ P_BILLBOARD_SUB = (
     "mine to make.")
 
 P_KPIS = [
-    ("13 / 17", "features built\nand rig-validated"),
+    ("%d / %d" % (N_DONE, N_DONE + N_PLAN + N_BLOCK), "features built\nand rig-validated"),
     ("6 / 6", "test protocols\nvalidated"),
     ("%d" % N["n_spec"], "specimens tested,\n%d indexed runs" % N["n_runs"]),
     ("%.1f %%" % N["v6_cv"], "strength scatter,\nn = %d at 100 %% infill" % N["v6_n"]),
