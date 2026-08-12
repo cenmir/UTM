@@ -4401,7 +4401,11 @@ class UTMApplication(QMainWindow):
         controls_row.setSpacing(4)
         for group in [self.stressDataGroup, self.ssPlotControlsGroup, self.specimenDimensionsGroup]:
             group.setParent(top_widget)
-            group.setMaximumHeight(108)
+            # 140, not 108: MEASURED natural heights are Stress/Strain data 83, Specimen dimensions
+            # 91, and Plot Controls 137 — its grid is five rows deep. Capping the row at 108 clipped
+            # the Clear Plot / Tare buttons, the display-rate spin box and the strain-source combo.
+            # A maximum below a widget's own sizeHint does not compress it gracefully, it truncates.
+            group.setMaximumHeight(140)
             controls_row.addWidget(group)
         top_layout.addLayout(controls_row)
 
@@ -4448,7 +4452,7 @@ class UTMApplication(QMainWindow):
         # Data cropping — compact layout
         self.ssDataCroppingGroup.setParent(top_widget)
         self.ssDataCroppingGroup.setMinimumHeight(0)
-        self.ssDataCroppingGroup.setMaximumHeight(54)
+        self.ssDataCroppingGroup.setMaximumHeight(78)   # measured natural height 75; 54 clipped Crop Data
         crop_layout = QVBoxLayout()
         crop_layout.setContentsMargins(4, 2, 4, 2)
         crop_layout.setSpacing(2)
@@ -4474,7 +4478,10 @@ class UTMApplication(QMainWindow):
         # The plot is the thing that can afford to shrink here — the point of the screen is to SEE
         # THE SPECIMEN, and the plot is still fully readable on the Load Plot tab.
         self.stressStrainPlotFrame.setMinimumHeight(140)
-        self.cameraGroupBox.setMinimumHeight(235)
+        # 200 is the camera group's own natural floor (button row + info row + a 120 px feed); asking
+        # for more just wastes height. The 50 px the controls reclaimed above comes out of the
+        # camera's SHARE below, not its floor.
+        self.cameraGroupBox.setMinimumHeight(200)
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(top_widget)
         splitter.addWidget(self.cameraGroupBox)
@@ -4486,7 +4493,7 @@ class UTMApplication(QMainWindow):
         # visible. The splitter is draggable, so this is only the starting position.
         splitter.setStretchFactor(0, 6)
         splitter.setStretchFactor(1, 5)
-        splitter.setSizes([390, 320])
+        splitter.setSizes([440, 280])   # +50 to the top: the controls row grew, the plot did not shrink
         splitter.setChildrenCollapsible(False)
 
         # Install the splitter into the tab
