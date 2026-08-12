@@ -113,6 +113,9 @@ class UTMApplication(QMainWindow):
         # Replace speed gauge placeholder with actual SpeedGauge widget
         self._setup_speed_gauge()
 
+        # ...then put that gauge BESIDE the speed controls rather than above them
+        self._compact_speed_control()
+
     def _replace_checkbox_with_switch_horizontal(self, checkbox_name, switch_name, layout_name):
         """Helper to replace a checkbox with FluentSwitch in a horizontal layout"""
         checkbox = getattr(self, checkbox_name, None)
@@ -147,8 +150,6 @@ class UTMApplication(QMainWindow):
                 item.widget().deleteLater()
 
         # Create "Speed unit:" label
-        speed_unit_label = QLabel("Speed unit:")
-        layout.addWidget(speed_unit_label)
 
         # Create radio buttons for mm/s and RPM
         self.speedUnitMmRadio = QRadioButton("mm/s")
@@ -167,11 +168,65 @@ class UTMApplication(QMainWindow):
         layout.addStretch()
 
         # Update the "Set RPM:" label to "Set speed:"
-        self.label_3.setText("Set speed:")
+        self.label_3.setText("Set:")
 
         # Add unit label after spinbox
         self.speedUnitValueLabel = QLabel("mm/s")
         self.horizontalLayout_setSpeed.addWidget(self.speedUnitValueLabel)
+
+    def _compact_speed_control(self):
+        """Put the gauge beside the controls instead of above them.
+
+        The .ui stacks four rows vertically — gauge, unit radios, live speed, set speed — which cost
+        ~260 px of a control column that has to fit a laptop screen. The gauge is square and the
+        three control rows are short and wide, so side by side they fit in the height of the gauge
+        alone: ~140 px, a saving of ~120 px for free.
+
+        Rebuilt here in code rather than in the .ui because Qt Designer output is regenerated from
+        the tool and hand-edits to it get lost; every other layout change in this file is made the
+        same way.
+        """
+        from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QSpacerItem
+        gauge = getattr(self, "speedGauge", None)
+        old = self.speedControlGroup.layout()
+        if gauge is None or old is None:
+            return
+
+        # The .ui rows carry spacers that CENTRED them across the full group width, and the unit row
+        # got an addStretch() on top. In a narrow left column those are pure waste — they pushed the
+        # "Set speed" row's natural width to 382 px inside a 288 px group, which is what clipped the
+        # gauge. Strip them; the rows are left-aligned in the new column anyway.
+        for lay in (self.horizontalLayout_speedUnit, self.horizontalLayout_setSpeed):
+            for i in range(lay.count() - 1, -1, -1):
+                if isinstance(lay.itemAt(i), QSpacerItem) or lay.itemAt(i).spacerItem() is not None:
+                    lay.takeAt(i)
+
+        # Detach the three control rows from the old vertical layout, keeping their order.
+        rows = [self.horizontalLayout_speedUnit,
+                self.speedDisplayLabel,
+                self.horizontalLayout_setSpeed]
+        for r in rows:
+            old.removeItem(r) if not isinstance(r, QWidget) else old.removeWidget(r)
+
+        left = QVBoxLayout()
+        left.setContentsMargins(0, 0, 0, 0); left.setSpacing(6)
+        left.addStretch(1)
+        for r in rows:
+            left.addWidget(r) if isinstance(r, QWidget) else left.addLayout(r)
+        left.addStretch(1)
+
+        outer = QHBoxLayout()
+        outer.setContentsMargins(6, 2, 6, 4); outer.setSpacing(10)
+        outer.addLayout(left, 1)
+        outer.addWidget(gauge, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        QWidget().setLayout(old)              # re-parent the dead layout so Qt destroys it
+        self.speedControlGroup.setLayout(outer)
+        # 90 px is what the column can spare beside the controls: left rows need ~173 px of the
+        # 288 px group. Small, but the numeric readout is right next to it — the dial is the
+        # at-a-glance cue, not the measurement.
+        gauge.setFixedSize(90, 90)
+        self.setSpeedSpinBox.setFixedWidth(68)
 
     def _setup_speed_gauge(self):
         """Replace the speed gauge placeholder with actual SpeedGauge widget"""
@@ -184,7 +239,7 @@ class UTMApplication(QMainWindow):
             if item and item.widget() == self.speedGaugePlaceholder:
                 # Create the speed gauge
                 self.speedGauge = SpeedGauge()
-                self.speedGauge.setFixedSize(150, 150)
+                self.speedGauge.setFixedSize(90, 90)
                 self.speedGauge.setMaxValue(self.MAX_RPM)
                 self.speedGauge.setUnit("RPM")
 
@@ -1924,7 +1979,7 @@ class UTMApplication(QMainWindow):
         self.setSpeedSpinBox.setValue(0.1)  # Default 0.1 mm/s (~24 RPM)
 
         # Initialize speed display to 0 (no measured speed yet)
-        self.speedDisplayLabel.setText("Speed: 0.00 mm/s")
+        self.speedDisplayLabel.setText("Now: 0.00 mm/s")
 
     def on_speed_unit_changed(self, checked):
         """Handle speed unit radio button change"""
@@ -2007,7 +2062,7 @@ class UTMApplication(QMainWindow):
             value = self.motor_velocity_rpm
             unit = "RPM"
             max_value = self.MAX_RPM
-        self.speedDisplayLabel.setText(f"Speed: {value:.2f} {unit}")
+        self.speedDisplayLabel.setText(f"Now: {value:.2f} {unit}")
 
         # Update the speed gauge
         self.speedGauge.setMaxValue(max_value)
