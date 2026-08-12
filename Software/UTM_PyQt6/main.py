@@ -3036,12 +3036,15 @@ class UTMApplication(QMainWindow):
         r1.addWidget(self.infillSpinBox)
         r2 = QHBoxLayout()
         self.prepareSpecimenButton = QPushButton("Prepare specimen")
+        self.prepareSpecimenButton.setObjectName("prepareSpecimenButton")   # emphasised by theme
         self.prepareSpecimenButton.setToolTip("One click: tare position + force + DIC so the test starts from zero.")
         self.autoStopFractureCheck = QCheckBox("Auto-stop at fracture")
+        self.autoStopFractureCheck.setObjectName("autoStopFractureCheck")   # emphasised by theme
         self.autoStopFractureCheck.setToolTip("During a MANUAL tension pull, stop the motor automatically when the "
                                               "load collapses (fracture). Same detector as the offline analysis.")
         self.autoStopFractureCheck.setChecked(True)   # on by default (safety); a loaded profile can override
         self.fractureTestButton = QPushButton("Fracture test")
+        self.fractureTestButton.setObjectName("fractureTestButton")         # emphasised by theme
         self.fractureTestButton.setToolTip("One-click run to fracture: confirms your checklist (specimen mounted, "
                                            "preloaded, Prepare specimen done), then pulls in TENSION and auto-stops "
                                            "at fracture (with the force/travel backstop). Stop / E-Stop aborts.")

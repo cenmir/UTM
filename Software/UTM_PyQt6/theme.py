@@ -176,11 +176,52 @@ QStatusBar {{ background: {window}; color: {text_dim}; }}
 """
 
 
+# The three controls an operator actually reaches for during a test. They sat in the same flat grey
+# as every other button, so the eye had nothing to land on. Lifted by LIGHTNESS and WEIGHT only —
+# a step lighter than a normal button, the same neutral outline the group boxes use, bold text — so
+# nothing here competes with green/amber/red, which on this GUI mean machine state and nothing else.
+#
+# The :disabled rules are NOT optional. An ID selector outranks the generic QPushButton:disabled
+# rule, so without them a disabled "Fracture test" would keep the emphasised look and read as armed
+# when it is not — the exact opposite of what emphasis is for.
+_EMPHASIS_QSS = """
+QPushButton#prepareSpecimenButton, QPushButton#fractureTestButton {{
+    background-color: {raised_hi};
+    border: 1px solid {border_strong};
+    border-radius: 4px; padding: 5px 12px; font-weight: bold;
+}}
+QPushButton#prepareSpecimenButton:hover, QPushButton#fractureTestButton:hover {{
+    background-color: {panel_alt}; border-color: {border_bright};
+}}
+QPushButton#prepareSpecimenButton:pressed, QPushButton#fractureTestButton:pressed {{
+    background-color: {raised};
+}}
+QPushButton#prepareSpecimenButton:disabled, QPushButton#fractureTestButton:disabled {{
+    background-color: {window}; color: {text_dim};
+    border-color: {border}; font-weight: normal;
+}}
+QCheckBox#autoStopFractureCheck {{
+    background-color: {raised};
+    border: 1px solid {border_strong};
+    border-radius: 4px; padding: 3px 8px; font-weight: bold;
+}}
+QCheckBox#autoStopFractureCheck:disabled {{
+    background-color: transparent; border-color: {border};
+    color: {text_dim}; font-weight: normal;
+}}
+"""
+
+
 def stylesheet(name):
-    """QSS for the whole application. Light returns '' — the app's original Qt-default look, so
-    switching back is a genuine revert rather than a second theme to keep in sync."""
+    """QSS for the whole application.
+
+    Light stays the app's ORIGINAL Qt-default look — switching back is a genuine revert, not a
+    second theme to maintain — with one deliberate exception: the emphasis on the three test
+    controls applies to both themes, because "which button do I press" should not depend on the
+    colour scheme."""
     t = get(name)
-    return "" if t["name"] == "light" else _DARK_QSS.format(**t)
+    emphasis = _EMPHASIS_QSS.format(**t)
+    return emphasis if t["name"] == "light" else _DARK_QSS.format(**t) + emphasis
 
 
 # --------------------------------------------------------------------------- matplotlib
