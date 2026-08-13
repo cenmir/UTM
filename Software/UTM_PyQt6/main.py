@@ -430,7 +430,7 @@ class UTMApplication(QMainWindow):
 
         # Create the axes
         self.ss_ax = self.ss_figure.add_subplot(111)
-        self.ss_ax.set_xlabel('Strain (mm/mm)')
+        self.ss_ax.set_xlabel('Engineering strain, DIC (%)')
         self.ss_ax.set_ylabel('Stress (MPa)')
         self.ss_ax.set_title('Stress vs Strain')
         self.ss_ax.grid(True, alpha=0.3)
@@ -502,7 +502,9 @@ class UTMApplication(QMainWindow):
         if event.inaxes != self.ss_ax or event.xdata is None:
             return
         self.ss_annotation.xy = (event.xdata, event.ydata)
-        self.ss_annotation.set_text(f'ε = {event.xdata:.6f}\nσ = {event.ydata:.4f} MPa')
+        # x is now in PERCENT (see STRAIN_TO_PCT) — show both so the readout is unambiguous.
+        self.ss_annotation.set_text(
+            f'ε = {event.xdata:.3f} %  ({event.xdata / 100.0:.5f})\nσ = {event.ydata:.3f} MPa')
         self.ss_annotation.set_visible(True)
         self.ss_crosshair_h.set_ydata([event.ydata])
         self.ss_crosshair_h.set_visible(True)
@@ -638,6 +640,80 @@ class UTMApplication(QMainWindow):
         # Redraw the canvas
         self.load_canvas.draw_idle()
 
+    # ---- stress-strain series construction -----------------------------------------------------
+    # These four helpers exist so the live plot puts a curve on screen on the SAME basis as
+    # utm_report / utm_analysis. They previously disagreed on four separate counts, which stacked
+    # into a curve that looked like a different test:
+    #
+    #   1. DROPOUT ROWS. When the DIC loses a marker the strain column reads 0.0 for that sample.
+    #      The live plot drew those, so the trace snapped back to zero strain and back out again —
+    #      the horizontal streaks across the curve. `utm_analysis` has always gated on lpx > 100;
+    #      the same gate is applied here. A sample with no strain reading is not a data point.
+    #   2. THE ANCHOR. Force is tared at the preload, so the plotted stress was short by the whole
+    #      tared-away load (470 N ≈ 5.9 MPa ≈ 15 % on the last 100 % specimen). Added back here.
+    #   3. UNITS. The report plots strain in %, the GUI plotted a bare fraction — a factor of 100
+    #      between two axes that are supposed to show the same quantity.
+    #   4. A PAIRING BUG in the downsampler (see _ss_thin).
+    #
+    # What is NOT corrected: the live plot still shows the pre-test hold and the post-fracture tail,
+    # which the report windows out. That is correct for a LIVE plot — it must show what is happening
+    # now, not a retrospective analysis window — but it is why a finished test still looks busier
+    # here than in the report.
+    DIC_VALID_LPX = 100.0        # same gate as utm_analysis: below this the markers were not found
+    STRAIN_TO_PCT = 100.0
+
+    def _ss_source_array(self, key):
+        """(strain array, is_dic) for a strain-source key."""
+        if key in ("eng", "both_motor", "both_true"):
+            return self.load_plot_dic_cauchy, True      # CSV col DIC_Cauchy = ΔL/L₀
+        if key == "true":
+            return self.load_plot_dic_true, True
+        return self.stress_strain_strains, False
+
+    def _ss_anchor_MPa(self):
+        """Stress to add back so the axis is TRUE engineering stress, not tared stress.
+
+        The report derives this from the post-fracture hold, which does not exist yet during a live
+        test. `_tare_load_N` — the load that was tared away — is the same quantity measured a
+        different way, and it is known the moment the tare happens. On the V6d specimen it lands
+        within ~5 % of the post-fracture anchor (494 N vs 470 N), against 15 % if omitted entirely.
+        Zero before any tare, which is correct: nothing has been tared away yet.
+        """
+        a = max(0.0, getattr(self, '_tare_load_N', 0.0))
+        return a / self.cross_sectional_area if self.cross_sectional_area > 0 else 0.0
+
+    def _ss_pairs(self, arr, is_dic, n):
+        """(strain %, stress MPa) for every sample that HAS a strain reading."""
+        off = self._ss_anchor_MPa()
+        lpx = self.load_plot_dic_L_px
+        xs, ys = [], []
+        for i in range(min(n, len(arr), len(self.stress_strain_stresses))):
+            if is_dic and (i >= len(lpx) or lpx[i] <= self.DIC_VALID_LPX):
+                continue                                # marker lost — no strain for this sample
+            xs.append(arr[i] * self.STRAIN_TO_PCT)
+            ys.append(self.stress_strain_stresses[i] + off)
+        return xs, ys
+
+    def _ss_thin(self, xs, ys):
+        """Downsample for display, keeping the newest point so the trace stays live.
+
+        The old version appended `strains[-1]` (the last DOWNSAMPLED strain) next to `stresses[-1]`
+        (the true last stress), pairing a stale x with a fresh y and drawing a spurious horizontal
+        run-out at the end of the curve. x and y are only ever appended together here.
+        """
+        n = len(xs)
+        if n <= self.LOAD_PLOT_DOWNSAMPLE_THRESHOLD:
+            return xs, ys
+        step = max(1, n // self.LOAD_PLOT_DISPLAY_POINTS)
+        tx, ty = xs[::step], ys[::step]
+        if (n - 1) % step:                              # last sample missed by the stride
+            tx, ty = tx + [xs[-1]], ty + [ys[-1]]
+        return tx, ty
+
+    def _ss_xlabel(self, source):
+        return {"motor": "Crosshead strain (%)",
+                "true":  "True / log strain, DIC (%)"}.get(source, "Engineering strain, DIC (%)")
+
     def _update_stress_strain_plot(self):
         """Update the stress-strain plot (called by timer)"""
         if not self.stress_strain_plot_needs_update:
@@ -657,45 +733,24 @@ class UTMApplication(QMainWindow):
         source = (self.strainSourceCombo.currentData()
                   if hasattr(self, 'strainSourceCombo') else "motor") or "motor"
 
-        # Get stress data (always the same)
-        stresses = list(self.stress_strain_stresses)
-
-        # Get primary strain data based on source
-        if source in ("eng", "both_motor", "both_true"):
-            strains = list(self.load_plot_dic_cauchy[:n_points])   # CSV col DIC_Cauchy = ΔL/L₀
-        elif source == "true":
-            strains = list(self.load_plot_dic_true[:n_points])
-        else:
-            strains = list(self.stress_strain_strains)
-
-        # Downsample for display if needed
-        if n_points > self.LOAD_PLOT_DOWNSAMPLE_THRESHOLD:
-            step = max(1, n_points // self.LOAD_PLOT_DISPLAY_POINTS)
-            strains = strains[::step]
-            stresses_ds = stresses[::step]
-            if self.stress_strain_stresses[-1] not in stresses_ds:
-                strains = strains + [strains[-1]] if strains else strains
-                stresses_ds = stresses_ds + [stresses[-1]]
-            stresses = stresses_ds
+        arr, is_dic = self._ss_source_array(source)
+        strains, stresses = self._ss_thin(*self._ss_pairs(arr, is_dic, n_points))
 
         # Update primary line
         self.ss_line.set_data(strains, stresses)
         self.ss_line.set_visible(True)
+        self.ss_ax.set_xlabel(self._ss_xlabel(source))
+        self.ss_ax.set_ylabel("Engineering stress (MPa)" if self._ss_anchor_MPa()
+                              else "Stress, tared (MPa)")
 
         # "Both" modes — primary line is DIC engineering, secondary is Motor or DIC true/log
         if source in ("both_motor", "both_true"):
             self.ss_line.set_label("DIC engineering")
-            if source == "both_true":
-                secondary_strains = list(self.load_plot_dic_true[:n_points])
-                self.ss_dic_line.set_label("DIC true / log")
-            else:
-                secondary_strains = list(self.stress_strain_strains)
-                self.ss_dic_line.set_label("Motor")
-            secondary_stresses = list(self.stress_strain_stresses)
-            if n_points > self.LOAD_PLOT_DOWNSAMPLE_THRESHOLD:
-                step = max(1, n_points // self.LOAD_PLOT_DISPLAY_POINTS)
-                secondary_strains = secondary_strains[::step]
-                secondary_stresses = secondary_stresses[::step]
+            sec_key = "true" if source == "both_true" else "motor"
+            self.ss_dic_line.set_label("DIC true / log" if sec_key == "true" else "Motor")
+            sec_arr, sec_is_dic = self._ss_source_array(sec_key)
+            secondary_strains, secondary_stresses = self._ss_thin(
+                *self._ss_pairs(sec_arr, sec_is_dic, n_points))
             self.ss_dic_line.set_data(secondary_strains, secondary_stresses)
             self.ss_dic_line.set_visible(True)
             show_markers = hasattr(self, 'ssShowMarkersCheckBox') and self.ssShowMarkersCheckBox.isChecked()
@@ -1431,9 +1486,16 @@ class UTMApplication(QMainWindow):
         low_idx = int((low / 100.0) * (n_points - 1))
         high_idx = int((high / 100.0) * (n_points - 1))
 
-        # Get x positions (strain values) for the markers
-        low_strain = self.stress_strain_strains[low_idx]
-        high_strain = self.stress_strain_strains[high_idx]
+        # Get x positions for the markers — from the strain source the plot is ACTUALLY drawing,
+        # in the same % units. This used to read stress_strain_strains (crosshead) unconditionally
+        # while the curve defaulted to DIC, so the crop markers stood at unrelated x positions.
+        src = (self.strainSourceCombo.currentData()
+               if hasattr(self, 'strainSourceCombo') else "motor") or "motor"
+        arr, _ = self._ss_source_array(src)
+        low_idx = min(low_idx, len(arr) - 1)
+        high_idx = min(high_idx, len(arr) - 1)
+        low_strain = arr[low_idx] * self.STRAIN_TO_PCT
+        high_strain = arr[high_idx] * self.STRAIN_TO_PCT
 
         # Update vertical line positions
         self.ss_crop_line_low.set_xdata([low_strain, low_strain])
