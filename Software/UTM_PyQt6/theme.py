@@ -155,6 +155,39 @@ QComboBox::drop-down {{ border: none; width: 16px; }}
 QCheckBox, QRadioButton, QLabel {{ background: transparent; color: {text}; }}
 QCheckBox:disabled, QRadioButton:disabled {{ color: {text_dim}; }}
 
+/* Indicators MUST be styled explicitly. The moment a stylesheet touches QCheckBox/QRadioButton at
+   all, Qt stops drawing the native indicator and falls back to the box model — which inherits the
+   dark panel colour and leaves a dark circle on a dark background. That is why Direction read as
+   bare words with no visible selection: "Stop" WAS checked, its dot was just invisible.
+   The checked radio is a radial gradient because QSS cannot draw a dot inside a border box: the
+   accent fills the inner 45 % of the radius, the base colour the rest, and the 1 px outline sits
+   around both. */
+QCheckBox::indicator, QRadioButton::indicator {{
+    width: 14px; height: 14px;
+    background-color: {base};
+    border: 1px solid {border_bright};
+}}
+QRadioButton::indicator {{ border-radius: 8px; }}
+QCheckBox::indicator {{ border-radius: 3px; }}
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border-color: {accent}; }}
+QRadioButton::indicator:checked {{
+    background-color: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+                                      stop:0 {accent}, stop:0.45 {accent},
+                                      stop:0.5 {base}, stop:1 {base});
+    border-color: {accent};
+}}
+QCheckBox::indicator:checked {{ background-color: {accent}; border-color: {accent}; }}
+QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{
+    background-color: {window}; border-color: {border};
+}}
+QRadioButton::indicator:checked:disabled {{
+    background-color: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+                                      stop:0 {text_dim}, stop:0.45 {text_dim},
+                                      stop:0.5 {window}, stop:1 {window});
+    border-color: {border};
+}}
+QCheckBox::indicator:checked:disabled {{ background-color: {text_dim}; border-color: {border}; }}
+
 QMenuBar {{ background-color: {window}; color: {text}; border-bottom: 1px solid {border}; }}
 QMenuBar::item {{ background: transparent; padding: 4px 10px; }}
 QMenuBar::item:selected {{ background: {raised}; }}
