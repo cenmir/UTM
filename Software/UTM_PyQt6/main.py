@@ -4574,33 +4574,41 @@ class UTMApplication(QMainWindow):
         # disagreeing about what the specimen looked like.
         from PyQt6.QtGui import QActionGroup
         import utm_capture as _cap
-        style_menu = menu.addMenu("What to record")
+        MAKERS = (("raw", _cap.style_raw), ("speckle", _cap.style_speckle),
+                  ("boost", _cap.style_boost))
 
-        # VIDEO: multi-select. Raw and Speckle answer different questions -- raw is the archival
-        # record, speckle shows the marker motion at a glance -- so recording both at once is the
-        # normal case, not an edge case. Each gets its own file and its own worker.
-        style_menu.addSection("Video views (record any combination)")
+        # TWO SEPARATE SUBMENUS, not one menu with section headings. QMenu.addSection() degrades to
+        # a bare separator on the Windows style, so the headings never drew and the same three
+        # views appeared twice with nothing to say which set was which. A submenu title always
+        # renders, so the distinction cannot be lost to a style.
+        #
+        # VIDEO is multi-select: raw and speckle answer different questions -- archival record vs
+        # marker motion at a glance -- so recording both at once is the normal case. Each gets its
+        # own file and its own worker.
+        vid_menu = menu.addMenu("Video views  (tick any combination)")
+        vid_menu.setToolTipsVisible(True)
         self._vidStyleActions = {}
-        for key, maker in (("raw", _cap.style_raw), ("speckle", _cap.style_speckle),
-                           ("boost", _cap.style_boost)):
+        for key, maker in MAKERS:
             proto = maker()
             act = QAction(proto.label, self, checkable=True)
             act.setToolTip(proto.note)
             act.toggled.connect(self._sync_video_styles)
-            style_menu.addAction(act)
+            vid_menu.addAction(act)
             self._vidStyleActions[key] = act
         self._vidStyleActions["raw"].setChecked(True)
 
         # STILLS: exactly one. PNGs are the expensive sink (~1.9 GB/min); writing the same run
         # twice over would double that for a view you can re-derive from raw offline anyway.
-        style_menu.addSection("PNG stills use")
+        png_menu = menu.addMenu("PNG stills use  (pick one)")
+        png_menu.setToolTipsVisible(True)
         grp = QActionGroup(self); grp.setExclusive(True)
         self._styleActions = {}
-        for key, maker in (("raw", _cap.style_raw), ("speckle", _cap.style_speckle),
-                           ("boost", _cap.style_boost)):
-            act = QAction(maker().label, self, checkable=True)
+        for key, maker in MAKERS:
+            proto = maker()
+            act = QAction(proto.label, self, checkable=True)
+            act.setToolTip(proto.note)
             act.triggered.connect(lambda _c, k=key: self._set_capture_style(k))
-            grp.addAction(act); style_menu.addAction(act)
+            grp.addAction(act); png_menu.addAction(act)
             self._styleActions[key] = act
 
         menu.addSeparator()
