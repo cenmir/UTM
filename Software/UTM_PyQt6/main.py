@@ -742,6 +742,14 @@ class UTMApplication(QMainWindow):
         self.ss_ax.set_xlabel(self._ss_xlabel(source))
         self.ss_ax.set_ylabel("Engineering stress (MPa)" if self._ss_anchor_MPa()
                               else "Stress, tared (MPa)")
+        # Samples with no marker lock are dropped, so a DIC source with the camera off yields an
+        # EMPTY curve while load data streams in. Say so on the plot: a blank panel with a live
+        # load plot on the next tab reads as a crash, not as "there is no DIC strain to draw".
+        if is_dic and not strains:
+            self.ss_ax.set_title("Stress vs Strain — no DIC strain yet "
+                                 "(camera off, or markers not locked)")
+        else:
+            self.ss_ax.set_title("Stress vs Strain")
 
         # "Both" modes — primary line is DIC engineering, secondary is Motor or DIC true/log
         if source in ("both_motor", "both_true"):
