@@ -4774,13 +4774,21 @@ class UTMApplication(QMainWindow):
     #
     # The frozen ring is drawn at a radius that straddles the EDGE of the speckle blob, so the same
     # stroke crosses near-black and near-white within a few pixels. No single colour survives that,
-    # so every frozen mark is laid down twice: a white casing first, the colour on top. That is what
-    # lets the reference be a dark blue (which would otherwise disappear into the blob) instead of
-    # being restricted to the light, high-contrast end of the spectrum.
+    # so every frozen mark is laid down twice: a casing first, the colour on top.
+    #
+    # The CASING has to oppose the mark. Cyan is a light colour, so it needs a near-black casing —
+    # on the blob the cyan carries itself and the casing is simply invisible, while on the bright
+    # specimen (where the travel arrows live) the casing is the whole reason the mark is legible.
+    # Pairing cyan with the white casing that suited dark blue is what made the arrows wash out.
     PX0_RING_R   = 26
     LIVE_RING_R  = 20
-    PX0_BGR      = (161, 71, 13)      # dark blue #0D47A1 — frozen reference
-    PX0_CASE_BGR = (255, 255, 255)    # casing under it, so it reads on blob AND on specimen
+    #
+    # CASE_EXTRA is total added width, i.e. HALF of it per side, and it has to stay small: the feed
+    # is displayed at roughly 0.4 scale, so a casing much wider than a pixel per side gets averaged
+    # into the colour it is meant to protect and the cyan turns muddy green next to the live line.
+    PX0_BGR      = (255, 255, 0)      # cyan — frozen reference
+    PX0_CASE_BGR = (16, 16, 16)       # near-black casing, so it reads on specimen AND on blob
+    PX0_CASE_EXTRA = 2
     LIVE_BGR     = (0, 255, 0)        # green — live
     DRIFT_MIN_PX = 8                  # below this a leader arrow is a stub, so don't draw one
 
@@ -4811,28 +4819,33 @@ class UTMApplication(QMainWindow):
     def _draw_dic_overlay(self, display, centroids):
         """Frozen Px₀ pair + live pair on the BGR frame, BEFORE the display rotation."""
         ref = getattr(self.camera_manager, "initial_centroids", None)
+        has_ref = bool(ref) and len(ref) == 2
 
-        if ref and len(ref) == 2:
+        # LIVE FIRST, frozen on top. Both lines run down the same specimen axis, so one has to sit
+        # over the other. Painting the frozen line UNDER a solid green one left only a hairline of
+        # colour showing past the green core, and at the ~0.4 display scale that averages to teal —
+        # the frozen line effectively disappeared. Because the frozen line is DASHED, putting it on
+        # top instead gives alternating frozen-dash / live-gap along the shared axis: both are fully
+        # saturated, and past the frozen end-points the line goes pure green, which is the stretch.
+        if len(centroids) == 2:
+            live = sorted(centroids, key=lambda c: c[1])      # same axial order as the frozen pair
+            p1 = (int(live[0][0]), int(live[0][1]))
+            p2 = (int(live[1][0]), int(live[1][1]))
+            for c in (p1, p2):
+                cv2.circle(display, c, self.LIVE_RING_R, self.LIVE_BGR, 2, cv2.LINE_AA)
+            cv2.line(display, p1, p2, self.LIVE_BGR, 2, cv2.LINE_AA)
+
+        if has_ref:
             r1 = (int(ref[0][0]), int(ref[0][1]))
             r2 = (int(ref[1][0]), int(ref[1][1]))
-            # Deliberately THICKER than the live line, and drawn first. Both lines run down the same
-            # specimen axis, so they overlap; the frozen one showing as a blue sleeve around the
-            # green core means the part that sticks out past the blue ends IS the stretch.
             # Casing pass, then colour pass — see PX0_CASE_BGR.
-            for col, extra in ((self.PX0_CASE_BGR, 3), (self.PX0_BGR, 0)):
-                self._dashed_line(display, r1, r2, col, 4 + extra, dash=26, gap=18)
+            for col, extra in ((self.PX0_CASE_BGR, self.PX0_CASE_EXTRA), (self.PX0_BGR, 0)):
+                self._dashed_line(display, r1, r2, col, 5 + extra, dash=26, gap=18)
                 for c in (r1, r2):
-                    self._dashed_ring(display, c, self.PX0_RING_R, col, 3 + extra)
+                    self._dashed_ring(display, c, self.PX0_RING_R, col, 4 + extra)
 
         if len(centroids) != 2:
             return
-
-        live = sorted(centroids, key=lambda c: c[1])          # same axial order as the frozen pair
-        p1 = (int(live[0][0]), int(live[0][1]))
-        p2 = (int(live[1][0]), int(live[1][1]))
-        for c in (p1, p2):
-            cv2.circle(display, c, self.LIVE_RING_R, self.LIVE_BGR, 2, cv2.LINE_AA)
-        cv2.line(display, p1, p2, self.LIVE_BGR, 2, cv2.LINE_AA)
 
         # One caliper per marker, frozen → live: the travel of THAT speckle, not just the pair's
         # separation. Both arrows growing outward = the specimen stretched; both pointing the same
@@ -4841,24 +4854,27 @@ class UTMApplication(QMainWindow):
         # Drawn OFF TO THE SIDE rather than centre-to-centre. Early travel is smaller than the rings
         # themselves, so an arrow on the axis spends the interesting part of the test buried under
         # the very markers it is measuring.
-        if not (ref and len(ref) == 2):
+        if not has_ref:
             return
         for (rx, ry), cur in zip(ref, (p1, p2)):
             if abs(cur[1] - ry) < self.DRIFT_MIN_PX:
                 continue
             xo = min(display.shape[1] - 3, int(cur[0]) + self.PX0_RING_R + 30)
-            tip = min(0.4, 14.0 / abs(cur[1] - ry))
-            for col, extra in ((self.PX0_CASE_BGR, 3), (self.PX0_BGR, 0)):
-                cv2.line(display, (xo - 8, int(ry)), (xo + 8, int(ry)),
-                         col, 2 + extra, cv2.LINE_AA)                    # tick at the frozen end
-                cv2.arrowedLine(display, (xo, int(ry)), (xo, cur[1]), col, 2 + extra,
+            # The caliper is the smallest mark on the frame and the one carrying the least ink, so
+            # it is drawn a step HEAVIER than the rings rather than a step lighter, and its tick is
+            # wide enough to read as a datum line rather than a speck.
+            tip = min(0.45, 20.0 / abs(cur[1] - ry))
+            for col, extra in ((self.PX0_CASE_BGR, self.PX0_CASE_EXTRA), (self.PX0_BGR, 0)):
+                cv2.line(display, (xo - 11, int(ry)), (xo + 11, int(ry)),
+                         col, 3 + extra, cv2.LINE_AA)                    # tick at the frozen end
+                cv2.arrowedLine(display, (xo, int(ry)), (xo, cur[1]), col, 3 + extra,
                                 cv2.LINE_AA, tipLength=tip)
 
     # Caption colours are RGB — _draw_dic_caption runs AFTER the BGR→RGB conversion, unlike the
     # overlay. A light TINT of the mark colour, not the mark colour itself: #0D47A1 is chosen to sit
     # on a bright specimen, and the caption sits on the dark surround above it, so the same value
     # cannot serve both. Same hue keeps the link; the lightness follows the background.
-    PX0_TEXT_RGB  = (150, 190, 255)
+    PX0_TEXT_RGB  = (120, 240, 255)
     PX0_WARN_RGB  = (255, 190, 90)
     CAPTION_BG    = (14, 18, 26)
 
@@ -4875,14 +4891,14 @@ class UTMApplication(QMainWindow):
             text, color = "Px0 not set - press Calibrate Px0", self.PX0_WARN_RGB
 
         h = rgb.shape[0]
-        fs = max(0.5, min(1.9, h / 280.0))
-        th = max(2, int(round(2.0 * fs)))
+        fs = max(0.45, min(1.4, h / 380.0))
+        th = max(2, int(round(1.8 * fs)))
         # A filled plate, not an outline. The previous version drew a 5 px black casing around a
         # 1 px coloured stroke, so most of what reached the eye was the casing — the text read as
         # black-on-dark. A plate also makes the caption legible if it ever lands on the bright
         # specimen rather than the dark surround.
         (tw, tht), base = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, fs, th)
-        x0, y0, pad = 8, 8, 8
+        x0, y0, pad = 6, 6, 5
         cv2.rectangle(rgb, (x0, y0), (x0 + tw + 2 * pad, y0 + tht + base + 2 * pad),
                       self.CAPTION_BG, -1)
         cv2.rectangle(rgb, (x0, y0), (x0 + tw + 2 * pad, y0 + tht + base + 2 * pad),
