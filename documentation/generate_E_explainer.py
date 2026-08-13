@@ -212,6 +212,47 @@ footer(s, f"utm_analysis.analyze() · fit window 0.05 %–0.40 % strain · "
           f"σ = (F + {ANCHOR:.0f} N anchor) / {AREA:.0f} mm²")
 pageno(s, 2)
 
+# ===== SLIDE 3 — which line is which =========================================================
+def step(slide, x, y, w, h, num, text, *, col):
+    box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y),
+                                 Inches(w), Inches(h))
+    box.fill.solid(); box.fill.fore_color.rgb = WHITE
+    box.line.color.rgb = col; box.line.width = Pt(1.6)
+    tf = box.text_frame; tf.word_wrap = True
+    tf.margin_left = Inches(0.08); tf.margin_right = Inches(0.08)
+    tf.margin_top = Inches(0.03); tf.margin_bottom = Inches(0.03)
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    p = tf.paragraphs[0]; p.alignment = PP_ALIGN.LEFT
+    r1 = p.add_run(); r1.text = f"{num}   "
+    r1.font.size = Pt(15); r1.font.bold = True; r1.font.name = "Calibri"; r1.font.color.rgb = col
+    r2 = p.add_run(); r2.text = text
+    r2.font.size = Pt(11); r2.font.name = "Calibri"; r2.font.color.rgb = BLACK
+    return box
+
+
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "The two grey lines on the report's stress–strain graph")
+header(s, 0.5, 1.32, 12.4,
+       "Both have the SAME slope — the one E you measured. Neither of them is used to compute E.")
+
+img_fit(s, "documentation/e_fig_two_lines.png", 0.85, 1.72, 11.6, 4.40)
+
+SW, GAP = 2.94, 0.18
+for i, (num, txt, col) in enumerate([
+        ("1", "Fit E first — least squares over the points from 0.05 % to 0.40 % strain.",
+         FLOW_RED),
+        ("2", "Draw ① with that slope: the short dashed line that hugs the start of the curve.",
+         RGBColor(0x33, 0x33, 0x33)),
+        ("3", "Copy it and slide it 0.2 % to the right — that copy is ②, the long dotted line.",
+         RGBColor(0xB0, 0x30, 0x60)),
+        ("4", "Where ② meets the curve is σ_y, the 0.2 % offset yield stress.",
+         RGBColor(0x2A, 0x9D, 0x5C))]):
+    step(s, 0.55 + i * (SW + GAP), 6.22, SW, 0.62, num, txt, col=col)
+
+footer(s, "The line is not an extrapolation FROM the yield point — the yield point is defined BY "
+          "the line. S16 · E 1.88 GPa · σ_y 47.0 MPa")
+pageno(s, 3)
+
 OUT = "documentation/E_modulus_explained.pptx"
 prs.save(OUT)
 print(f"saved {OUT}  ({len(prs.slides.__iter__.__self__._sldIdLst)} slides)")

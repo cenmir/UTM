@@ -122,8 +122,90 @@ def fig_riserun():
     print("  ", p)
 
 
+# --------------------------------------------------------------------------------------------
+# The two grey lines in the report's stress-strain panel, labelled ON the lines themselves.
+# Built from S16 — the specimen in the report screenshot — so the picture matches the PDF the
+# operator is actually holding. Its E (1.88 GPa) is low, which is WHY sigma_y lands almost on
+# UTS here: a shallower elastic line takes longer to catch the curve.
+S16_CSV = _os.path.join("Software", "UTM_PyQt6", "8.6.20 - Tensile test to Failure",
+                        "Specimen_S16_V2_Spray", "UTM_Test_20260728_200615.csv")
+MAGENTA, DARKGREY = "#b03060", "#333333"
+
+
+def _s16():
+    meta = UA.read_meta(S16_CSV)
+    r = UA.analyze(S16_CSV, area=meta.get("area", 80.0))
+    return r, r["E"], r["c1"]
+
+
+def fig_two_lines():
+    """Which line is which — labels sit ON the lines, not in a legend."""
+    r, E16, c16 = _s16()
+    fig, (ax, az) = plt.subplots(1, 2, figsize=(12.6, 5.35),
+                                 gridspec_kw={"width_ratios": [1.62, 1]})
+    xs, ys = zip(*r["curve"])
+
+    def draw(a, xmax_line):
+        a.plot(xs, ys, "-", color=BLUE, lw=2.4, zorder=3)
+        xe = [0.0, 0.6]
+        a.plot(xe, [10 * E16 * x + c16 for x in xe], "--", color=DARKGREY, lw=2.6, zorder=4)
+        a.plot([0.2, xmax_line], [10 * E16 * (x - 0.2) + c16 for x in (0.2, xmax_line)],
+               ":", color=MAGENTA, lw=2.8, zorder=4)
+        a.grid(alpha=0.3)
+        a.set_xlabel("Engineering strain, DIC  (%)", fontsize=10.5)
+        a.set_ylabel("Engineering stress  (MPa)", fontsize=10.5)
+
+    # ---- main view ----
+    draw(ax, 3.0)
+    ax.set_xlim(-0.08, 6.2); ax.set_ylim(0, 56)
+    ax.plot(r["sy_ec"], r["sy"], "s", color="#2a9d5c", ms=12, mec="black", mew=0.9, zorder=6)
+
+    ax.annotate("①  ELASTIC FIT\nshort dashed line, slope = E\nit hugs the curve at the start",
+                xy=(0.42, 10 * E16 * 0.42 + c16), xytext=(1.05, 5.0),
+                fontsize=11.5, weight="bold", color=DARKGREY,
+                arrowprops=dict(arrowstyle="->", color=DARKGREY, lw=2))
+    ax.annotate("②  0.2 % OFFSET LINE\nthe SAME line moved 0.2 % right\nthe long dotted one",
+                xy=(2.15, 10 * E16 * (2.15 - 0.2) + c16), xytext=(3.05, 24.0),
+                fontsize=11.5, weight="bold", color=MAGENTA,
+                arrowprops=dict(arrowstyle="->", color=MAGENTA, lw=2))
+    ax.annotate(f"σ_y = {r['sy']:.1f} MPa\nwhere ② meets the curve",
+                xy=(r["sy_ec"], r["sy"]), xytext=(3.15, 47.5),
+                fontsize=11.5, weight="bold", color="#2a9d5c",
+                arrowprops=dict(arrowstyle="->", color="#2a9d5c", lw=2))
+    ax.set_title("the report's stress–strain panel", fontsize=12, weight="bold")
+
+    # ---- zoom on the start, where the shift is visible ----
+    draw(az, 0.95)
+    az.set_xlim(-0.02, 0.95); az.set_ylim(0, 22)
+    y0 = c16
+    az.annotate("", xy=(0.2, y0), xytext=(0.0, y0),
+                arrowprops=dict(arrowstyle="<->", color=MAGENTA, lw=2.4))
+    az.text(0.10, y0 - 2.1, "0.2 %", ha="center", fontsize=12.5, weight="bold", color=MAGENTA)
+    # Leaders, not floating glyphs: a bare ① parked in white space is exactly the ambiguity this
+    # figure exists to remove.
+    az.annotate("①  ELASTIC FIT", xy=(0.34, 10 * E16 * 0.34 + c16), xytext=(0.03, 19.0),
+                fontsize=12.5, weight="bold", color=DARKGREY,
+                arrowprops=dict(arrowstyle="->", color=DARKGREY, lw=2))
+    az.annotate("②  0.2 % OFFSET\n(same slope — parallel)",
+                xy=(0.80, 10 * E16 * (0.80 - 0.2) + c16), xytext=(0.40, 6.4),
+                fontsize=12.5, weight="bold", color=MAGENTA,
+                arrowprops=dict(arrowstyle="->", color=MAGENTA, lw=2))
+    az.set_title("zoomed on the start", fontsize=12, weight="bold")
+
+    fig.suptitle("① and ② are the SAME slope (= E).  ② is just shifted 0.2 % to the right.",
+                 fontsize=13, weight="bold")
+    fig.tight_layout()
+    p = _os.path.join(OUT, "e_fig_two_lines.png")
+    fig.savefig(p, dpi=170); plt.close(fig)
+    print("  ", p)
+    return r
+
+
 if __name__ == "__main__":
     print("figures:")
     fig_window()
     fig_riserun()
-    print(f"\n  E={E:.1f} MPa ({E/1000:.3f} GPa) · c1={C1:.3f} MPa · R2={R2:.5f} · n={len(WIN)}")
+    r16 = fig_two_lines()
+    print(f"\n  V6d : E={E:.1f} MPa ({E/1000:.3f} GPa) · c1={C1:.3f} MPa · R2={R2:.5f} · n={len(WIN)}")
+    print(f"  S16 : E={r16['E']:.2f} GPa · sy={r16['sy']:.1f} MPa @ {r16['sy_ec']:.2f} % · "
+          f"UTS={r16['uts']:.1f} MPa @ {r16['uts_ec']:.2f} %")
