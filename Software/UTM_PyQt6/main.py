@@ -3280,7 +3280,10 @@ class UTMApplication(QMainWindow):
         r2 = QHBoxLayout()
         self.prepareTestButton = QPushButton("Prepare test")
         self.prepareTestButton.setObjectName("prepareTestButton")   # emphasised by theme
-        self.prepareTestButton.setToolTip("One click: tare position + force + DIC so the test starts from zero.")
+        self.prepareTestButton.setToolTip(
+            "One click: clear the consoles and plots, then tare POSITION and FORCE so the test "
+            "starts from zero.\n\nIt does NOT touch Px₀ — only the Calibrate Px₀ button moves the "
+            "pixel reference. Prepare reports what Px₀ currently is, and warns if it was never set.")
         self.autoStopFractureCheck = QCheckBox("Auto-stop at fracture")
         self.autoStopFractureCheck.setObjectName("autoStopFractureCheck")   # emphasised by theme
         self.autoStopFractureCheck.setToolTip("During a MANUAL tension pull, stop the motor automatically when the "
@@ -3517,8 +3520,15 @@ class UTMApplication(QMainWindow):
         self.set_status(f"Settings '{r.name}' saved")
 
     def on_prepare_test(self):
-        """One click: clear the consoles, then tare position + force + DIC for a clean start.
-        DIC is only tared when markers are actually tracked (2 or 4 blobs)."""
+        """One click: clear the consoles and plots, then tare POSITION and FORCE.
+
+        It does NOT touch Px₀. Only the Calibrate Px₀ button changes the pixel reference — one
+        control, one owner. The previous version re-tared DIC here unless Px₀ happened to have been
+        captured at a lower load, which meant calibrating and preparing at the same load silently
+        moved the strain zero, and whether it did depended on a 5 N comparison the operator could
+        not see. Px₀ is the denominator of every strain in the test; it should move when, and only
+        when, somebody asks for it.
+        """
         # Fresh start — clear both consoles + BOTH plots, so the new specimen starts on empty axes
         self.consoleTextEdit.clear()
         if hasattr(self, 'cameraConsoleTextEdit'):
@@ -3539,39 +3549,28 @@ class UTMApplication(QMainWindow):
                     fn(); done.append(label)
                 except Exception as e:
                     self.append_to_console(f"[Prepare] {label} tare failed: {e}")
-        # DIC only tares when markers are being tracked.
-        #
-        # And NOT AT ALL if Px₀ was already calibrated at a lower load than we are sitting at now.
-        # Prepare is pressed AFTER preload by the checklist, so re-taring here would silently move
-        # the strain zero onto an already-stretched specimen and throw away a Px₀ the operator
-        # deliberately captured beforehand — the whole reason the Calibrate Px₀ button exists.
-        blobs = self._live_blob_count()
-        if callable(getattr(self, 'on_tare_dic', None)):
-            px0_load = getattr(self, "_px0_load_N", None)
-            now_load = abs(getattr(self, "current_load", 0.0) or 0.0)
-            already_good = (self.camera_manager.initial_distance is not None
-                            and px0_load is not None and px0_load < now_load - 5.0)
-            if already_good:
-                skipped.append("DIC")
-                self.append_to_console(
-                    f"[Prepare] Px₀ KEPT — it was calibrated at {px0_load:.0f} N and you are now at "
-                    f"{now_load:.0f} N, so re-taring would move the strain zero onto a stretched "
-                    "specimen. Press Calibrate Px₀ explicitly if you really want to re-zero here.")
-            elif blobs in (2, 4):
-                try:
-                    self.on_tare_dic(); done.append("DIC")
-                except Exception as e:
-                    self.append_to_console(f"[Prepare] DIC tare failed: {e}")
-            else:
-                skipped.append("DIC")
-                self.append_to_console(f"[Prepare] DIC NOT tared — {blobs} markers detected (need 2 or 4). "
-                                       "Start the camera and get a green 2/2 badge, then Prepare again.")
-        self.append_to_console(f"[Prepare] tared: {', '.join(done) if done else 'nothing'}"
-                               + (f"  |  skipped: {', '.join(skipped)}" if skipped else ""))
-        if skipped:
-            self.set_status(f"Prepared — {', '.join(done)} tared; DIC skipped (no markers)", is_warning=True)
+        # Px₀ is REPORTED here, never changed. Reporting it matters: Prepare is the last thing
+        # pressed before a pull, so it is the right moment to say out loud what the strain
+        # denominator is going to be — or that there isn't one yet.
+        px0 = getattr(self.camera_manager, "initial_distance", None)
+        px0_load = getattr(self, "_px0_load_N", None)
+        if px0:
+            at = f" (captured at {px0_load:.0f} N)" if px0_load is not None else ""
+            self.append_to_console(f"[Prepare] Px₀ UNCHANGED at {px0:.1f} px{at} — "
+                                   "only the Calibrate Px₀ button moves it.")
         else:
-            self.set_status("Specimen prepared — tared position + force + DIC")
+            skipped.append("Px₀ never calibrated")
+            self.append_to_console("[Prepare] ⚠ Px₀ has NEVER been calibrated — strain has no "
+                                   "reference. Press Calibrate Px₀ (before preload) or the pull "
+                                   "will record no usable strain.")
+
+        self.append_to_console(f"[Prepare] tared: {', '.join(done) if done else 'nothing'}"
+                               + "  |  Px₀ left alone")
+        if skipped:
+            self.set_status("Prepared — position + force tared; ⚠ Px₀ NOT calibrated yet",
+                            is_warning=True)
+        else:
+            self.set_status("Prepared — position + force tared; Px₀ unchanged")
 
     def on_fracture_test(self):
         """One-click run to fracture: checklist confirm -> arm auto-stop -> pull in tension.
@@ -5796,10 +5795,10 @@ class UTMApplication(QMainWindow):
     def on_calibrate_px0(self):
         """The Calibrate Px₀ BUTTON. Confirms the specimen state first, then captures.
 
-        Separate from on_tare_dic() on purpose: Prepare test calls that internally, and a modal
-        dialog firing in the middle of Prepare would be noise. Also note `clicked` passes a bool as
-        the first positional argument, so the confirm flag cannot live on the slot itself — it would
-        arrive as False and silently skip the dialog."""
+        This is now the ONLY path that moves Px₀ — Prepare test no longer tares DIC. Kept as a
+        wrapper rather than connecting on_tare_dic directly because `clicked` passes a bool as the
+        first positional argument: as a slot it would arrive in `confirm` as False and silently
+        skip the dialog."""
         self.on_tare_dic(confirm=True)
 
     def _confirm_px0(self, load):
