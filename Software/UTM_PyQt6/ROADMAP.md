@@ -59,9 +59,16 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
   already stretched into the specimen (~2500 µε at 300 N = 96× the noise floor). Now an explicit
   **Calibrate Px₀** button freezes the reference before preload, behind a mounted-specimen
   confirmation that turns into a warning above 25 N; *Prepare test* no longer overwrites a Px₀ that
-  was captured at a lower load. The live feed then draws **both** marker pairs — frozen in cyan
-  (dashed, larger ring) and live in green (solid) — plus a per-marker travel caliper and a
-  `Px0 1665 → now 1725 px (+60)` caption. Told apart by hue, line style **and radius**: at the
+  was captured at a lower load. The live feed then draws **both** marker pairs — frozen in dark blue
+  `#0D47A1` (dashed, larger ring, over a **white casing**) and live in green (solid) — plus a
+  per-marker travel caliper and a `Px0 1665 → now 1725 px (+60)` caption on a filled plate.
+  The casing is not decoration: the frozen ring straddles the EDGE of the speckle blob, so one
+  stroke crosses near-black and near-white within a few pixels and no flat colour survives it.
+  Colour chosen on measured separation from the live green (OKLab ΔE×100, worst case across
+  protan/deutan/tritan): dark blue **44.5** · violet 33.9 · magenta 29.3 · royal blue 26.0 · amber
+  9.2 · **cyan 5.1** — the original cyan was the worst pair available, indistinguishable from green
+  for a tritan operator except by dash pattern and ring size.
+  Told apart by hue, line style **and radius**: at the
   instant of calibration the pairs are exactly concentric, so same-size rings would vanish into each
   other. Makes a bad tare — slack specimen, tare under load, a marker that jumped blobs — visible on
   the feed instead of only in the strain number. Two arrows growing outward = stretch; both pointing
