@@ -139,9 +139,10 @@ NUM, DEN = n * Ses - Se * Ss, n * See - Se * Se
 
 # ===== SLIDE 1 — the idea ====================================================================
 s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "Young's modulus  E  —  how stiff is the material?")
+title(s, "Young's modulus  E  —  the slope of the ELASTIC region")
 header(s, 0.5, 1.32, 12.4,
-       "Pull the specimen. It stretches. E is how steeply the pull has to rise to keep it stretching.")
+       "Elastic = the specimen would spring back if you let go. E is the slope of the graph there, "
+       "and nowhere else.")
 
 img_fit(s, "documentation/e_fig_riserun.png", 0.35, 1.80, 7.35, 4.55)
 
@@ -151,7 +152,8 @@ bullet(s, XR, 1.82, WR, "STRESS  ",
 bullet(s, XR, 2.52, WR, "STRAIN  ",
        "= how much the gauge stretched ÷ how long it was.  Just a fraction — no units.")
 bullet(s, XR, 3.32, WR, "E  ",
-       "= how much the STRESS went up, divided by how much it STRETCHED to get there.")
+       "= the SLOPE of the elastic region: how much the STRESS went up, divided by how much it "
+       "STRETCHED to get there.")
 
 codebox(s, XR, 4.18, WR, 1.30, [
     (f"RISE  =  {Y2:6.2f}  -  {Y1:5.2f}   =  {RISE:.2f} MPa", True, GREEN_RUN),
@@ -166,7 +168,7 @@ tb(s, XR, 5.62, WR, 0.75,
    fs=12.5, colour=GREY_TEXT)
 
 banner(s, 0.5, 6.55, 12.35, 0.42,
-       "Steepness of the straight bit = stiffness.  Nothing else on the curve is used for E.",
+       "Slope of the ELASTIC region = stiffness.  Nothing past the elastic region is used for E.",
        fill=LIGHT_BLUE, fg=DARK_GREEN, fs=13)
 footer(s, "V6d · S11 · 100 % infill — the real measurements, not an illustration")
 pageno(s, 1)
@@ -249,9 +251,89 @@ for i, (num, txt, col) in enumerate([
          RGBColor(0x2A, 0x9D, 0x5C))]):
     step(s, 0.55 + i * (SW + GAP), 6.22, SW, 0.62, num, txt, col=col)
 
+_S16 = EP._s16()[0]
 footer(s, "The line is not an extrapolation FROM the yield point — the yield point is defined BY "
-          "the line. S16 · E 1.88 GPa · σ_y 47.0 MPa")
+          f"the line. S16 · E {_S16['E']:.2f} GPa · σ_y {_S16['sy']:.1f} MPa")
 pageno(s, 3)
+
+# ===== SLIDE 4 — why line ② exists at all ====================================================
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "Why line ② is needed:  PLA has no obvious yield point")
+header(s, 0.5, 1.32, 12.4,
+       "Steel snaps to a clear yield. PLA just bends over gradually — so \"where did it yield\" "
+       "has to be DEFINED, not read off.")
+
+img_fit(s, "documentation/e_fig_permanent.png", 0.35, 1.78, 7.55, 4.42)
+
+XR, WR = 8.15, 4.75
+bullet(s, XR, 1.80, WR, "What ② depicts:  ",
+       "the elastic response of a specimen that has ALREADY been permanently stretched by 0.2 %.")
+bullet(s, XR, 2.66, WR, "Why sideways:  ",
+       "at any stress, the horizontal distance from the elastic line to the curve is the stretch "
+       "that will NOT spring back when you unload.")
+bullet(s, XR, 3.72, WR, "So σ_y is:  ",
+       "the stress at which that permanent stretch first reaches 0.2 %. That is where ② meets "
+       "the curve.")
+
+SY, SY_EC = EP.R["sy"], EP.R["sy_ec"]
+X_ELASTIC = (SY - C1) / (10 * EP.R["E"])          # strain where the elastic line reaches sigma_y
+codebox(s, XR, 4.72, WR, 0.92, [
+    (f"elastic line reaches {SY:.1f} MPa at  {X_ELASTIC:.2f} %", False, BLACK),
+    (f"the CURVE reaches    {SY:.1f} MPa at  {SY_EC:.2f} %", False, BLACK),
+    (f"                       difference   {SY_EC - X_ELASTIC:.2f} %  ✓", True, FLOW_RED),
+], fs=11.5)
+
+tb(s, XR, 5.80, WR, 0.62,
+   "Without this convention there is no yield number at all — the curve never gives you one.",
+   fs=12.5, colour=GREY_TEXT)
+
+banner(s, 0.5, 6.55, 12.35, 0.42,
+       "σ_y is a DEFINITION, not a feature of the graph.  0.2 % is the agreed convention "
+       "(ISO 527, ASTM E8).", fill=LIGHT_BLUE, fg=DARK_GREEN, fs=13)
+footer(s, f"V6d · S11 — σ_y {SY:.1f} MPa @ {SY_EC:.2f} % · the 0.2 % gap is exact by construction")
+pageno(s, 4)
+
+# ===== SLIDE 5 — why the window stops at 0.40 % ==============================================
+# S16 band evidence, computed — a typed-in caveat is exactly the thing that drifts from the data.
+S16_R, S16_BANDS = EP.band_slopes()
+S16_E = S16_R["E"]
+_in_win = [b[3] for b in S16_BANDS if b[1] <= 0.0040]
+_best = [b for b in S16_BANDS if b[0] >= 0.0060 and b[1] <= 0.0120]
+WIN_LO, WIN_HI = min(_in_win), max(_in_win)
+BEST_LO, BEST_HI = min(b[3] for b in _best), max(b[3] for b in _best)
+BEST_R2 = min(b[4] for b in _best)
+
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "Why the fit stops at 0.40 %  —  and what that costs us")
+header(s, 0.5, 1.32, 12.4,
+       "Past the elastic region the curve is no longer straight, so a slope measured there would "
+       "not be a modulus at all.")
+
+img_fit(s, "documentation/e_fig_bands.png", 0.35, 1.78, 7.55, 4.42)
+
+XR, WR = 8.15, 4.75
+bullet(s, XR, 1.80, WR, "Why not further?  ",
+       "beyond ~1.2 % the material is yielding. Its slope collapses (2.62 → 2.07 → 1.22 GPa). "
+       "Including that would average elastic and plastic behaviour together.")
+bullet(s, XR, 3.06, WR, "Why not from 0 %?  ",
+       "the first fraction of a percent is grip take-up and specimen settling, not material "
+       "response — the noisiest part of the whole test.")
+bullet(s, XR, 4.14, WR, "0.05–0.40 % is the convention  ",
+       "(ISO 527 uses 0.05–0.25 %). It is chosen to sit safely inside the elastic region.")
+
+banner(s, XR, 5.05, WR, 1.32,
+       f"BUT on S16 that window lands on the toe, not the elastic region:\n"
+       f"it reads {WIN_LO:.2f}–{WIN_HI:.2f} GPa, where the straightest part of the\n"
+       f"curve (0.6–1.2 %, R² ≥ {BEST_R2:.3f}) reads {BEST_LO:.2f}–{BEST_HI:.2f} GPa.\n"
+       f"Reported E = {S16_E:.2f} GPa is therefore an UNDER-estimate.",
+       fill=YELLOW_WARN, fg=DARK_GREEN, fs=11.5)
+
+banner(s, 0.5, 6.55, 12.35, 0.42,
+       "Open question for the campaign: move the window to 0.25–0.60 %, or keep ISO comparability? "
+       "It changes every published E.",
+       fill=RGBColor(0xFF, 0xE8, 0xD6), fg=DARK_GREEN, fs=12.5)
+footer(s, "S16 · local slope fitted in each band separately · R² printed inside each bar")
+pageno(s, 5)
 
 OUT = "documentation/E_modulus_explained.pptx"
 prs.save(OUT)
