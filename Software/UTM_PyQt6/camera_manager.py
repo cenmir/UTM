@@ -1,4 +1,5 @@
 import math
+import time
 from collections import deque
 from datetime import datetime
 
@@ -26,7 +27,12 @@ class CaptureThread(QThread):
 
 class CameraManager(QObject):
 
-    frame_ready = pyqtSignal(np.ndarray)
+    # Carries the centroids ALONGSIDE the frame they came from. The GUI used to re-run detect_blobs
+    # on the frame it received, which cost a second detection pass per frame, emitted a second
+    # blobs_detected/error_occurred per frame (double-counting every dropout in the health HUD and
+    # doubling the console spam), and could pair markers with the wrong frame once the GUI fell
+    # behind. Shipping them together makes the pairing exact and the second pass unnecessary.
+    frame_ready = pyqtSignal(np.ndarray, list)
     blobs_detected = pyqtSignal(list)
     dic_strain_updated = pyqtSignal(float)
     error_occurred = pyqtSignal(str)
@@ -79,6 +85,7 @@ class CameraManager(QObject):
         # SEPARATION enters the strain maths; these are kept so the live view can draw the frozen
         # reference beside the moving markers and make the travel visible rather than numeric.
         self.initial_centroids = None
+        self._trace_last_n, self._trace_last_t = -1, 0.0    # see _trace_blobs
         self.capture_thread = None
         self.latest_dic_strain = 0.0
         self.latest_dic_cauchy = 0.0
@@ -192,18 +199,32 @@ class CameraManager(QObject):
                 # Run blob detection on every frame
                 centroids = self.detect_blobs(img)
                 if len(centroids) == 2:
-                    dy = abs(centroids[1][1] - centroids[0][1])
-                    dx = abs(centroids[1][0] - centroids[0][0])
-                    print(f"[DIC] found 2 blobs | L(cy)={dy:.1f}px dx={dx:.1f}px")
                     self.calculate_dic_strain(centroids)
-                else:
-                    print(f"[DIC] found {len(centroids)} blobs")
-                self.frame_ready.emit(img)
+                self._trace_blobs(centroids)
+                self.frame_ready.emit(img, centroids)
                 return img
             grab_result.Release()
         except Exception as e:
             self.error_occurred.emit(str(e))
         return None
+
+    # stdout is not free, and this ran on EVERY grabbed frame — 35 lines/s of the same message.
+    # Print on a CHANGE of marker count, then at most once a second while it stays there. A steady
+    # 2/2 says nothing new every 29 ms; a 2 → 1 transition is the thing worth seeing in the log.
+    TRACE_MIN_INTERVAL_S = 1.0
+
+    def _trace_blobs(self, centroids):
+        n = len(centroids)
+        now = time.monotonic()
+        if n == self._trace_last_n and (now - self._trace_last_t) < self.TRACE_MIN_INTERVAL_S:
+            return
+        self._trace_last_n, self._trace_last_t = n, now
+        if n == 2:
+            dy = abs(centroids[1][1] - centroids[0][1])
+            dx = abs(centroids[1][0] - centroids[0][0])
+            print(f"[DIC] found 2 blobs | L(cy)={dy:.1f}px dx={dx:.1f}px")
+        else:
+            print(f"[DIC] found {n} blobs")
 
     def detect_blobs(self, frame) -> list:
         try:

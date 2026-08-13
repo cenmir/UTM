@@ -33,6 +33,27 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 - **Strain-rate fracture test** — closed-loop constant *gauge* strain rate → fracture → auto-stop.
 - **Safety net (3 layers):** load-collapse fracture detector · **stall guard** (crosshead frozen <0.05 mm/6 s under load — in BOTH the auto-stop path and the strain-rate loop) · **10 kN / 30 mm** force/travel backstop · **dead-DIC guard** (freeze speed at 0.2 s, halt at 1.0 s).
 - **CSV richness** — `DIC_Blobs` health column + `# DIC Health` header + infill label.
+- **GUI responsiveness** (2026-08-13) — the app was spending **~700 ms of every wall-clock second**
+  on the single GUI thread, which is what the lag was. Measured, not guessed (`perf_probe.py`):
+  one matplotlib redraw of these figures costs **22.5 ms** (14.2 ms of it is the datetime axis), and
+  one camera frame costs **5.9 ms** on the GUI thread. Four fixes, none of which touch a measurement:
+  - **Hidden tabs no longer redraw.** Only one plot tab is ever on screen, yet both canvases redrew
+    every tick — half the plotting was invisible by construction. The dirty flag stays SET so the tab
+    catches up when shown (`_on_plot_tab_changed`, deferred one event-loop turn because on the
+    tab-changed signal the new page is not visible yet). On the Console tab, plotting cost is zero.
+  - **Camera feed throttled to 12 fps.** Every frame is still GRABBED and MEASURED at 35 fps — only
+    the picture is throttled. 35 back-to-back frames: **206 ms → 16 ms**.
+  - **Centroids ship with the frame** (`frame_ready(ndarray, list)`). The GUI used to re-run
+    `detect_blobs` on the frame it had just been handed — a second detection pass, a second
+    `blobs_detected`/`error_occurred` per frame (**double-counting every dropout in the health HUD**),
+    and a chance to pair markers with the wrong frame once the GUI fell behind. A correctness fix as
+    much as a speed one. PyQt truncates args for the 1-arg slots in `camera_setup`/`check_blobs`.
+  - **Repeat spam coalesced** — the per-frame `print` now fires on a CHANGE of marker count then at
+    most 1 Hz; identical `[Camera Error]` lines collapse to one per second with a repeat count. The
+    HUD still sees every frame, so tracking % stays exact. Display-rate default **0.01 s → 0.10 s**
+    (it was polling at 100 Hz for data that arrives at 11 Hz).
+  - **Net ≈ 700 → 285 ms/s.** ⬜ Remaining lever if it still lags: **blit the live traces** (~22 ms →
+    ~2 ms), which needs stepped axis limits so the background cache is not invalidated every sample.
 - **Calibrate Px₀ + frozen-reference overlay** (2026-08-12/13) — the DIC zero was previously only
   reachable through *Prepare test*, i.e. **after** preload, which silently discards everything
   already stretched into the specimen (~2500 µε at 300 N = 96× the noise floor). Now an explicit
@@ -88,6 +109,11 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 > 1. **T6.6, the damage curve.** Fresh 50 % specimen, 400→1100 N, 12 cycles, sine, 0.100 mm/s, ONE
 >    uninterrupted run, baseline E on cycle 2. ~40 min. The only route to D = 1 − Eᵢ/E₀.
 > 2. **Black-specimen DIC check.** Every specimen to date is white; the Black preset has never run.
+> 3. **Live Px₀ overlay — VALIDATE ON THE RIG.** Built and render-checked 2026-08-13 (`db7ad37`)
+>    against a synthetic frame only. On a real specimen, confirm: the frozen cyan pair lands on the
+>    markers and does not drift; the green pair separates from it as load rises; the caption Δ agrees
+>    with the strain readout (Δpx/Px₀ = ε); and the calipers grow OUTWARD rather than both one way.
+>    Blocked behind a lighting problem the operator is working on.
 >
 > **⬜ Software, in the order I would take it:**
 > 3. **Frame capture** during a test — the prerequisite for the MOT extensometer cross-check (§3a).

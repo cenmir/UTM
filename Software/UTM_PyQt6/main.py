@@ -589,6 +589,12 @@ class UTMApplication(QMainWindow):
         """Update the load plot (called by timer at 5 Hz)"""
         if not self.load_plot_needs_update:
             return
+        # A matplotlib redraw costs ~22 ms on this figure and Qt charges it in FULL for a canvas
+        # sitting on a hidden tab — where nobody can see the result. Only one of the two plot tabs
+        # is ever on screen, so half the plotting the app used to do was invisible by construction.
+        # The dirty flag deliberately stays SET, so the tab redraws the moment it is shown.
+        if not self.load_canvas.isVisible():
+            return
 
         self.load_plot_needs_update = False
 
@@ -635,6 +641,8 @@ class UTMApplication(QMainWindow):
     def _update_stress_strain_plot(self):
         """Update the stress-strain plot (called by timer)"""
         if not self.stress_strain_plot_needs_update:
+            return
+        if not self.ss_canvas.isVisible():        # see _update_load_plot — flag stays set
             return
 
         self.stress_strain_plot_needs_update = False
@@ -899,6 +907,8 @@ class UTMApplication(QMainWindow):
 
         # DIC Camera state
         self.camera_manager = CameraManager()
+        self._cam_err_last, self._cam_err_t, self._cam_err_n = None, 0.0, 0   # see on_camera_error
+        self._last_feed_paint = 0.0                                          # feed throttle
         self.dic_recording_enabled = False
         self.latest_dic_strain = 0.0
         self.latest_dic_cauchy = 0.0
@@ -1008,6 +1018,11 @@ class UTMApplication(QMainWindow):
         self.load_plot_timer.timeout.connect(self._update_load_plot)
         self.load_plot_timer.timeout.connect(self._update_stress_strain_plot)
         self.load_plot_timer.start()  # Always running, but only redraws when needed
+
+        # A canvas on a hidden tab skips its redraws (see _update_load_plot), so the tab the
+        # operator switches TO has to catch up at once rather than looking frozen until the next
+        # load-cell sample. Both are called: only the visible one will actually do any work.
+        self.tabWidget.currentChanged.connect(self._on_plot_tab_changed)
 
         # Split console into main + camera panels
         self._setup_console_split()
@@ -1314,6 +1329,15 @@ class UTMApplication(QMainWindow):
         self.ss_canvas.draw_idle()
 
         self.append_to_console("Plots cleared")
+
+    def _on_plot_tab_changed(self, _index):
+        """Repaint whichever plot just came into view.
+
+        Deferred by one event-loop turn: on the tab-changed signal Qt has not finished showing the
+        new page yet, so isVisible() is still False and the redraw would be skipped again.
+        """
+        QTimer.singleShot(0, self._update_load_plot)
+        QTimer.singleShot(0, self._update_stress_strain_plot)
 
     def _update_display_rate(self):
         """Update the load plot timer interval from the current display rate"""
@@ -4840,13 +4864,28 @@ class UTMApplication(QMainWindow):
         cv2.putText(rgb, text, org, cv2.FONT_HERSHEY_SIMPLEX, fs, color,
                     max(1, int(1.5 * fs)), cv2.LINE_AA)
 
-    def update_camera_feed(self, frame):
+    # The camera grabs at 35 fps and every one of those frames is MEASURED — that is the science and
+    # it is untouched. Only the PICTURE is throttled here. Painting it costs ~6 ms of the GUI thread
+    # per frame (colour convert, rotate, QImage, two pixmap scales); at 35 fps that is a fifth of the
+    # thread spent redrawing a specimen that moves at 0.1 mm/s. Nobody can see the difference between
+    # 12 fps and 35 fps on that; everybody can see a laggy button.
+    FEED_MAX_FPS = 12
+
+    def update_camera_feed(self, frame, centroids=None):
         try:
+            now = time.monotonic()
+            if (now - getattr(self, "_last_feed_paint", 0.0)) < 1.0 / self.FEED_MAX_FPS:
+                return
+            self._last_feed_paint = now
+
             # Make a copy to draw on
             display = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
 
-            # Draw blob overlay — frozen Px₀ reference (cyan, dashed) + live markers (green, solid)
-            centroids = self.camera_manager.detect_blobs(frame)
+            # Blob overlay — frozen Px₀ reference (cyan, dashed) + live markers (green, solid).
+            # The centroids arrive WITH the frame; re-detecting them here would be a second pass
+            # over the same pixels and a second round of blobs_detected / error_occurred signals.
+            if centroids is None:
+                centroids = self.camera_manager.detect_blobs(frame)
             self._draw_dic_overlay(display, centroids)
 
             # Convert BGR to RGB for Qt, rotate 90° so specimen appears horizontal
@@ -4960,8 +4999,22 @@ class UTMApplication(QMainWindow):
                 f"[DIC] ε_c={cauchy:.6f} | ε_t={true_strain:.6f} | Motor={motor_strain:.6f} | Δ(ε_c−Motor)={cauchy - motor_strain:.6f}"
             )
 
+    # Blob-detection failures are emitted per FRAME, so a lighting problem writes 35 identical lines
+    # a second into the camera console — which buries the one line that would tell you what changed
+    # and makes the console useless exactly when you need to read it. Identical messages are
+    # coalesced into one line per second carrying the repeat count. The health HUD is fed from the
+    # same signal separately and still sees EVERY frame, so tracking % stays exact.
+    CAM_ERR_COALESCE_S = 1.0
+
     def on_camera_error(self, msg):
-        self.append_to_console(f"[Camera Error] {msg}")
+        now = time.monotonic()
+        same = (msg == self._cam_err_last)
+        if same and (now - self._cam_err_t) < self.CAM_ERR_COALESCE_S:
+            self._cam_err_n += 1
+            return
+        repeats = f"   (x{self._cam_err_n + 1})" if same and self._cam_err_n else ""
+        self._cam_err_last, self._cam_err_t, self._cam_err_n = msg, now, 0
+        self.append_to_console(f"[Camera Error] {msg}{repeats}")
 
     def on_camera_connection_changed(self, connected):
         self.append_to_console(f"[Camera] {'Connected' if connected else 'Disconnected'}")
