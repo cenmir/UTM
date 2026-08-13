@@ -86,6 +86,11 @@ class CameraManager(QObject):
         # reference beside the moving markers and make the travel visible rather than numeric.
         self.initial_centroids = None
         self._trace_last_n, self._trace_last_t = -1, 0.0    # see _trace_blobs
+        # Optional callable(frame) fed EVERY grabbed frame — see utm_capture.CaptureManager.submit.
+        # Deliberately hooked here on the camera thread rather than off frame_ready: the display
+        # signal is throttled to 12 fps and rides the GUI event queue, so a recording driven from
+        # there would drop two frames in three and stutter whenever the GUI was busy.
+        self.frame_sink = None
         self.capture_thread = None
         self.latest_dic_strain = 0.0
         self.latest_dic_cauchy = 0.0
@@ -197,6 +202,13 @@ class CameraManager(QObject):
                 grab_result.Release()
                 self.latest_frame = img  # add this
                 # Run blob detection on every frame
+                sink = self.frame_sink
+                if sink is not None:
+                    try:
+                        sink(img)          # ~47 us: a bounded-buffer append, never any encoding
+                    except Exception as e:
+                        self.frame_sink = None      # a broken sink must not kill the grab loop
+                        self.error_occurred.emit(f"Frame capture stopped: {e}")
                 centroids = self.detect_blobs(img)
                 if len(centroids) == 2:
                     self.calculate_dic_strain(centroids)

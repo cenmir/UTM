@@ -1,0 +1,258 @@
+"""Frame capture for the DIC camera — PNG stills and/or an AVI video, written off the hot path.
+
+    from utm_capture import CaptureManager
+    cap = CaptureManager(root="captures")
+    cap.start_png(label="V7a", size=(419, 2348))
+    cap.submit(frame, t_mono)          # called from the CAMERA thread, ~40 us
+    cap.stop_all()
+
+WHY IT IS SHAPED LIKE THIS
+--------------------------
+The rig grabs at 35 fps and the load cell streams at ~11 Hz through the same process. Encoding a
+frame is 9-10 ms of work; doing that inline on the camera thread would halve the DIC sample rate,
+and doing it on the GUI thread would freeze the interface. So every frame is handed to a worker
+thread and the caller returns immediately.
+
+Three measurements set the design (all at the rig's real 419x2348 ROI):
+
+  * cv2 RELEASES THE GIL while encoding. A writer thread running flat out added +0.09 ms to main-
+    thread latency, so this can live in-process; no subprocess or shared memory is needed.
+  * PNG compression 0 costs 9.2 ms/frame; level 1 costs 27.1 ms and saves only 31 % of the bytes.
+    At 35 fps level 1 needs ~95 % of a core and cannot keep up. Level 0 is the default here, and
+    the cost is disk: ~1.9 GB per minute.
+  * MJPG at isColor=False costs 9.7 ms/frame and 0.62 GB/min. XVID is 20x smaller but LOSSY in a
+    way that eats speckle detail, and these frames exist to be re-analysed. MJPG is intra-frame
+    (every frame independently decodable) which is what extensometer software expects.
+
+BACKPRESSURE: the buffer is bounded and drops the OLDEST frame when full, counting the loss. A test
+must never stall or run out of memory because a disk got slow — a gap in the frames is recoverable,
+a stalled control loop is not. `dropped` is surfaced in the UI so a lossy run is never silent.
+
+Each PNG run also writes index.csv (frame, file, iso time, monotonic seconds). Without it the
+stills cannot be aligned to the force data afterwards, which is the entire point of capturing them.
+"""
+import csv
+import os
+import threading
+import time
+from collections import deque
+from datetime import datetime
+
+import cv2
+
+PNG_COMPRESSION = 0          # see module docstring: 0 is the only level that keeps up at 35 fps
+VIDEO_FOURCC = "MJPG"
+DEFAULT_BUFFER = 90          # ~2.6 s of slack at 35 fps before the oldest frame is dropped
+
+
+def _stamp():
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+class _Sink:
+    """One worker thread draining one bounded buffer. Subclasses do the actual writing."""
+
+    def __init__(self, buffer=DEFAULT_BUFFER):
+        self._buf = deque(maxlen=buffer)     # maxlen gives drop-oldest for free
+        self._lock = threading.Lock()
+        self._wake = threading.Event()
+        self._thread = None
+        self._running = False
+        self.written = 0
+        self.dropped = 0
+        self.path = None
+        self.error = None
+
+    # -- called from the CAMERA thread; must stay in the microseconds ---------------------------
+    def submit(self, item):
+        if not self._running:
+            return
+        with self._lock:
+            if len(self._buf) == self._buf.maxlen:
+                self.dropped += 1            # deque is about to discard the oldest itself
+            self._buf.append(item)
+        self._wake.set()
+
+    def _start(self):
+        self._running = True
+        self._thread = threading.Thread(target=self._run, name=type(self).__name__, daemon=True)
+        self._thread.start()
+
+    def stop(self, flush_timeout=8.0):
+        """Stop accepting frames, then let the worker drain what is already buffered.
+
+        The drain matters: without it the last ~2 s of a fracture — the part everybody wants to
+        look at — is dropped on the floor when the test ends."""
+        if not self._running:
+            return
+        self._running = False
+        self._wake.set()
+        if self._thread is not None:
+            self._thread.join(timeout=flush_timeout)
+        self._close()
+
+    def _run(self):
+        while True:
+            with self._lock:
+                item = self._buf.popleft() if self._buf else None
+            if item is None:
+                if not self._running:
+                    return                    # stopped AND drained
+                self._wake.wait(0.05)
+                self._wake.clear()
+                continue
+            try:
+                self._write(item)
+                self.written += 1
+            except Exception as e:            # a bad frame must not kill the run
+                self.error = str(e)
+
+    def _write(self, item):
+        raise NotImplementedError
+
+    def _close(self):
+        pass
+
+
+class PngSink(_Sink):
+    """Every frame as a lossless PNG, plus an index that ties each file to a timestamp."""
+
+    def __init__(self, directory, buffer=DEFAULT_BUFFER):
+        super().__init__(buffer)
+        self.path = directory
+        os.makedirs(directory, exist_ok=True)
+        self._n = 0
+        self._index = open(os.path.join(directory, "index.csv"), "w", newline="", encoding="utf-8")
+        self._csv = csv.writer(self._index)
+        self._csv.writerow(["frame", "file", "pc_time_iso", "t_monotonic_s"])
+        self._start()
+
+    def _write(self, item):
+        frame, t_mono, iso = item
+        name = f"f{self._n:06d}.png"
+        cv2.imwrite(os.path.join(self.path, name), frame,
+                    [cv2.IMWRITE_PNG_COMPRESSION, PNG_COMPRESSION])
+        self._csv.writerow([self._n, name, iso, f"{t_mono:.4f}"])
+        self._n += 1
+
+    def _close(self):
+        try:
+            self._index.flush()
+            self._index.close()
+        except Exception:
+            pass
+
+
+class VideoSink(_Sink):
+    """The whole run as one AVI. Grayscale in, isColor=False — no needless BGR expansion."""
+
+    def __init__(self, path, size, fps, buffer=DEFAULT_BUFFER):
+        super().__init__(buffer)
+        self.path = path
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        self._vw = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*VIDEO_FOURCC), fps, size, False)
+        if not self._vw.isOpened():
+            self.error = f"could not open {VIDEO_FOURCC} writer for {path}"
+            self._vw = None
+            return
+        self._start()
+
+    def _write(self, item):
+        frame = item[0]
+        if self._vw is not None:
+            self._vw.write(frame)
+
+    def _close(self):
+        if self._vw is not None:
+            self._vw.release()
+            self._vw = None
+
+
+class CaptureManager:
+    """Owns the two sinks and the run folder. All methods are safe to call from the GUI thread.
+
+    `submit` is the exception — it is called from the camera thread, and is the only method that
+    has to be fast."""
+
+    def __init__(self, root="captures", fps=35):
+        self.root = root
+        self.fps = fps
+        self.png = None
+        self.video = None
+        self._run_dir = None
+
+    # ---- state the UI polls -------------------------------------------------------------------
+    @property
+    def capturing(self):
+        return self.png is not None and self.png._running
+
+    @property
+    def recording(self):
+        return self.video is not None and self.video._running
+
+    @property
+    def active(self):
+        return self.capturing or self.recording
+
+    def stats(self):
+        return {
+            "png_written": self.png.written if self.png else 0,
+            "png_dropped": self.png.dropped if self.png else 0,
+            "vid_written": self.video.written if self.video else 0,
+            "vid_dropped": self.video.dropped if self.video else 0,
+            "dir": self._run_dir,
+            "error": (self.png.error if self.png else None) or (self.video.error if self.video else None),
+        }
+
+    def run_dir(self, label=None):
+        """One folder per run, shared by the stills and the video so they stay together."""
+        if self._run_dir is None:
+            name = _stamp() + (f"_{label}" if label else "")
+            self._run_dir = os.path.join(self.root, name)
+            os.makedirs(self._run_dir, exist_ok=True)
+        return self._run_dir
+
+    # ---- start / stop -------------------------------------------------------------------------
+    def start_png(self, label=None):
+        if self.capturing:
+            return self.png.path
+        self.png = PngSink(os.path.join(self.run_dir(label), "frames"))
+        return self.png.path
+
+    def start_video(self, size, label=None):
+        """`size` is (width, height) of the frame as it will be submitted."""
+        if self.recording:
+            return self.video.path
+        self.video = VideoSink(os.path.join(self.run_dir(label), "video.avi"), size, self.fps)
+        return self.video.path
+
+    def stop_png(self):
+        if self.png:
+            self.png.stop()
+        self._maybe_clear_run()
+
+    def stop_video(self):
+        if self.video:
+            self.video.stop()
+        self._maybe_clear_run()
+
+    def stop_all(self):
+        self.stop_png()
+        self.stop_video()
+
+    def _maybe_clear_run(self):
+        if not self.active:
+            self._run_dir = None            # next start opens a fresh, timestamped folder
+
+    # ---- the hot path -------------------------------------------------------------------------
+    def submit(self, frame):
+        """Hand one frame to whichever sinks are running. Called from the camera thread.
+
+        No copy: capture_frame's cv2.rotate already returns a fresh array per frame, so the
+        buffered reference cannot be overwritten under us. Copying here would add 0.16 ms to every
+        grab for nothing.
+        """
+        if self.png is not None and self.png._running:
+            self.png.submit((frame, time.monotonic(), datetime.now().isoformat(timespec="milliseconds")))
+        if self.video is not None and self.video._running:
+            self.video.submit((frame,))

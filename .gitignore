@@ -65,3 +65,6 @@ Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/
 # Session video / phone photos
 *.mp4
 Software/UTM_PyQt6/*.jpg
+
+# DIC frame capture / video recording output (huge: ~1.9 GB per minute of PNGs)
+Software/UTM_PyQt6/captures/

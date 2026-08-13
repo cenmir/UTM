@@ -15,6 +15,7 @@ __version__ = "0.5.4"
 import sys
 import time            # module-level: _live_blob_count/_on_dic_blobs need it at signal time
 import math            # DIC overlay geometry (dashed line / marker travel)
+import os              # capture folder paths
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QProgressDialog, QVBoxLayout, QFileDialog
 from PyQt6.QtCore import QTimer, Qt, QSize
@@ -64,6 +65,7 @@ class UTMApplication(QMainWindow):
         # Appearance LAST: the plots, toolbars and DIC badges must all exist before the theme walks
         # them. Dark is the default; a previous choice is restored.
         self._build_view_menu()
+        self._build_settings_menu()
         import theme as _theme
         self.apply_theme(self._recall("ui/theme", _theme.DEFAULT), announce=False)
 
@@ -970,6 +972,9 @@ class UTMApplication(QMainWindow):
 
         # DIC Camera state
         self.camera_manager = CameraManager()
+        from utm_capture import CaptureManager
+        self.capture = CaptureManager(root=self.CAPTURE_ROOT,
+                                      fps=getattr(CameraManager, "FRAME_RATE", 35))
         self._cam_err_last, self._cam_err_t, self._cam_err_n = None, 0.0, 0   # see on_camera_error
         self._last_feed_paint = 0.0                                          # feed throttle
         self.dic_recording_enabled = False
@@ -3051,6 +3056,7 @@ class UTMApplication(QMainWindow):
                                   else max(self.POLICY_TIMEOUT_S, expected_duration_s + 300))
         self._policy_button = button
         self._policy_start_label = start_label
+        self._capture_autostart(getattr(policy, "name", "test mode"))
         self._policy_last_speed = 0.0; self._policy_last_speed_t = 0.0
         self._policy_start_t = time.monotonic()
         self._policy_msg_t = 0.0                             # throttle for the ~1 Hz live-progress status line
@@ -3174,6 +3180,7 @@ class UTMApplication(QMainWindow):
         if btn is not None:
             btn.setText(getattr(self, '_policy_start_label', 'Start mode'))
         self._update_control_mode_enabled()                 # restore type/settings now the test ended
+        self._capture_autostop("test mode")
         self.append_to_console(f"[Mode] {message}")
         self.set_status(f"Test mode: {message}", is_warning=warn)
 
@@ -3585,6 +3592,7 @@ class UTMApplication(QMainWindow):
         self.serial_manager.send_command(f"SetSpeed {self._fw_speed(speed_mm_s)}")
         self.serial_manager.send_command("Down")   # firmware "Down" = physical tension on this rig
         self._start_movement_grace_period()
+        self._capture_autostart("fracture test")
         self.append_to_console(f"[Fracture test] pulling to fracture at {speed_mm_s:.3f} mm/s — auto-stop armed "
                                f"(backstop {self.POLICY_MAX_FORCE_N:.0f} N / {self.POLICY_MAX_TRAVEL_MM:.0f} mm). "
                                f"Press Stop / E-Stop to abort.")
@@ -3602,6 +3610,7 @@ class UTMApplication(QMainWindow):
             self.append_to_console(f"[Auto-stop] SAFETY LIMIT — halted at {self.current_load:.0f} N / "
                                    f"{abs(self.motor_displacement_mm):.1f} mm (backstop; fracture detector did not fire).")
             self.set_status("⚠ Auto-stop SAFETY limit — motor halted", is_warning=True)
+            self._capture_autostop("safety halt")
             return
         # STALL GUARD: motor commanded to pull but the crosshead is frozen under load -> halt.
         # Triggers only on NEAR-ZERO movement (< STALL_MIN_ADVANCE_MM over STALL_WINDOW_S), so a
@@ -3654,6 +3663,10 @@ class UTMApplication(QMainWindow):
             self._autostop_detector = None
             self.append_to_console("[Auto-stop] fracture detected (load collapse) — motor stopped.")
             self.set_status("Auto-stopped at fracture")
+            # Keep filming through the post-fracture hold. Stopping on the trigger would end the
+            # recording at the one moment the operator most wants to look at, and the anchor hold
+            # that follows is what the force anchor is computed from.
+            self._capture_stop_after(self.CAPTURE_POST_FRACTURE_S, "fracture + post-hold")
 
     def on_emergency_stop(self):
         """Emergency stop button pressed"""
@@ -4459,6 +4472,230 @@ class UTMApplication(QMainWindow):
             appearance.addAction(act)
             self._themeActions[key] = act
 
+    # ===== Frame capture / video recording (Settings menu) ======================================
+    #
+    # Both OFF by default: they cost real disk (see the rate figures in the menu tooltips) and a
+    # test that silently filled a drive would be worse than no feature. Arming a checkbox does not
+    # start anything either — it declares intent, and the actual start happens when a test starts
+    # (or when the operator hits Start now).
+    #
+    # Nothing here runs on the GUI thread except flipping flags. Frames go straight from the camera
+    # thread into utm_capture's bounded buffers; encoding happens on its own worker threads, which
+    # is why the feed, the plots and the load-cell rate are unaffected.
+    CAPTURE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "captures")
+
+    def _make_capture_badges(self, row):
+        """Two deliberately tiny chips beside the DIC health badge — CAP (stills) and REC (video).
+
+        Kept to 10 px text with no pill background: they sit in a row that already carries the
+        health badge and three live numbers, and anything larger competes with the readings the
+        operator is actually watching during a pull.
+        """
+        made = []
+        for tip in ("PNG frame capture is off", "Video recording is off"):
+            b = QLabel("○")
+            b.setStyleSheet("color:#6b7280; font-size:10px; font-weight:bold; padding:0 3px;")
+            b.setToolTip(tip)
+            b.setFixedHeight(22)
+            b.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            row.addWidget(b)
+            made.append(b)
+        return made[0], made[1]
+
+    def _build_settings_menu(self):
+        """Settings ▸ frame capture + video recording, with manual start/stop beside each."""
+        from PyQt6.QtGui import QAction
+        menu = self.menuBar().addMenu("&Settings")
+
+        cap_hdr = QAction("Save DIC frames as PNG", self, checkable=True)
+        cap_hdr.setToolTip("Write EVERY grabbed frame as a lossless PNG (~1.9 GB per minute at "
+                           "35 fps), plus index.csv mapping each file to its timestamp.")
+        cap_hdr.toggled.connect(self._on_capture_armed)
+        menu.addAction(cap_hdr)
+        self.actCaptureArm = cap_hdr
+        self.actCaptureStart = QAction("      Start capturing now", self)
+        self.actCaptureStart.triggered.connect(lambda: self._capture_start(png=True, manual=True))
+        self.actCaptureStop = QAction("      Stop capturing", self)
+        self.actCaptureStop.triggered.connect(lambda: self._capture_stop(png=True))
+        menu.addAction(self.actCaptureStart)
+        menu.addAction(self.actCaptureStop)
+
+        menu.addSeparator()
+
+        rec_hdr = QAction("Record DIC video as AVI", self, checkable=True)
+        rec_hdr.setToolTip("Record the run to one MJPG AVI (~0.6 GB per minute at 35 fps). "
+                           "Intra-frame, so extensometer software can seek it.")
+        rec_hdr.toggled.connect(self._on_record_armed)
+        menu.addAction(rec_hdr)
+        self.actRecordArm = rec_hdr
+        self.actRecordStart = QAction("      Start recording now", self)
+        self.actRecordStart.triggered.connect(lambda: self._capture_start(video=True, manual=True))
+        self.actRecordStop = QAction("      Stop recording", self)
+        self.actRecordStop.triggered.connect(lambda: self._capture_stop(video=True))
+        menu.addAction(self.actRecordStart)
+        menu.addAction(self.actRecordStop)
+
+        menu.addSeparator()
+        act_open = QAction("Open capture folder…", self)
+        act_open.triggered.connect(self._open_capture_folder)
+        menu.addAction(act_open)
+
+        # Restore what was armed last session. blockSignals so restoring does not print the
+        # "ARMED" console line before the operator has done anything.
+        for act, key in ((cap_hdr, "capture/png"), (rec_hdr, "capture/video")):
+            act.blockSignals(True)
+            act.setChecked(bool(self._recall(key, False)))
+            act.blockSignals(False)
+        self._capture_sync_menu()
+
+    def _on_capture_armed(self, on):
+        self._remember("capture/png", bool(on))
+        self.append_to_console(
+            "[Capture] PNG frames ARMED — starts with the next test, or use Start capturing now."
+            if on else "[Capture] PNG frames disarmed.")
+        if not on and self.capture.capturing:
+            self._capture_stop(png=True)
+        self._capture_sync_menu()
+
+    def _on_record_armed(self, on):
+        self._remember("capture/video", bool(on))
+        self.append_to_console(
+            "[Capture] AVI recording ARMED — starts with the next test, or use Start recording now."
+            if on else "[Capture] AVI recording disarmed.")
+        if not on and self.capture.recording:
+            self._capture_stop(video=True)
+        self._capture_sync_menu()
+
+    def _capture_sync_menu(self):
+        """Grey out whichever start/stop cannot apply, so the menu states the current state."""
+        cap, rec = self.capture.capturing, self.capture.recording
+        for act, live, armed in ((self.actCaptureStart, cap, self.actCaptureArm.isChecked()),
+                                 (self.actRecordStart, rec, self.actRecordArm.isChecked())):
+            act.setEnabled(armed and not live)
+        self.actCaptureStop.setEnabled(cap)
+        self.actRecordStop.setEnabled(rec)
+        self._update_capture_badges()
+
+    def _capture_label(self):
+        """Folder suffix: the File ID box if it has one, so a run is findable afterwards."""
+        for attr in ("fileIdLineEdit", "fileNameLineEdit", "testIdLineEdit"):
+            w = getattr(self, attr, None)
+            if w is not None and hasattr(w, "text") and w.text().strip():
+                return "".join(c if (c.isalnum() or c in "-_") else "_" for c in w.text().strip())[:40]
+        return None
+
+    def _capture_start(self, *, png=False, video=False, manual=False, reason=""):
+        """Start whichever sinks were asked for. Silent no-op if the camera is not running."""
+        cm = self.camera_manager
+        if getattr(cm, "camera", None) is None:
+            if manual:
+                self.append_to_console("[Capture] Start the camera first.")
+            return
+        label = self._capture_label()
+        started = []
+        if png and not self.capture.capturing:
+            p = self.capture.start_png(label=label)
+            started.append(f"PNG → {p}")
+        if video and not self.capture.recording:
+            frame = getattr(cm, "latest_frame", None)
+            if frame is None:
+                self.append_to_console("[Capture] No frame yet — cannot size the video.")
+            else:
+                h, w = frame.shape[:2]
+                p = self.capture.start_video((w, h), label=label)
+                started.append(f"AVI → {p}")
+        if started:
+            cm.frame_sink = self.capture.submit          # arm the camera-thread hook
+            for s in started:
+                self.append_to_console(f"[Capture] started{(' ' + reason) if reason else ''}: {s}")
+        self._capture_sync_menu()
+
+    def _capture_stop(self, *, png=False, video=False, reason=""):
+        """Stop sinks and report what landed on disk, including any dropped frames."""
+        if png and self.capture.capturing:
+            self.capture.stop_png()
+        if video and self.capture.recording:
+            self.capture.stop_video()
+        if not self.capture.active:
+            self.camera_manager.frame_sink = None        # disarm the hot path entirely
+        s = self.capture.stats()
+        parts = []
+        if png:
+            parts.append(f"{s['png_written']} PNG" + (f" ({s['png_dropped']} dropped)"
+                                                      if s['png_dropped'] else ""))
+        if video:
+            parts.append(f"{s['vid_written']} video frames" + (f" ({s['vid_dropped']} dropped)"
+                                                               if s['vid_dropped'] else ""))
+        if parts:
+            self.append_to_console(f"[Capture] stopped{(' ' + reason) if reason else ''} — "
+                                   + " · ".join(parts))
+            if s["png_dropped"] or s["vid_dropped"]:
+                self.append_to_console("[Capture] ⚠ frames were DROPPED — the disk could not keep "
+                                       "up. The gap is in index.csv; consider recording video only.")
+            if s["error"]:
+                self.append_to_console(f"[Capture] ⚠ writer error: {s['error']}")
+        self._capture_sync_menu()
+
+    def _capture_autostart(self, what):
+        """Called when a test starts. Only ARMED features begin."""
+        png = self.actCaptureArm.isChecked() if getattr(self, "actCaptureArm", None) else False
+        vid = self.actRecordArm.isChecked() if getattr(self, "actRecordArm", None) else False
+        if png or vid:
+            self._capture_start(png=png, video=vid, reason=f"with {what}")
+
+    CAPTURE_POST_FRACTURE_S = 4.0
+
+    def _capture_autostop(self, what):
+        """Called when a test ends. Stops whatever is running, auto-started or not."""
+        if self.capture.active:
+            self._capture_stop(png=self.capture.capturing, video=self.capture.recording,
+                               reason=f"with {what}")
+
+    def _capture_stop_after(self, seconds, what):
+        """Stop after a delay, so a run keeps filming past the event that ended it."""
+        if not self.capture.active:
+            return
+        self.append_to_console(f"[Capture] still running — stops in {seconds:.0f} s ({what}).")
+        QTimer.singleShot(int(seconds * 1000), lambda: self._capture_autostop(what))
+
+    def _open_capture_folder(self):
+        os.makedirs(self.CAPTURE_ROOT, exist_ok=True)
+        try:
+            os.startfile(self.CAPTURE_ROOT)              # Windows-only, which is where the rig is
+        except Exception as e:
+            self.append_to_console(f"[Capture] folder: {self.CAPTURE_ROOT}  ({e})")
+
+    def _update_capture_badges(self):
+        """The two chips on the feed. REC blinks; CAP is steady — a blinking pair reads as an error.
+
+        Driven from the DIC health timer (2 Hz), which is exactly a camera-style blink rate and
+        costs nothing extra.
+        """
+        self._cap_blink = not getattr(self, "_cap_blink", False)
+        cap, rec = self.capture.capturing, self.capture.recording
+        off = "color:#6b7280; font-size:10px; font-weight:bold; padding:0 3px;"
+        for name in ("capBadge", "capBadgeLP"):
+            b = getattr(self, name, None)
+            if b is None:
+                continue
+            b.setText("● CAP" if cap else "○ CAP")
+            b.setStyleSheet("color:#2f9e44; font-size:10px; font-weight:bold; padding:0 3px;"
+                            if cap else off)
+            b.setToolTip(f"PNG frames: {self.capture.stats()['png_written']} written" if cap
+                         else "PNG frame capture is off")
+        for name in ("recBadge", "recBadgeLP"):
+            b = getattr(self, name, None)
+            if b is None:
+                continue
+            b.setText("● REC" if rec else "○ REC")
+            if rec:
+                b.setStyleSheet(("color:#e03131;" if self._cap_blink else "color:#7a1f1f;")
+                                + " font-size:10px; font-weight:bold; padding:0 3px;")
+            else:
+                b.setStyleSheet(off)
+            b.setToolTip(f"AVI: {self.capture.stats()['vid_written']} frames" if rec
+                         else "Video recording is off")
+
     def apply_theme(self, name, *, announce=True):
         """Switch the whole GUI between dark and light, and remember the choice.
 
@@ -4601,6 +4838,14 @@ class UTMApplication(QMainWindow):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
+            # Flush any capture BEFORE tearing anything down: the worker threads are daemons, so
+            # exiting with frames still buffered would truncate the AVI and lose the last stills.
+            try:
+                if self.capture.active:
+                    self._capture_stop(png=self.capture.capturing, video=self.capture.recording,
+                                       reason="on exit")
+            except Exception:
+                pass
             # Disconnect serial port if connected
             if self.connected:
                 self.serial_manager.disconnect()
@@ -4658,6 +4903,7 @@ class UTMApplication(QMainWindow):
         self.dicHealthLabel.setFixedHeight(22)
         self.dicHealthLabel.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         info_row.addWidget(self.dicHealthLabel)
+        self.capBadge, self.recBadge = self._make_capture_badges(info_row)
         info_row.addSpacing(16)
         info_row.addWidget(QLabel("Px₀:"))
         self.dicL0Label = QLabel("— px")   # Px₀ readout
@@ -4859,6 +5105,7 @@ class UTMApplication(QMainWindow):
         self.dicHealthLabelLP.setFixedHeight(22)          # a chip, not a slab — see dicHealthLabel
         self.dicHealthLabelLP.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         info_row.addWidget(self.dicHealthLabelLP)
+        self.capBadgeLP, self.recBadgeLP = self._make_capture_badges(info_row)
         info_row.addSpacing(16)
         info_row.addWidget(QLabel("Px₀:"))
         self.dicL0LabelLP = QLabel("— px")
@@ -5125,6 +5372,12 @@ class UTMApplication(QMainWindow):
 
     def _update_dic_health(self):
         """Refresh the live DIC health badge (~2 Hz timer)."""
+        # Same 2 Hz tick drives the CAP/REC chips — that is a camera-style blink rate already, and
+        # a second timer for two labels would be waste on a thread this feature must not disturb.
+        try:
+            self._update_capture_badges()
+        except Exception:
+            pass
         cm = getattr(self, "camera_manager", None)
         badges = [getattr(self, n, None) for n in ("dicHealthLabel", "dicHealthLabelLP")]
         if all(b is None for b in badges):
