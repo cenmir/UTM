@@ -4485,31 +4485,46 @@ class UTMApplication(QMainWindow):
     CAPTURE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "captures")
 
     def _make_capture_badges(self, row):
-        """Two deliberately tiny chips beside the DIC health badge — CAP (stills) and REC (video).
+        """CAP (stills) and REC (video) beside the DIC health badge — indicator AND button.
 
-        Kept to 10 px text with no pill background: they sit in a row that already carries the
-        health badge and three live numbers, and anything larger competes with the readings the
-        operator is actually watching during a pull.
+        These are camera-style toggles rather than plain labels: the state light and the control
+        are the same object, which is how every camera works and means the operator never has to
+        find a menu mid-test. Deliberately tiny (10 px text, flat, no pill) — they share a row with
+        the health badge and three live numbers, and anything bigger competes with the readings
+        being watched during a pull.
         """
+        from PyQt6.QtWidgets import QToolButton
         made = []
-        for tip in ("PNG frame capture is off", "Video recording is off"):
-            b = QLabel("○")
-            b.setStyleSheet("color:#6b7280; font-size:10px; font-weight:bold; padding:0 3px;")
+        for tip, slot in (("Start / stop saving PNG frames", self._toggle_png),
+                          ("Start / stop AVI recording", self._toggle_video)):
+            b = QToolButton()
+            b.setCheckable(True)
+            b.setAutoRaise(True)                 # flat until hovered — a chip, not a chunky button
             b.setToolTip(tip)
             b.setFixedHeight(22)
             b.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            b.clicked.connect(slot)
             row.addWidget(b)
             made.append(b)
         return made[0], made[1]
+
+    def _toggle_png(self, on):
+        """The CAP button: start/stop stills directly, independent of the auto-start tick."""
+        self._capture_start(png=True, manual=True) if on else self._capture_stop(png=True)
+
+    def _toggle_video(self, on):
+        self._capture_start(video=True, manual=True) if on else self._capture_stop(video=True)
 
     def _build_settings_menu(self):
         """Settings ▸ frame capture + video recording, with manual start/stop beside each."""
         from PyQt6.QtGui import QAction
         menu = self.menuBar().addMenu("&Settings")
 
-        cap_hdr = QAction("Save DIC frames as PNG", self, checkable=True)
-        cap_hdr.setToolTip("Write EVERY grabbed frame as a lossless PNG (~1.9 GB per minute at "
-                           "35 fps), plus index.csv mapping each file to its timestamp.")
+        cap_hdr = QAction("Auto-save PNG frames with each test", self, checkable=True)
+        cap_hdr.setToolTip("Start saving stills automatically when a test starts.\n"
+                           "Every grabbed frame as a lossless PNG (~1.9 GB per minute at 35 fps in "
+                           "Raw, ~0.08 GB/min in Speckle only), plus index.csv mapping each file to "
+                           "its timestamp.\nThe CAP button on the camera feed starts it by hand.")
         cap_hdr.toggled.connect(self._on_capture_armed)
         menu.addAction(cap_hdr)
         self.actCaptureArm = cap_hdr
@@ -4522,9 +4537,11 @@ class UTMApplication(QMainWindow):
 
         menu.addSeparator()
 
-        rec_hdr = QAction("Record DIC video as AVI", self, checkable=True)
-        rec_hdr.setToolTip("Record the run to one MJPG AVI (~0.6 GB per minute at 35 fps). "
-                           "Intra-frame, so extensometer software can seek it.")
+        rec_hdr = QAction("Auto-record AVI video with each test", self, checkable=True)
+        rec_hdr.setToolTip("Start recording automatically when a test starts.\n"
+                           "One AVI, MJPG-encoded (~0.6 GB per minute at 35 fps in Raw, ~0.2 in "
+                           "Speckle only). Intra-frame, so extensometer software can seek it.\n"
+                           "The REC button on the camera feed starts it by hand.")
         rec_hdr.toggled.connect(self._on_record_armed)
         menu.addAction(rec_hdr)
         self.actRecordArm = rec_hdr
@@ -4536,20 +4553,66 @@ class UTMApplication(QMainWindow):
         menu.addAction(self.actRecordStop)
 
         menu.addSeparator()
+        # What gets written. Applies to BOTH sinks — a run should not have stills and video
+        # disagreeing about what the specimen looked like.
+        from PyQt6.QtGui import QActionGroup
+        style_menu = menu.addMenu("What to record")
+        grp = QActionGroup(self); grp.setExclusive(True)
+        self._styleActions = {}
+        import utm_capture as _cap
+        for key, maker in (("raw", _cap.style_raw), ("speckle", _cap.style_speckle),
+                           ("boost", _cap.style_boost)):
+            proto = maker()
+            act = QAction(proto.label, self, checkable=True)
+            act.setToolTip(proto.note)
+            act.triggered.connect(lambda _c, k=key: self._set_capture_style(k))
+            grp.addAction(act); style_menu.addAction(act)
+            self._styleActions[key] = act
+
+        menu.addSeparator()
         act_open = QAction("Open capture folder…", self)
         act_open.triggered.connect(self._open_capture_folder)
         menu.addAction(act_open)
 
         # Restore what was armed last session. blockSignals so restoring does not print the
         # "ARMED" console line before the operator has done anything.
-        for act, key in ((cap_hdr, "capture/png"), (rec_hdr, "capture/video")):
-            act.blockSignals(True)
-            act.setChecked(bool(self._recall(key, False)))
-            act.blockSignals(False)
+        # The ARMED state is deliberately NOT remembered across sessions. Everything else in this
+        # app restores (theme, window size, infill), but auto-capture writes ~1.9 GB per minute:
+        # arming it last week and forgetting is how a drive fills during a run that cannot be
+        # repeated. Every session starts disarmed; the STYLE preference is harmless and does persist.
+        self._set_capture_style(self._recall("capture/style", "raw"), announce=False)
         self._capture_sync_menu()
 
+    def _set_capture_style(self, key, *, announce=True):
+        """Choose Raw / Speckle only / Boosted. Takes effect on the NEXT start, not mid-run.
+
+        Changing what is written half way through a recording would produce one file whose frames
+        are not comparable to each other, which is worse than making the operator restart.
+        """
+        import utm_capture as _cap
+        cm = self.camera_manager
+        if key == "speckle":
+            style = _cap.style_speckle(getattr(cm, "THRESHOLD", 150),
+                                       getattr(cm, "THRESHOLD_TYPE", None))
+        elif key == "boost":
+            style = _cap.style_boost()
+        else:
+            key, style = "raw", _cap.style_raw()
+        act = getattr(self, "_styleActions", {}).get(key)
+        if act is not None and not act.isChecked():
+            act.blockSignals(True); act.setChecked(True); act.blockSignals(False)
+        self._remember("capture/style", key)
+        if self.capture.active and self.capture.style.key != key:
+            self.append_to_console(f"[Capture] style → {style.label}; applies to the NEXT "
+                                   "start (the run in progress keeps its current style).")
+        elif announce:
+            self.append_to_console(f"[Capture] recording style: {style.label} — {style.note}.")
+        if not self.capture.active:
+            self.capture.style = style
+        else:
+            self._pending_style = style          # swapped in when the current run stops
+
     def _on_capture_armed(self, on):
-        self._remember("capture/png", bool(on))
         self.append_to_console(
             "[Capture] PNG frames ARMED — starts with the next test, or use Start capturing now."
             if on else "[Capture] PNG frames disarmed.")
@@ -4558,7 +4621,6 @@ class UTMApplication(QMainWindow):
         self._capture_sync_menu()
 
     def _on_record_armed(self, on):
-        self._remember("capture/video", bool(on))
         self.append_to_console(
             "[Capture] AVI recording ARMED — starts with the next test, or use Start recording now."
             if on else "[Capture] AVI recording disarmed.")
@@ -4618,6 +4680,10 @@ class UTMApplication(QMainWindow):
             self.capture.stop_video()
         if not self.capture.active:
             self.camera_manager.frame_sink = None        # disarm the hot path entirely
+            pending = getattr(self, "_pending_style", None)
+            if pending is not None:                      # style chosen mid-run applies now
+                self.capture.style = pending
+                self._pending_style = None
         s = self.capture.stats()
         parts = []
         if png:
@@ -4673,16 +4739,22 @@ class UTMApplication(QMainWindow):
         """
         self._cap_blink = not getattr(self, "_cap_blink", False)
         cap, rec = self.capture.capturing, self.capture.recording
-        off = "color:#6b7280; font-size:10px; font-weight:bold; padding:0 3px;"
+        st = self.capture.stats()
+        off = "color:#6b7280; font-size:10px; font-weight:bold; padding:0 3px; border:none;"
         for name in ("capBadge", "capBadgeLP"):
             b = getattr(self, name, None)
             if b is None:
                 continue
             b.setText("● CAP" if cap else "○ CAP")
             b.setStyleSheet("color:#2f9e44; font-size:10px; font-weight:bold; padding:0 3px;"
-                            if cap else off)
-            b.setToolTip(f"PNG frames: {self.capture.stats()['png_written']} written" if cap
-                         else "PNG frame capture is off")
+                            " border:none;" if cap else off)
+            b.setToolTip(f"PNG frames: {st['png_written']} written ({self.capture.style.label})\n"
+                         "Click to stop." if cap else
+                         "Click to start saving PNG frames")
+            # The buttons are also driven by test auto-start/stop, so their checked state has to
+            # follow the sink rather than the last click.
+            if b.isChecked() != cap:
+                b.blockSignals(True); b.setChecked(cap); b.blockSignals(False)
         for name in ("recBadge", "recBadgeLP"):
             b = getattr(self, name, None)
             if b is None:
@@ -4690,11 +4762,13 @@ class UTMApplication(QMainWindow):
             b.setText("● REC" if rec else "○ REC")
             if rec:
                 b.setStyleSheet(("color:#e03131;" if self._cap_blink else "color:#7a1f1f;")
-                                + " font-size:10px; font-weight:bold; padding:0 3px;")
+                                + " font-size:10px; font-weight:bold; padding:0 3px; border:none;")
             else:
                 b.setStyleSheet(off)
-            b.setToolTip(f"AVI: {self.capture.stats()['vid_written']} frames" if rec
-                         else "Video recording is off")
+            b.setToolTip(f"AVI: {st['vid_written']} frames ({self.capture.style.label})\n"
+                         "Click to stop." if rec else "Click to start recording AVI")
+            if b.isChecked() != rec:
+                b.blockSignals(True); b.setChecked(rec); b.blockSignals(False)
 
     def apply_theme(self, name, *, announce=True):
         """Switch the whole GUI between dark and light, and remember the choice.

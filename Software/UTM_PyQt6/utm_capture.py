@@ -30,6 +30,11 @@ a stalled control loop is not. `dropped` is surfaced in the UI so a lossy run is
 
 Each PNG run also writes index.csv (frame, file, iso time, monotonic seconds). Without it the
 stills cannot be aligned to the force data afterwards, which is the entire point of capturing them.
+
+ODD FRAME WIDTHS: JPEG works in macroblocks, so MJPG drops the last column of an odd-width frame —
+the rig's 419 px ROI comes back 418. Measured: this is a CROP, not a rescale. Marker separation
+round-trips at 0.0000 px error, so strain read off the video is unaffected; only the outermost
+column of background is missing. The PNGs are untouched at full width either way.
 """
 import csv
 import os
@@ -43,6 +48,61 @@ import cv2
 PNG_COMPRESSION = 0          # see module docstring: 0 is the only level that keeps up at 35 fps
 VIDEO_FOURCC = "MJPG"
 DEFAULT_BUFFER = 90          # ~2.6 s of slack at 35 fps before the oldest frame is dropped
+
+
+class Style:
+    """How a frame is processed before it is written. Applied in the WORKER thread.
+
+    The transforms are all sub-millisecond (binary 0.41 ms, CLAHE 0.71 ms at the rig's ROI), so a
+    processed view costs 1-3 % of a core rather than anything the camera or GUI would notice.
+
+    `png_compression` is per-style on purpose. Level 1 costs 3x level 0 on a photographic frame and
+    saves only 31 %, so RAW uses 0. On a two-tone binary frame level 1 is the SAME speed as level 0
+    and 23x smaller (42 KB vs 965 KB — 0.08 GB/min instead of 1.9), so SPECKLE uses 1. Picking one
+    level for both would either throw away that 23x or halve the achievable frame rate.
+    """
+
+    def __init__(self, key, label, transform=None, png_compression=PNG_COMPRESSION, note=""):
+        self.key = key
+        self.label = label
+        self.transform = transform
+        self.png_compression = png_compression
+        self.note = note
+
+    def apply(self, frame):
+        return frame if self.transform is None else self.transform(frame)
+
+
+def style_raw():
+    return Style("raw", "Raw (as the sensor sees it)", None, 0,
+                 "everything is kept; the only view you can re-derive the others from")
+
+
+def style_speckle(threshold=150, thresh_type=None):
+    """Markers only — a hard two-tone view, the 'X-ray' of the speckle pattern.
+
+    Uses the SAME threshold the blob detector runs on, so what you record is what the DIC is
+    actually tracking; a prettier threshold here would be a different measurement.
+    """
+    import cv2 as _cv2
+    tt = _cv2.THRESH_BINARY_INV if thresh_type is None else thresh_type
+
+    def _t(f):
+        return _cv2.threshold(f, threshold, 255, tt)[1]
+
+    return Style("speckle", "Speckle only (markers on black)", _t, 1,
+                 "markers only; 23x smaller on disk, but grey detail is gone for good")
+
+
+def style_boost(clip=2.5, tile=8):
+    """Local contrast equalisation — pulls markers out of a dim or unevenly lit frame."""
+    import cv2 as _cv2
+    _c = _cv2.createCLAHE(clipLimit=clip, tileGridSize=(tile, tile))
+    return Style("boost", "Boosted contrast (CLAHE)", lambda f: _c.apply(f), 0,
+                 "helps when the LEDs are uneven; keeps greys, so still re-analysable")
+
+
+STYLES = ("raw", "speckle", "boost")
 
 
 def _stamp():
@@ -117,9 +177,10 @@ class _Sink:
 class PngSink(_Sink):
     """Every frame as a lossless PNG, plus an index that ties each file to a timestamp."""
 
-    def __init__(self, directory, buffer=DEFAULT_BUFFER):
+    def __init__(self, directory, buffer=DEFAULT_BUFFER, style=None):
         super().__init__(buffer)
         self.path = directory
+        self.style = style or style_raw()
         os.makedirs(directory, exist_ok=True)
         self._n = 0
         self._index = open(os.path.join(directory, "index.csv"), "w", newline="", encoding="utf-8")
@@ -130,8 +191,8 @@ class PngSink(_Sink):
     def _write(self, item):
         frame, t_mono, iso = item
         name = f"f{self._n:06d}.png"
-        cv2.imwrite(os.path.join(self.path, name), frame,
-                    [cv2.IMWRITE_PNG_COMPRESSION, PNG_COMPRESSION])
+        cv2.imwrite(os.path.join(self.path, name), self.style.apply(frame),
+                    [cv2.IMWRITE_PNG_COMPRESSION, self.style.png_compression])
         self._csv.writerow([self._n, name, iso, f"{t_mono:.4f}"])
         self._n += 1
 
@@ -146,9 +207,10 @@ class PngSink(_Sink):
 class VideoSink(_Sink):
     """The whole run as one AVI. Grayscale in, isColor=False — no needless BGR expansion."""
 
-    def __init__(self, path, size, fps, buffer=DEFAULT_BUFFER):
+    def __init__(self, path, size, fps, buffer=DEFAULT_BUFFER, style=None):
         super().__init__(buffer)
         self.path = path
+        self.style = style or style_raw()
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         self._vw = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*VIDEO_FOURCC), fps, size, False)
         if not self._vw.isOpened():
@@ -158,9 +220,8 @@ class VideoSink(_Sink):
         self._start()
 
     def _write(self, item):
-        frame = item[0]
         if self._vw is not None:
-            self._vw.write(frame)
+            self._vw.write(self.style.apply(item[0]))
 
     def _close(self):
         if self._vw is not None:
@@ -180,6 +241,7 @@ class CaptureManager:
         self.png = None
         self.video = None
         self._run_dir = None
+        self.style = style_raw()        # what gets written; see Style. Raw by default.
 
     # ---- state the UI polls -------------------------------------------------------------------
     @property
@@ -216,14 +278,16 @@ class CaptureManager:
     def start_png(self, label=None):
         if self.capturing:
             return self.png.path
-        self.png = PngSink(os.path.join(self.run_dir(label), "frames"))
+        self.png = PngSink(os.path.join(self.run_dir(label), "frames"), style=self.style)
         return self.png.path
 
     def start_video(self, size, label=None):
         """`size` is (width, height) of the frame as it will be submitted."""
         if self.recording:
             return self.video.path
-        self.video = VideoSink(os.path.join(self.run_dir(label), "video.avi"), size, self.fps)
+        name = "video.avi" if self.style.key == "raw" else f"video_{self.style.key}.avi"
+        self.video = VideoSink(os.path.join(self.run_dir(label), name), size, self.fps,
+                               style=self.style)
         return self.video.path
 
     def stop_png(self):
