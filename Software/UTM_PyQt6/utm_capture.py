@@ -62,20 +62,30 @@ class Style:
     level for both would either throw away that 23x or halve the achievable frame rate.
     """
 
-    def __init__(self, key, label, transform=None, png_compression=PNG_COMPRESSION, note=""):
+    # Rough bytes-per-frame, MEASURED at the rig's 419x2348 ROI on a representative speckle frame
+    # and rounded UP. They exist so the UI can warn about disk before a run rather than after, so
+    # erring high is the safe direction. Real size moves with speckle density and sensor noise.
+    def __init__(self, key, label, transform=None, png_compression=PNG_COMPRESSION, note="",
+                 png_kb=970, avi_kb=320):
         self.key = key
         self.label = label
         self.transform = transform
         self.png_compression = png_compression
         self.note = note
+        self.png_kb = png_kb
+        self.avi_kb = avi_kb
 
     def apply(self, frame):
         return frame if self.transform is None else self.transform(frame)
 
+    def gb_per_min(self, fps=35, png=False):
+        return (self.png_kb if png else self.avi_kb) * fps * 60 / 1024 / 1024
+
 
 def style_raw():
     return Style("raw", "Raw (as the sensor sees it)", None, 0,
-                 "everything is kept; the only view you can re-derive the others from")
+                 "everything is kept; the only view you can re-derive the others from",
+                 png_kb=970, avi_kb=320)
 
 
 def style_speckle(threshold=150, thresh_type=None, adaptive=True, ema=0.15):
@@ -113,8 +123,9 @@ def style_speckle(threshold=150, thresh_type=None, adaptive=True, ema=0.15):
 
     return Style("speckle", "Speckle only — adaptive (markers on black)",
                  _adaptive if adaptive else _fixed, 1,
-                 "markers only, cut level follows the lighting; 23x smaller on disk, "
-                 "but grey detail is gone for good")
+                 "markers only, cut level follows the lighting; ~20x smaller on disk, "
+                 "but grey detail is gone for good",
+                 png_kb=45, avi_kb=105)
 
 
 def style_boost(clip=2.5, tile=8):
@@ -122,7 +133,8 @@ def style_boost(clip=2.5, tile=8):
     import cv2 as _cv2
     _c = _cv2.createCLAHE(clipLimit=clip, tileGridSize=(tile, tile))
     return Style("boost", "Boosted contrast (CLAHE)", lambda f: _c.apply(f), 0,
-                 "helps when the LEDs are uneven; keeps greys, so still re-analysable")
+                 "helps when the LEDs are uneven; keeps greys, so still re-analysable",
+                 png_kb=970, avi_kb=380)
 
 
 STYLES = ("raw", "speckle", "boost")
@@ -261,20 +273,20 @@ class CaptureManager:
     def __init__(self, root="captures", fps=35):
         self.root = root
         self.fps = fps
-        self.png = None
-        # A LIST, because raw and speckle are answers to different questions and an operator
-        # generally wants both: raw is the archival record, speckle is the one that shows the
-        # marker motion at a glance. Each style gets its own independent worker and file, so
-        # recording two views costs two worker threads, not two passes over the camera thread.
+        # BOTH are lists. Raw and speckle answer different questions and an operator generally
+        # wants both: raw is the archival record, speckle shows the marker motion at a glance.
+        # Each style gets its own independent worker and its own file/folder, so two views cost
+        # two worker threads rather than two passes over the camera thread.
+        self.pngs = []
         self.videos = []
         self._run_dir = None
-        self.png_style = style_raw()      # stills: ONE style (they are the expensive sink)
-        self.video_styles = [style_raw()]  # video: any combination, written simultaneously
+        self.png_styles = [style_raw()]
+        self.video_styles = [style_raw()]
 
     # ---- state the UI polls -------------------------------------------------------------------
     @property
     def capturing(self):
-        return self.png is not None and self.png._running
+        return any(p._running for p in self.pngs)
 
     @property
     def recording(self):
@@ -285,10 +297,13 @@ class CaptureManager:
         return self.capturing or self.recording
 
     def stats(self):
-        errs = [s.error for s in ([self.png] if self.png else []) + self.videos if s and s.error]
+        errs = [s.error for s in self.pngs + self.videos if s and s.error]
         return {
-            "png_written": self.png.written if self.png else 0,
-            "png_dropped": self.png.dropped if self.png else 0,
+            # Per-sink counts are equal by construction, so report ONE sink's worth. A summed
+            # figure for a two-view capture reads as double-counting.
+            "png_written": max((p.written for p in self.pngs), default=0),
+            "png_dropped": max((p.dropped for p in self.pngs), default=0),
+            "png_files": len([p for p in self.pngs if p.written or p._running]),
             # Per-file counts are equal by construction (same frames, same buffer size), so the
             # headline number is one file's worth, not the sum — a "2x frames" figure for a
             # two-view recording would read as a bug.
@@ -311,8 +326,12 @@ class CaptureManager:
     def start_png(self, label=None):
         if self.capturing:
             return self.png.path
-        self.png = PngSink(os.path.join(self.run_dir(label), "frames"), style=self.png_style)
-        return self.png.path
+        d = self.run_dir(label)
+        self.pngs = []
+        for st in (self.png_styles or [style_raw()]):
+            sub = "frames" if st.key == "raw" else f"frames_{st.key}"
+            self.pngs.append(PngSink(os.path.join(d, sub), style=st))
+        return [p.path for p in self.pngs]
 
     def start_video(self, size, label=None):
         """One AVI per selected style, all fed from the same frames. `size` is (width, height)."""
@@ -326,8 +345,8 @@ class CaptureManager:
         return [v.path for v in self.videos]
 
     def stop_png(self):
-        if self.png:
-            self.png.stop()
+        for p in self.pngs:
+            p.stop()
         self._maybe_clear_run()
 
     def stop_video(self):
@@ -351,8 +370,11 @@ class CaptureManager:
         buffered reference cannot be overwritten under us. Copying here would add 0.16 ms to every
         grab for nothing.
         """
-        if self.png is not None and self.png._running:
-            self.png.submit((frame, time.monotonic(), datetime.now().isoformat(timespec="milliseconds")))
+        if self.pngs:
+            stamp = (frame, time.monotonic(), datetime.now().isoformat(timespec="milliseconds"))
+            for p in self.pngs:
+                if p._running:
+                    p.submit(stamp)          # one timestamp, so the views stay frame-aligned
         for v in self.videos:
             if v._running:
                 v.submit((frame,))

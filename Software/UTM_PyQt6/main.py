@@ -4585,31 +4585,33 @@ class UTMApplication(QMainWindow):
         # VIDEO is multi-select: raw and speckle answer different questions -- archival record vs
         # marker motion at a glance -- so recording both at once is the normal case. Each gets its
         # own file and its own worker.
-        vid_menu = menu.addMenu("Video views  (tick any combination)")
+        vid_menu = menu.addMenu("Video views  (multi-select)")
         vid_menu.setToolTipsVisible(True)
         self._vidStyleActions = {}
         for key, maker in MAKERS:
             proto = maker()
-            act = QAction(proto.label, self, checkable=True)
+            act = QAction(f"{proto.label}   ~{proto.gb_per_min():.2f} GB/min", self, checkable=True)
             act.setToolTip(proto.note)
             act.toggled.connect(self._sync_video_styles)
             vid_menu.addAction(act)
             self._vidStyleActions[key] = act
         self._vidStyleActions["raw"].setChecked(True)
 
-        # STILLS: exactly one. PNGs are the expensive sink (~1.9 GB/min); writing the same run
-        # twice over would double that for a view you can re-derive from raw offline anyway.
-        png_menu = menu.addMenu("PNG stills use  (pick one)")
+        # STILLS are also multi-select, but they are the EXPENSIVE sink: a second raw view is
+        # another ~1.9 GB/min, where a second video view is ~0.3. Picking more than one therefore
+        # goes through a confirmation that states the size in GB for a one-minute test.
+        png_menu = menu.addMenu("PNG stills  (multi-select)")
         png_menu.setToolTipsVisible(True)
-        grp = QActionGroup(self); grp.setExclusive(True)
         self._styleActions = {}
         for key, maker in MAKERS:
             proto = maker()
-            act = QAction(proto.label, self, checkable=True)
+            act = QAction(f"{proto.label}   ~{proto.gb_per_min(png=True):.2f} GB/min",
+                          self, checkable=True)
             act.setToolTip(proto.note)
-            act.triggered.connect(lambda _c, k=key: self._set_capture_style(k))
-            grp.addAction(act); png_menu.addAction(act)
+            act.toggled.connect(self._sync_png_styles)
+            png_menu.addAction(act)
             self._styleActions[key] = act
+        self._styleActions["raw"].setChecked(True)
 
         menu.addSeparator()
         folder = menu.addMenu("Where to save")
@@ -4642,7 +4644,10 @@ class UTMApplication(QMainWindow):
         # app restores (theme, window size, infill), but auto-capture writes ~1.9 GB per minute:
         # arming it last week and forgetting is how a drive fills during a run that cannot be
         # repeated. Every session starts disarmed; the STYLE preference is harmless and does persist.
-        self._set_capture_style(self._recall("capture/style", "raw"), announce=False)
+        pw = str(self._recall("capture/png_styles", "raw") or "raw").split(",")
+        for k, a in self._styleActions.items():
+            a.blockSignals(True); a.setChecked(k in pw); a.blockSignals(False)
+        self._sync_png_styles()
         want = str(self._recall("capture/video_styles", "raw") or "raw").split(",")
         for k, a in self._vidStyleActions.items():
             a.blockSignals(True); a.setChecked(k in want); a.blockSignals(False)
@@ -4688,23 +4693,68 @@ class UTMApplication(QMainWindow):
                                    + " + ".join(s.label.split(" (")[0].split(" —")[0]
                                                 for s in styles))
 
-    def _set_capture_style(self, key, *, announce=True):
-        """Which single view the PNG stills use. Takes effect on the NEXT start, not mid-run."""
-        style = self._make_style(key)
-        key = style.key
-        act = getattr(self, "_styleActions", {}).get(key)
-        if act is not None and not act.isChecked():
-            act.blockSignals(True); act.setChecked(True); act.blockSignals(False)
-        self._remember("capture/style", key)
-        if self.capture.capturing and self.capture.png_style.key != key:
-            self.append_to_console(f"[Capture] stills → {style.label}; applies to the NEXT "
-                                   "start (the run in progress keeps its current style).")
-        elif announce:
-            self.append_to_console(f"[Capture] PNG stills: {style.label} — {style.note}.")
-        if not self.capture.capturing:
-            self.capture.png_style = style
+    TEST_MIN_FOR_ESTIMATE = 1.0          # the warning is quoted per minute of test
+
+    def _sync_png_styles(self, *_):
+        """Turn the stills tick-boxes into the list of frame folders the next capture writes.
+
+        Selecting a SECOND view is confirmed, because stills are where the disk actually goes: a
+        second raw view is another ~1.9 GB/min against ~0.3 for a second video view. The dialog
+        quotes GB for a one-minute test, which is the length of a real fracture pull.
+        """
+        keys = [k for k, a in self._styleActions.items() if a.isChecked()]
+        if not keys:
+            self._styleActions["raw"].blockSignals(True)
+            self._styleActions["raw"].setChecked(True)
+            self._styleActions["raw"].blockSignals(False)
+            keys = ["raw"]
+        styles = [self._make_style(k) for k in keys]
+
+        if len(styles) > 1 and not self._confirm_png_multi(styles):
+            # Declined: drop back to the single view that was already in effect.
+            keep = (self.capture.png_styles[0].key if self.capture.png_styles else "raw")
+            for k, a in self._styleActions.items():
+                a.blockSignals(True); a.setChecked(k == keep); a.blockSignals(False)
+            return
+
+        self._remember("capture/png_styles", ",".join(s.key for s in styles))
+        if self.capture.capturing:
+            self._pending_style = styles
+            self.append_to_console("[Capture] stills views changed — applies to the NEXT capture.")
         else:
-            self._pending_style = style          # swapped in when the current run stops
+            self.capture.png_styles = styles
+            self.append_to_console(
+                "[Capture] PNG stills: " + " + ".join(s.key for s in styles)
+                + f"  (~{sum(s.gb_per_min(png=True) for s in styles):.2f} GB per minute)")
+
+    def _confirm_png_multi(self, styles):
+        """Say what it will cost, in GB, before writing several stills views of the same run."""
+        from PyQt6.QtWidgets import QMessageBox
+        m = self.TEST_MIN_FOR_ESTIMATE
+        per = [(s, s.gb_per_min(png=True) * m) for s in styles]
+        total = sum(g for _, g in per)
+        vid = sum(s.gb_per_min() * m for s in self.capture.video_styles) \
+            if self.actRecordArm.isChecked() or self.capture.recording else 0.0
+
+        lines = "\n".join(f"    •  {s.label.split(' (')[0].split(' —')[0]}"
+                          f"{'':<4}~{g:.2f} GB" for s, g in per)
+        body = (f"Saving {len(styles)} stills views writes every frame {len(styles)} times over.\n\n"
+                f"For a 1-minute test at 35 fps:\n{lines}\n"
+                f"    ─────────────────────────\n"
+                f"    stills total     ~{total:.2f} GB")
+        if vid:
+            body += f"\n    video also       ~{vid:.2f} GB\n    RUN TOTAL        ~{total + vid:.2f} GB"
+        body += ("\n\nA fracture pull often runs longer than a minute — scale accordingly.\n"
+                 "Speckle is cheap; a second RAW-quality view is not.")
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Save several stills views?")
+        box.setText(f"That is roughly {total:.2f} GB per minute of test.")
+        box.setInformativeText(body)
+        box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        return box.exec() == QMessageBox.StandardButton.Yes
 
     def _on_capture_armed(self, on):
         self.append_to_console(
@@ -4751,7 +4801,7 @@ class UTMApplication(QMainWindow):
         started = []
         if png and not self.capture.capturing:
             p = self.capture.start_png(label=label)
-            started.append(f"PNG → {p}")
+            started.append("PNG → " + ", ".join(os.path.basename(x) for x in p) + "/")
         if video and not self.capture.recording:
             frame = getattr(cm, "latest_frame", None)
             if frame is None:
@@ -4779,7 +4829,7 @@ class UTMApplication(QMainWindow):
             self.camera_manager.frame_sink = None        # disarm the hot path entirely
             pending = getattr(self, "_pending_style", None)
             if pending is not None:                      # style chosen mid-run applies now
-                self.capture.png_style = pending
+                self.capture.png_styles = pending
                 self._pending_style = None
             pv = getattr(self, "_pending_video_styles", None)
             if pv is not None:
@@ -4910,8 +4960,10 @@ class UTMApplication(QMainWindow):
             b.setText("● CAP" if cap else "○ CAP")
             b.setStyleSheet("color:#2f9e44; font-size:10px; font-weight:bold; padding:0 3px;"
                             " border:none;" if cap else off)
-            b.setToolTip(f"PNG frames: {st['png_written']} written "
-                         f"({self.capture.png_style.label})\nClick to stop." if cap else
+            b.setToolTip(f"PNG frames: {st['png_written']} written into "
+                         f"{st['png_files']} folder(s) — "
+                         + ", ".join(p.style.key for p in self.capture.pngs)
+                         + "\nClick to stop." if cap else
                          "Click to start saving PNG frames")
             # The buttons are also driven by test auto-start/stop, so their checked state has to
             # follow the sink rather than the last click.
