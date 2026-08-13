@@ -33,6 +33,18 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 - **Strain-rate fracture test** — closed-loop constant *gauge* strain rate → fracture → auto-stop.
 - **Safety net (3 layers):** load-collapse fracture detector · **stall guard** (crosshead frozen <0.05 mm/6 s under load — in BOTH the auto-stop path and the strain-rate loop) · **10 kN / 30 mm** force/travel backstop · **dead-DIC guard** (freeze speed at 0.2 s, halt at 1.0 s).
 - **CSV richness** — `DIC_Blobs` health column + `# DIC Health` header + infill label.
+- **Calibrate Px₀ + frozen-reference overlay** (2026-08-12/13) — the DIC zero was previously only
+  reachable through *Prepare test*, i.e. **after** preload, which silently discards everything
+  already stretched into the specimen (~2500 µε at 300 N = 96× the noise floor). Now an explicit
+  **Calibrate Px₀** button freezes the reference before preload, behind a mounted-specimen
+  confirmation that turns into a warning above 25 N; *Prepare test* no longer overwrites a Px₀ that
+  was captured at a lower load. The live feed then draws **both** marker pairs — frozen in cyan
+  (dashed, larger ring) and live in green (solid) — plus a per-marker travel caliper and a
+  `Px0 1665 → now 1725 px (+60)` caption. Told apart by hue, line style **and radius**: at the
+  instant of calibration the pairs are exactly concentric, so same-size rings would vanish into each
+  other. Makes a bad tare — slack specimen, tare under load, a marker that jumped blobs — visible on
+  the feed instead of only in the strain number. Two arrows growing outward = stretch; both pointing
+  the same way = the whole field translated (rig slip / camera knock), which strain alone hides.
 - **Dark / light theme** (2026-08-12) — **dark is the default**; `View ▸ Appearance` or Ctrl+Shift+D /
   Ctrl+Shift+L, remembered across restarts. `theme.py` holds both palettes. A theme is not just a Qt
   stylesheet: the two embedded matplotlib canvases are plain artists that know nothing about Qt and

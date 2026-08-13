@@ -75,6 +75,10 @@ class CameraManager(QObject):
         self.mask_x = None
         self.camera = None
         self.initial_distance = None
+        # The two marker positions AT the moment Px₀ was frozen, in raw-frame pixels. Only the
+        # SEPARATION enters the strain maths; these are kept so the live view can draw the frozen
+        # reference beside the moving markers and make the travel visible rather than numeric.
+        self.initial_centroids = None
         self.capture_thread = None
         self.latest_dic_strain = 0.0
         self.latest_dic_cauchy = 0.0
@@ -254,6 +258,10 @@ class CameraManager(QObject):
         centroids = self.detect_blobs(frame)
         if len(centroids) == 2:
             self.initial_distance = abs(centroids[1][1] - centroids[0][1])
+            # Sorted along the loading axis so the frozen pair and the live pair can be zipped
+            # marker-for-marker later; detect_blobs makes no promise about ordering.
+            self.initial_centroids = [(float(x), float(y))
+                                      for x, y in sorted(centroids, key=lambda c: c[1])]
             # NEW: store calibration factor using gauge length passed in from UI
             if self.gauge_length_mm and self.gauge_length_mm > 0:
                 self.px_per_mm = self.initial_distance / self.gauge_length_mm

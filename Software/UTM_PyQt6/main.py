@@ -14,6 +14,7 @@ __version__ = "0.5.4"
 
 import sys
 import time            # module-level: _live_blob_count/_on_dic_blobs need it at signal time
+import math            # DIC overlay geometry (dashed line / marker travel)
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QProgressDialog, QVBoxLayout, QFileDialog
 from PyQt6.QtCore import QTimer, Qt, QSize
@@ -4484,7 +4485,8 @@ class UTMApplication(QMainWindow):
             "against.\nPress it BEFORE preload, on a straight but barely-loaded specimen: strain "
             "is (Px − Px₀)/Px₀, so whatever is already stretched into the specimen "
             "when you press this is invisible for the rest of the test.\nPreloading to 300 N "
-            "first hides roughly 2500 µε.")
+            "first hides roughly 2500 µε.\nThe frozen marker pair stays on the live feed in cyan, "
+            "so you can watch the green live pair pull away from it.")
         self.stopCameraButton.setEnabled(False)
         self.tareDICButton.setEnabled(False)
         button_row.addWidget(QLabel("Specimen:"))
@@ -4736,23 +4738,122 @@ class UTMApplication(QMainWindow):
         lay.addWidget(self.cameraFeedLabelLP, 1)         # stretch — see cameraFeedLabel
         return box
 
+    # ---- live-feed overlay -------------------------------------------------------------------
+    # Two marker pairs are drawn on the feed: where the speckles WERE when Px₀ was frozen, and
+    # where they are NOW. Strain is (Px − Px₀)/Px₀, so the gap between the two pairs *is* the
+    # measurement — showing it makes a bad tare (slack specimen, tare taken under preload, a marker
+    # that jumped to a different blob) visible at a glance instead of only in the strain number.
+    #
+    # They are told apart by three things at once, not by colour alone: hue, line style, and RADIUS.
+    # The radius matters most — at the instant of calibration the two pairs sit exactly on top of
+    # each other, and same-size rings would simply disappear into one another.
+    PX0_RING_R   = 26
+    LIVE_RING_R  = 20
+    PX0_BGR      = (255, 255, 0)      # cyan  — frozen reference
+    LIVE_BGR     = (0, 255, 0)        # green — live
+    DRIFT_MIN_PX = 8                  # below this a leader arrow is a stub, so don't draw one
+
+    @staticmethod
+    def _dashed_line(img, p1, p2, color, thickness=1, dash=14, gap=10):
+        """A dashed straight line — cv2 has no dash style of its own."""
+        x1, y1 = p1
+        x2, y2 = p2
+        span = math.hypot(x2 - x1, y2 - y1)
+        if span < 1:
+            return
+        step = dash + gap
+        n = int(span // step) + 1
+        for i in range(n):
+            a = (i * step) / span
+            b = min(1.0, (i * step + dash) / span)
+            cv2.line(img,
+                     (int(x1 + (x2 - x1) * a), int(y1 + (y2 - y1) * a)),
+                     (int(x1 + (x2 - x1) * b), int(y1 + (y2 - y1) * b)),
+                     color, thickness, cv2.LINE_AA)
+
+    @classmethod
+    def _dashed_ring(cls, img, center, r, color, thickness=2):
+        """Four 70° arcs — a dashed circle, so the frozen marker reads as a ghost, not a target."""
+        for a in (0, 90, 180, 270):
+            cv2.ellipse(img, center, (r, r), 0, a + 10, a + 80, color, thickness, cv2.LINE_AA)
+
+    def _draw_dic_overlay(self, display, centroids):
+        """Frozen Px₀ pair + live pair on the BGR frame, BEFORE the display rotation."""
+        ref = getattr(self.camera_manager, "initial_centroids", None)
+
+        if ref and len(ref) == 2:
+            r1 = (int(ref[0][0]), int(ref[0][1]))
+            r2 = (int(ref[1][0]), int(ref[1][1]))
+            # Deliberately THICKER than the live line, and drawn first. Both lines run down the same
+            # specimen axis, so they overlap; the frozen one showing as a cyan sleeve around the
+            # green core means the part that sticks out past the cyan ends IS the stretch.
+            self._dashed_line(display, r1, r2, self.PX0_BGR, 4, dash=26, gap=18)
+            for c in (r1, r2):
+                self._dashed_ring(display, c, self.PX0_RING_R, self.PX0_BGR, 3)
+
+        if len(centroids) != 2:
+            return
+
+        live = sorted(centroids, key=lambda c: c[1])          # same axial order as the frozen pair
+        p1 = (int(live[0][0]), int(live[0][1]))
+        p2 = (int(live[1][0]), int(live[1][1]))
+        for c in (p1, p2):
+            cv2.circle(display, c, self.LIVE_RING_R, self.LIVE_BGR, 2, cv2.LINE_AA)
+        cv2.line(display, p1, p2, self.LIVE_BGR, 2, cv2.LINE_AA)
+
+        # One caliper per marker, frozen → live: the travel of THAT speckle, not just the pair's
+        # separation. Both arrows growing outward = the specimen stretched; both pointing the same
+        # way = the whole field translated (rig slip / camera knock), which strain alone would hide.
+        #
+        # Drawn OFF TO THE SIDE rather than centre-to-centre. Early travel is smaller than the rings
+        # themselves, so an arrow on the axis spends the interesting part of the test buried under
+        # the very markers it is measuring.
+        if not (ref and len(ref) == 2):
+            return
+        for (rx, ry), cur in zip(ref, (p1, p2)):
+            if abs(cur[1] - ry) < self.DRIFT_MIN_PX:
+                continue
+            xo = min(display.shape[1] - 3, int(cur[0]) + self.PX0_RING_R + 30)
+            cv2.line(display, (xo - 8, int(ry)), (xo + 8, int(ry)),
+                     self.PX0_BGR, 2, cv2.LINE_AA)                       # tick at the frozen end
+            cv2.arrowedLine(display, (xo, int(ry)), (xo, cur[1]), self.PX0_BGR, 2,
+                            cv2.LINE_AA, tipLength=min(0.4, 14.0 / abs(cur[1] - ry)))
+
+    def _draw_dic_caption(self, rgb, centroids):
+        """Px₀ vs now, in pixels, on the ROTATED frame. RGB here — the BGR swap already happened."""
+        px0 = self.camera_manager.initial_distance
+        if px0:
+            text = f"Px0 {px0:.0f} px"
+            if len(centroids) == 2:
+                now = abs(centroids[1][1] - centroids[0][1])
+                text += f"  ->  now {now:.0f} px   ({now - px0:+.0f})"
+            color = (0, 255, 255)                              # cyan, matching the frozen pair
+        else:
+            text, color = "Px0 not set - press Calibrate Px0", (255, 200, 0)
+
+        h = rgb.shape[0]
+        fs = max(0.45, min(1.6, h / 320.0))
+        org = (10, int(12 + 26 * fs))
+        # Black underlay first: the specimen is white and cyan alone would wash out on it.
+        cv2.putText(rgb, text, org, cv2.FONT_HERSHEY_SIMPLEX, fs, (0, 0, 0),
+                    int(2 * fs) + 3, cv2.LINE_AA)
+        cv2.putText(rgb, text, org, cv2.FONT_HERSHEY_SIMPLEX, fs, color,
+                    max(1, int(1.5 * fs)), cv2.LINE_AA)
+
     def update_camera_feed(self, frame):
         try:
             # Make a copy to draw on
             display = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
 
-            # Draw blob overlay
+            # Draw blob overlay — frozen Px₀ reference (cyan, dashed) + live markers (green, solid)
             centroids = self.camera_manager.detect_blobs(frame)
-            if len(centroids) == 2:
-                for (x, y) in centroids:
-                    cv2.circle(display, (int(x), int(y)), 20, (0, 255, 0), 2)
-                p1 = (int(centroids[0][0]), int(centroids[0][1]))
-                p2 = (int(centroids[1][0]), int(centroids[1][1]))
-                cv2.line(display, p1, p2, (0, 200, 255), 1)
+            self._draw_dic_overlay(display, centroids)
 
             # Convert BGR to RGB for Qt, rotate 90° so specimen appears horizontal
             display_rgb = cv2.cvtColor(display, cv2.COLOR_BGR2RGB)
             display_rgb = cv2.rotate(display_rgb, cv2.ROTATE_90_CLOCKWISE)
+            # Caption goes on AFTER the rotation — text drawn before it would come out sideways.
+            self._draw_dic_caption(display_rgb, centroids)
             h, w, ch = display_rgb.shape
             bytes_per_line = ch * w
 
