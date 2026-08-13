@@ -27,7 +27,17 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 - **Prepare specimen** — one-button tare (position + force + DIC), clears consoles + stress-strain plot; DIC tares only at green 2/2.
 - **Settings** — Load / Save… + always-present **Default** (auto-stop ON), infill label.
 - **Generate report** — one button → PDF + PNGs.
-- **Release preload** — controlled return to ~0 N.
+- **Release load — TWO depths** (2026-08-13). The reading is tared at the preload, so tared 0 N and
+  true 0 N are ~300 N apart on this rig and "release" means two different things:
+  **Release to preload** stops at tared ~0 N (test load gone, preload STILL on — the specimen stays
+  mounted and tensioned for the next run), **Release fully** drives on to −(tared-away) = true zero
+  so the specimen can be unclamped. One shared loop and one shared safety net (rise cap · relative
+  compression floor · timeout); only the target differs.
+  **Two buttons, deliberately not a tickbox:** the depth decides how far a motor travels toward
+  compression, so it must be named on the control being pressed rather than held in state set
+  minutes earlier. Mid-release the pressed button becomes *Cancel release* and the other greys out,
+  so there is never a second live motion button. Costs one 26 px row inside the control panel's own
+  scroll area — the main page budget is untouched (+11 px headroom either way).
 - **Fracture test** button — checklist → arm auto-stop → tension pull → auto-stop at fracture.
 - **Auto-stop at fracture** — live load-collapse detector on a manual pull.
 - **Strain-rate fracture test** — closed-loop constant *gauge* strain rate → fracture → auto-stop.

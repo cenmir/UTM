@@ -1858,8 +1858,12 @@ class UTMApplication(QMainWindow):
         if getattr(self, 'preloadButton', None) is not None:
             self.preloadButton.setEnabled(direction_enabled)
             self.preloadTargetSpinBox.setEnabled(direction_enabled and not self.preload_active)
-        if getattr(self, 'releaseButton', None) is not None:
-            self.releaseButton.setEnabled(direction_enabled)
+        for b in (getattr(self, 'releaseToPreloadButton', None), getattr(self, 'releaseButton', None)):
+            if b is not None:
+                # Mid-release, only the button that started it stays live (it is the cancel).
+                b.setEnabled(direction_enabled and
+                             (not getattr(self, '_release_active', False)
+                              or b.text() == "Cancel release"))
         if getattr(self, 'strainRateButton', None) is not None:
             self.strainRateButton.setEnabled(direction_enabled)
         if getattr(self, 'modeStartButton', None) is not None:
@@ -2140,8 +2144,7 @@ class UTMApplication(QMainWindow):
             self._reset_preload_ui()
         if getattr(self, '_release_active', False):
             self._release_active = False
-            if getattr(self, 'releaseButton', None) is not None:
-                self.releaseButton.setText("Release load")
+            self._restore_release_buttons()
         if getattr(self, 'active_policy', None) is not None:
             self.active_policy = None                       # manual takeover ends any test-mode policy
             if getattr(self, '_policy_button', None) is not None:
@@ -2244,25 +2247,41 @@ class UTMApplication(QMainWindow):
         self.preloadButton = QPushButton("Preload tension")
         self.preloadButton.setToolTip(
             "Auto-move the gripper in tension until Current Load reaches the target, then stop. Click again to cancel.")
-        self.releaseButton = QPushButton("Release load")
+        # TWO release depths, as two buttons rather than one button plus a mode. The reading is
+        # tared at the preload, so tared 0 N and true 0 N are ~300 N apart on this rig — a release
+        # that overshoots drives the specimen toward compression. Naming each end point on its own
+        # button means the motor can never travel further than the label the operator just pressed;
+        # a tickbox would have made the depth depend on state set minutes earlier.
+        self.releaseToPreloadButton = QPushButton("Release to preload")
+        self.releaseToPreloadButton.setToolTip(
+            "Back off the TEST load only, stopping at tared ~0 N — which still holds the preload.\n"
+            "Use this between runs: the specimen stays mounted and tensioned, ready to pull again.\n"
+            "Click again to cancel.")
+        self.releaseButton = QPushButton("Release fully")
         self.releaseButton.setToolTip(
             "Release ALL load: back off until the specimen reaches TRUE zero force.\n"
             "The reading is tared at the preload, so tared 0 N still holds it — this drives on to\n"
             "-(tared-away load), e.g. -300 N, leaving the specimen free to unclamp. Click again to cancel.")
         row.addWidget(self.preloadTargetSpinBox)
         row.addWidget(self.preloadButton)
-        row.addWidget(self.releaseButton)
+        rel_row = QHBoxLayout()
+        rel_row.addWidget(self.releaseToPreloadButton)
+        rel_row.addWidget(self.releaseButton)
         lay = self.motorControlGroup.layout()
         idx = lay.indexOf(self.emergencyStopButton)
         if idx >= 0:
             lay.insertLayout(idx, row)
+            lay.insertLayout(idx + 1, rel_row)
         else:
             lay.addLayout(row)
+            lay.addLayout(rel_row)
         self.preloadButton.clicked.connect(self.on_preload_start)
         self.preloadButton.setEnabled(False)
         self.preloadTargetSpinBox.setEnabled(False)
+        self.releaseToPreloadButton.clicked.connect(self.on_release_to_preload)
         self.releaseButton.clicked.connect(self.on_release_preload_start)
-        self.releaseButton.setEnabled(False)
+        for b in (self.releaseToPreloadButton, self.releaseButton):
+            b.setEnabled(False)
 
     def on_preload_start(self):
         """Start (or, if already running, cancel) an automatic preload to the target force."""
@@ -2392,13 +2411,26 @@ class UTMApplication(QMainWindow):
             self.preloadTargetSpinBox.setEnabled(True)
 
     # ---- Release preload: back off the tension so you can preload again ----
-    def on_release_preload_start(self):
-        """Start (or, if running, cancel) a controlled release of ALL applied load.
+    def on_release_to_preload(self):
+        """PARTIAL release: shed the test load, stop with the preload still on the specimen."""
+        self._start_release(full=False)
 
-        The force reading is TARED at the preload, so tared 0 N still holds that preload (e.g. 300 N
-        of real tension). To free the specimen completely we drive on past tared zero, down to
-        -(tared-away load), which is TRUE zero absolute force. `_tare_load_N` is captured by the tare
-        itself; if the user never tared we fall back to the preload target box."""
+    def on_release_preload_start(self):
+        """FULL release: all the way to true zero, so the specimen can be unclamped."""
+        self._start_release(full=True)
+
+    def _start_release(self, full):
+        """Start (or, if running, cancel) a controlled release.
+
+        Two depths, and the difference is the whole point of having two buttons. The force reading
+        is TARED at the preload, so tared 0 N still holds that preload (e.g. 300 N of real tension):
+
+          full=False  stop at tared ~0 N          -> test load gone, PRELOAD STILL APPLIED
+          full=True   stop at tared -(tared_away) -> TRUE zero absolute force, specimen free
+
+        `_tare_load_N` is captured by the tare itself; if the user never tared we fall back to the
+        preload target box.
+        """
         if getattr(self, '_release_active', False):
             self._stop_release("cancelled by user"); return
         if not self.connected:
@@ -2410,11 +2442,14 @@ class UTMApplication(QMainWindow):
         tared_away = getattr(self, '_tare_load_N', 0.0)
         if tared_away <= 0.0:
             tared_away = max(0.0, self.preloadTargetSpinBox.value())
-        # stop RELEASE_TARGET_N above true zero, same margin the old ~0 N release used
-        self._release_target_N = self.RELEASE_TARGET_N - tared_away
+        # stop RELEASE_TARGET_N above the chosen zero, same margin the old ~0 N release used
+        self._release_full = bool(full)
+        self._release_target_N = self.RELEASE_TARGET_N - (tared_away if full else 0.0)
         self._release_floor_N = self._release_target_N + self.RELEASE_MIN_LOAD_N   # relative safety floor
         if self.current_load <= self._release_target_N:
-            self.append_to_console(f"[Release] Load already {self.current_load:.1f} N — nothing to release."); return
+            self.append_to_console(
+                f"[Release] Load already {self.current_load:.1f} N "
+                f"(target ≤ {self._release_target_N:.0f} N) — nothing to release."); return
         import time
         self._release_active = True
         self._release_start_load = self.current_load
@@ -2427,11 +2462,18 @@ class UTMApplication(QMainWindow):
         self.serial_manager.send_command(f"SetSpeed {self._fw_speed(self.RELEASE_SPEED_MM_S)}")
         self.serial_manager.send_command("Up")   # firmware "Up" = physical release on this rig
         self._start_movement_grace_period()
-        self.releaseButton.setText("Cancel release")
+        # Only the button that was pressed becomes the cancel; the other greys out, so there is
+        # never a second live motion button competing with it mid-release.
+        active, other = ((self.releaseButton, self.releaseToPreloadButton) if full else
+                         (self.releaseToPreloadButton, self.releaseButton))
+        active.setText("Cancel release")
+        other.setEnabled(False)
+        where = (f"= true zero, {tared_away:.0f} N was tared away" if full
+                 else f"= preload still applied, {tared_away:.0f} N stays on the specimen")
         self.append_to_console(
             f"[Release] Releasing from {self.current_load:.1f} N to <= {self._release_target_N:.0f} N "
-            f"(= true zero, {tared_away:.0f} N was tared away) at {self.RELEASE_SPEED_MM_S:.2f} mm/s ...")
-        self.set_status("Releasing load to true zero ...")
+            f"({where}) at {self.RELEASE_SPEED_MM_S:.2f} mm/s ...")
+        self.set_status("Releasing to true zero ..." if full else "Releasing to preload ...")
 
     def _release_check(self):
         """Live-load loop for the release: gentle back-off until load ~0, with safety nets. The direction
@@ -2456,7 +2498,9 @@ class UTMApplication(QMainWindow):
         target = getattr(self, '_release_target_N', self.RELEASE_TARGET_N)
         # DONE: all load released (tared reading is now -preload => true zero absolute force)
         if self.current_load <= target:
-            self._stop_release(f"released to {self.current_load:.1f} N tared = ~0 N true — specimen free")
+            done = ("~0 N true — specimen free to unclamp" if getattr(self, '_release_full', True)
+                    else "the preload is STILL APPLIED — specimen stays mounted and tensioned")
+            self._stop_release(f"released to {self.current_load:.1f} N tared = {done}")
             return
         now = time.monotonic()
         if now - getattr(self, '_release_last_log', 0.0) >= 1.0:
@@ -2475,10 +2519,24 @@ class UTMApplication(QMainWindow):
             self.grace_period_timer.stop()
         if self.connected:
             self.serial_manager.send_command("Stop")
-        if getattr(self, 'releaseButton', None) is not None:
-            self.releaseButton.setText("Release load")
+        self._restore_release_buttons()
         self.append_to_console(f"[Release] {message}")
         self.set_status(f"Release: {message}", is_warning=warn)
+
+    def _restore_release_buttons(self):
+        """Both release buttons back to their resting labels and enabled state.
+
+        Called from every exit path — normal finish, safety halt, cancel, and a manual direction
+        change — because the pressed button is left reading "Cancel release" and the other is left
+        disabled, and either one stuck that way strands the operator.
+        """
+        for b, label in ((getattr(self, 'releaseToPreloadButton', None), "Release to preload"),
+                         (getattr(self, 'releaseButton', None), "Release fully")):
+            if b is not None:
+                b.setText(label)
+        # Re-enable through the single authority rather than setEnabled(True) here: a release that
+        # ended on a safety halt may have left the motors off, and these must not come back armed.
+        self.update_controls_enabled_state()
 
     # ========== Closed-loop test modes (Phase B, BETA) — reuse the safe preload discipline ==========
     def _setup_testmode_controls(self):
@@ -3533,8 +3591,7 @@ class UTMApplication(QMainWindow):
         self._reset_preload_ui()
         self.active_policy = None                           # EStop also kills any closed-loop test mode
         self._release_active = False
-        if getattr(self, 'releaseButton', None) is not None:
-            self.releaseButton.setText("Release load")
+        self._restore_release_buttons()
         self.set_status("⚠ EMERGENCY STOP - Motors halted", is_warning=True)
         if self.connected:
             self.serial_manager.send_command("EStop")
