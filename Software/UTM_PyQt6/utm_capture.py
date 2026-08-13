@@ -262,9 +262,14 @@ class CaptureManager:
         self.root = root
         self.fps = fps
         self.png = None
-        self.video = None
+        # A LIST, because raw and speckle are answers to different questions and an operator
+        # generally wants both: raw is the archival record, speckle is the one that shows the
+        # marker motion at a glance. Each style gets its own independent worker and file, so
+        # recording two views costs two worker threads, not two passes over the camera thread.
+        self.videos = []
         self._run_dir = None
-        self.style = style_raw()        # what gets written; see Style. Raw by default.
+        self.png_style = style_raw()      # stills: ONE style (they are the expensive sink)
+        self.video_styles = [style_raw()]  # video: any combination, written simultaneously
 
     # ---- state the UI polls -------------------------------------------------------------------
     @property
@@ -273,20 +278,25 @@ class CaptureManager:
 
     @property
     def recording(self):
-        return self.video is not None and self.video._running
+        return any(v._running for v in self.videos)
 
     @property
     def active(self):
         return self.capturing or self.recording
 
     def stats(self):
+        errs = [s.error for s in ([self.png] if self.png else []) + self.videos if s and s.error]
         return {
             "png_written": self.png.written if self.png else 0,
             "png_dropped": self.png.dropped if self.png else 0,
-            "vid_written": self.video.written if self.video else 0,
-            "vid_dropped": self.video.dropped if self.video else 0,
+            # Per-file counts are equal by construction (same frames, same buffer size), so the
+            # headline number is one file's worth, not the sum — a "2x frames" figure for a
+            # two-view recording would read as a bug.
+            "vid_written": max((v.written for v in self.videos), default=0),
+            "vid_dropped": max((v.dropped for v in self.videos), default=0),
+            "vid_files": len([v for v in self.videos if v.written or v._running]),
             "dir": self._run_dir,
-            "error": (self.png.error if self.png else None) or (self.video.error if self.video else None),
+            "error": errs[0] if errs else None,
         }
 
     def run_dir(self, label=None):
@@ -301,17 +311,19 @@ class CaptureManager:
     def start_png(self, label=None):
         if self.capturing:
             return self.png.path
-        self.png = PngSink(os.path.join(self.run_dir(label), "frames"), style=self.style)
+        self.png = PngSink(os.path.join(self.run_dir(label), "frames"), style=self.png_style)
         return self.png.path
 
     def start_video(self, size, label=None):
-        """`size` is (width, height) of the frame as it will be submitted."""
+        """One AVI per selected style, all fed from the same frames. `size` is (width, height)."""
         if self.recording:
-            return self.video.path
-        name = "video.avi" if self.style.key == "raw" else f"video_{self.style.key}.avi"
-        self.video = VideoSink(os.path.join(self.run_dir(label), name), size, self.fps,
-                               style=self.style)
-        return self.video.path
+            return [v.path for v in self.videos]
+        d = self.run_dir(label)
+        self.videos = []
+        for st in (self.video_styles or [style_raw()]):
+            name = "video.avi" if st.key == "raw" else f"video_{st.key}.avi"
+            self.videos.append(VideoSink(os.path.join(d, name), size, self.fps, style=st))
+        return [v.path for v in self.videos]
 
     def stop_png(self):
         if self.png:
@@ -319,8 +331,8 @@ class CaptureManager:
         self._maybe_clear_run()
 
     def stop_video(self):
-        if self.video:
-            self.video.stop()
+        for v in self.videos:
+            v.stop()
         self._maybe_clear_run()
 
     def stop_all(self):
@@ -341,5 +353,6 @@ class CaptureManager:
         """
         if self.png is not None and self.png._running:
             self.png.submit((frame, time.monotonic(), datetime.now().isoformat(timespec="milliseconds")))
-        if self.video is not None and self.video._running:
-            self.video.submit((frame,))
+        for v in self.videos:
+            if v._running:
+                v.submit((frame,))

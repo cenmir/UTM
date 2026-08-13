@@ -2904,6 +2904,19 @@ class UTMApplication(QMainWindow):
         except Exception:
             return default
 
+    def _recall_bool(self, key, default=False):
+        """Booleans need their own reader.
+
+        QSettings on Windows round-trips a bool through the INI as the string "false", and
+        bool("false") is True — so a plain _recall() reads every stored False back as True. Ask
+        QSettings to do the conversion instead of guessing at the string.
+        """
+        try:
+            from PyQt6.QtCore import QSettings
+            return bool(QSettings("JU", "UTM_DIC").value(key, default, type=bool))
+        except Exception:
+            return default
+
     def _restore_infill(self):
         """Reinstate the last infill %, and SAY SO — a restored value that appears silently is just
         a different way to be wrong."""
@@ -4560,15 +4573,32 @@ class UTMApplication(QMainWindow):
         # What gets written. Applies to BOTH sinks — a run should not have stills and video
         # disagreeing about what the specimen looked like.
         from PyQt6.QtGui import QActionGroup
-        style_menu = menu.addMenu("What to record")
-        grp = QActionGroup(self); grp.setExclusive(True)
-        self._styleActions = {}
         import utm_capture as _cap
+        style_menu = menu.addMenu("What to record")
+
+        # VIDEO: multi-select. Raw and Speckle answer different questions -- raw is the archival
+        # record, speckle shows the marker motion at a glance -- so recording both at once is the
+        # normal case, not an edge case. Each gets its own file and its own worker.
+        style_menu.addSection("Video views (record any combination)")
+        self._vidStyleActions = {}
         for key, maker in (("raw", _cap.style_raw), ("speckle", _cap.style_speckle),
                            ("boost", _cap.style_boost)):
             proto = maker()
             act = QAction(proto.label, self, checkable=True)
             act.setToolTip(proto.note)
+            act.toggled.connect(self._sync_video_styles)
+            style_menu.addAction(act)
+            self._vidStyleActions[key] = act
+        self._vidStyleActions["raw"].setChecked(True)
+
+        # STILLS: exactly one. PNGs are the expensive sink (~1.9 GB/min); writing the same run
+        # twice over would double that for a view you can re-derive from raw offline anyway.
+        style_menu.addSection("PNG stills use")
+        grp = QActionGroup(self); grp.setExclusive(True)
+        self._styleActions = {}
+        for key, maker in (("raw", _cap.style_raw), ("speckle", _cap.style_speckle),
+                           ("boost", _cap.style_boost)):
+            act = QAction(maker().label, self, checkable=True)
             act.triggered.connect(lambda _c, k=key: self._set_capture_style(k))
             grp.addAction(act); style_menu.addAction(act)
             self._styleActions[key] = act
@@ -4605,38 +4635,66 @@ class UTMApplication(QMainWindow):
         # arming it last week and forgetting is how a drive fills during a run that cannot be
         # repeated. Every session starts disarmed; the STYLE preference is harmless and does persist.
         self._set_capture_style(self._recall("capture/style", "raw"), announce=False)
+        want = str(self._recall("capture/video_styles", "raw") or "raw").split(",")
+        for k, a in self._vidStyleActions.items():
+            a.blockSignals(True); a.setChecked(k in want); a.blockSignals(False)
+        self._sync_video_styles()
         self.capture.root = self._recall("capture/root", self.CAPTURE_ROOT) or self.CAPTURE_ROOT
         self.actAskFolder.blockSignals(True)
-        self.actAskFolder.setChecked(bool(self._recall("capture/ask_folder", False)))
+        self.actAskFolder.setChecked(self._recall_bool("capture/ask_folder", False))
         self.actAskFolder.blockSignals(False)
         self._capture_sync_menu()
 
-    def _set_capture_style(self, key, *, announce=True):
-        """Choose Raw / Speckle only / Boosted. Takes effect on the NEXT start, not mid-run.
-
-        Changing what is written half way through a recording would produce one file whose frames
-        are not comparable to each other, which is worse than making the operator restart.
-        """
+    def _make_style(self, key):
+        """Build a Style, giving `speckle` the SAME threshold basis the blob detector uses."""
         import utm_capture as _cap
         cm = self.camera_manager
         if key == "speckle":
-            style = _cap.style_speckle(getattr(cm, "THRESHOLD", 150),
-                                       getattr(cm, "THRESHOLD_TYPE", None))
-        elif key == "boost":
-            style = _cap.style_boost()
+            return _cap.style_speckle(getattr(cm, "THRESHOLD", 150),
+                                      getattr(cm, "THRESHOLD_TYPE", None))
+        if key == "boost":
+            return _cap.style_boost()
+        return _cap.style_raw()
+
+    def _sync_video_styles(self, *_):
+        """Turn the video tick-boxes into the list of AVIs the next recording will write.
+
+        Deliberately not applied to a recording already in progress: adding or removing a file
+        half way through would leave one AVI shorter than the other with no record of why.
+        """
+        keys = [k for k, a in self._vidStyleActions.items() if a.isChecked()]
+        if not keys:                             # never leave the operator with no video at all
+            self._vidStyleActions["raw"].blockSignals(True)
+            self._vidStyleActions["raw"].setChecked(True)
+            self._vidStyleActions["raw"].blockSignals(False)
+            keys = ["raw"]
+        self._remember("capture/video_styles", ",".join(keys))
+        styles = [self._make_style(k) for k in keys]
+        if self.capture.recording:
+            self._pending_video_styles = styles
+            self.append_to_console("[Capture] video views changed — applies to the NEXT recording; "
+                                   "the one in progress is unchanged.")
         else:
-            key, style = "raw", _cap.style_raw()
+            self.capture.video_styles = styles
+            self.append_to_console("[Capture] video views: "
+                                   + " + ".join(s.label.split(" (")[0].split(" —")[0]
+                                                for s in styles))
+
+    def _set_capture_style(self, key, *, announce=True):
+        """Which single view the PNG stills use. Takes effect on the NEXT start, not mid-run."""
+        style = self._make_style(key)
+        key = style.key
         act = getattr(self, "_styleActions", {}).get(key)
         if act is not None and not act.isChecked():
             act.blockSignals(True); act.setChecked(True); act.blockSignals(False)
         self._remember("capture/style", key)
-        if self.capture.active and self.capture.style.key != key:
-            self.append_to_console(f"[Capture] style → {style.label}; applies to the NEXT "
+        if self.capture.capturing and self.capture.png_style.key != key:
+            self.append_to_console(f"[Capture] stills → {style.label}; applies to the NEXT "
                                    "start (the run in progress keeps its current style).")
         elif announce:
-            self.append_to_console(f"[Capture] recording style: {style.label} — {style.note}.")
-        if not self.capture.active:
-            self.capture.style = style
+            self.append_to_console(f"[Capture] PNG stills: {style.label} — {style.note}.")
+        if not self.capture.capturing:
+            self.capture.png_style = style
         else:
             self._pending_style = style          # swapped in when the current run stops
 
@@ -4693,7 +4751,8 @@ class UTMApplication(QMainWindow):
             else:
                 h, w = frame.shape[:2]
                 p = self.capture.start_video((w, h), label=label)
-                started.append(f"AVI → {p}")
+                started.append("AVI → " + ", ".join(os.path.basename(x) for x in p)
+                               + f"  in {os.path.dirname(p[0])}" if p else "AVI → (none)")
         if started:
             cm.frame_sink = self.capture.submit          # arm the camera-thread hook
             for s in started:
@@ -4712,8 +4771,12 @@ class UTMApplication(QMainWindow):
             self.camera_manager.frame_sink = None        # disarm the hot path entirely
             pending = getattr(self, "_pending_style", None)
             if pending is not None:                      # style chosen mid-run applies now
-                self.capture.style = pending
+                self.capture.png_style = pending
                 self._pending_style = None
+            pv = getattr(self, "_pending_video_styles", None)
+            if pv is not None:
+                self.capture.video_styles = pv
+                self._pending_video_styles = None
         s = self.capture.stats()
         parts = []
         if png:
@@ -4839,8 +4902,8 @@ class UTMApplication(QMainWindow):
             b.setText("● CAP" if cap else "○ CAP")
             b.setStyleSheet("color:#2f9e44; font-size:10px; font-weight:bold; padding:0 3px;"
                             " border:none;" if cap else off)
-            b.setToolTip(f"PNG frames: {st['png_written']} written ({self.capture.style.label})\n"
-                         "Click to stop." if cap else
+            b.setToolTip(f"PNG frames: {st['png_written']} written "
+                         f"({self.capture.png_style.label})\nClick to stop." if cap else
                          "Click to start saving PNG frames")
             # The buttons are also driven by test auto-start/stop, so their checked state has to
             # follow the sink rather than the last click.
@@ -4856,8 +4919,9 @@ class UTMApplication(QMainWindow):
                                 + " font-size:10px; font-weight:bold; padding:0 3px; border:none;")
             else:
                 b.setStyleSheet(off)
-            b.setToolTip(f"AVI: {st['vid_written']} frames ({self.capture.style.label})\n"
-                         "Click to stop." if rec else "Click to start recording AVI")
+            b.setToolTip(f"AVI: {st['vid_written']} frames into {st['vid_files']} file(s) — "
+                         + ", ".join(v.style.key for v in self.capture.videos)
+                         + "\nClick to stop." if rec else "Click to start recording AVI")
             if b.isChecked() != rec:
                 b.blockSignals(True); b.setChecked(rec); b.blockSignals(False)
 
@@ -5042,7 +5106,8 @@ class UTMApplication(QMainWindow):
         self.stopCameraButton = QPushButton("Stop Camera")
         self.tareDICButton = QPushButton("Calibrate Px₀")
         self.tareDICButton.setToolTip(
-            "Freeze Px₀ — the marker separation in pixels that every strain is measured "
+            "Freeze Px₀  —  this IS the DIC tare, renamed.\n"
+            "Px₀ is the marker separation in pixels that every strain is measured "
             "against.\nPress it BEFORE preload, on a straight but barely-loaded specimen: strain "
             "is (Px − Px₀)/Px₀, so whatever is already stretched into the specimen "
             "when you press this is invisible for the rest of the test.\nPreloading to 300 N "
