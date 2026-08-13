@@ -2822,6 +2822,8 @@ class UTMApplication(QMainWindow):
         """Start (or, if running, cancel) the advanced closed-loop mode chosen in the segment."""
         if getattr(self, "active_policy", None) is not None:
             self._stop_policy("cancelled by user"); return
+        if not self._capture_ask_folder_before_test():      # before ANY motor command
+            return
         if not self.connected or not self.motorsSwitch.isChecked():
             self.append_to_console("[Mode] Connect and enable motors first."); return
         if self.preload_active:
@@ -3581,6 +3583,8 @@ class UTMApplication(QMainWindow):
         msg.setDefaultButton(QMessageBox.StandardButton.No)
         if msg.exec() != QMessageBox.StandardButton.Yes:
             self.append_to_console("[Fracture test] cancelled."); return
+        if not self._capture_ask_folder_before_test():      # still before ANY motor command
+            return
         # arm auto-stop at fracture (fresh detector)
         if getattr(self, 'autoStopFractureCheck', None) is not None:
             self.autoStopFractureCheck.setChecked(True)
@@ -4570,9 +4574,29 @@ class UTMApplication(QMainWindow):
             self._styleActions[key] = act
 
         menu.addSeparator()
+        folder = menu.addMenu("Where to save")
+        act_set = QAction("Set capture folder…", self)
+        act_set.setToolTip("Where new capture runs are created. Each run still gets its own "
+                           "timestamped sub-folder inside it.")
+        act_set.triggered.connect(self._choose_capture_folder)
+        folder.addAction(act_set)
+
+        self.actAskFolder = QAction("Ask me before each test", self, checkable=True)
+        self.actAskFolder.setToolTip("Prompt for a folder when you press Start test or Fracture "
+                                     "test — BEFORE the motor moves, never during.")
+        self.actAskFolder.toggled.connect(lambda on: self._remember("capture/ask_folder", bool(on)))
+        folder.addAction(self.actAskFolder)
+
+        folder.addSeparator()
+        self.actMoveLast = QAction("Move last capture to…", self)
+        self.actMoveLast.setToolTip("Relocate the run that just finished — for deciding where it "
+                                    "belongs after seeing how the test went.")
+        self.actMoveLast.triggered.connect(self._move_last_capture)
+        folder.addAction(self.actMoveLast)
+
         act_open = QAction("Open capture folder…", self)
         act_open.triggered.connect(self._open_capture_folder)
-        menu.addAction(act_open)
+        folder.addAction(act_open)
 
         # Restore what was armed last session. blockSignals so restoring does not print the
         # "ARMED" console line before the operator has done anything.
@@ -4581,6 +4605,10 @@ class UTMApplication(QMainWindow):
         # arming it last week and forgetting is how a drive fills during a run that cannot be
         # repeated. Every session starts disarmed; the STYLE preference is harmless and does persist.
         self._set_capture_style(self._recall("capture/style", "raw"), announce=False)
+        self.capture.root = self._recall("capture/root", self.CAPTURE_ROOT) or self.CAPTURE_ROOT
+        self.actAskFolder.blockSignals(True)
+        self.actAskFolder.setChecked(bool(self._recall("capture/ask_folder", False)))
+        self.actAskFolder.blockSignals(False)
         self._capture_sync_menu()
 
     def _set_capture_style(self, key, *, announce=True):
@@ -4674,6 +4702,8 @@ class UTMApplication(QMainWindow):
 
     def _capture_stop(self, *, png=False, video=False, reason=""):
         """Stop sinks and report what landed on disk, including any dropped frames."""
+        self._last_capture_dir = self.capture.run_dir() if self.capture.active else \
+            getattr(self, "_last_capture_dir", None)
         if png and self.capture.capturing:
             self.capture.stop_png()
         if video and self.capture.recording:
@@ -4723,6 +4753,67 @@ class UTMApplication(QMainWindow):
             return
         self.append_to_console(f"[Capture] still running — stops in {seconds:.0f} s ({what}).")
         QTimer.singleShot(int(seconds * 1000), lambda: self._capture_autostop(what))
+
+    def _choose_capture_folder(self):
+        """Pick the root that new runs are created in. Remembered across sessions."""
+        from PyQt6.QtWidgets import QFileDialog
+        start = self.capture.root if os.path.isdir(self.capture.root) else os.path.expanduser("~")
+        d = QFileDialog.getExistingDirectory(self, "Capture folder — where new runs are created",
+                                             start)
+        if not d:
+            return
+        self.capture.root = d
+        self._remember("capture/root", d)
+        self.append_to_console(f"[Capture] folder set to {d}")
+        if self.capture.active:
+            self.append_to_console("[Capture] the run in progress keeps its current folder.")
+
+    def _capture_ask_folder_before_test(self):
+        """Prompt for a folder at the START of a user-initiated test, if that option is on.
+
+        Called from the button handlers BEFORE any motor command — never from the auto-start hook,
+        which fires once the pull is already under way. A modal dialog while the crosshead is
+        moving would block the control loop and the Stop button behind it.
+        Returns False only if the operator cancelled the dialog, which aborts the test.
+        """
+        if not getattr(self, "actAskFolder", None) or not self.actAskFolder.isChecked():
+            return True
+        if not (self.actCaptureArm.isChecked() or self.actRecordArm.isChecked()):
+            return True                       # nothing armed, nowhere to save
+        from PyQt6.QtWidgets import QFileDialog
+        start = self.capture.root if os.path.isdir(self.capture.root) else os.path.expanduser("~")
+        d = QFileDialog.getExistingDirectory(self, "Save this test's capture in…", start)
+        if not d:
+            self.append_to_console("[Capture] folder prompt cancelled — test not started.")
+            return False
+        self.capture.root = d
+        return True
+
+    def _move_last_capture(self):
+        """Relocate the run that just finished, for deciding where it belongs after the fact."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        import shutil
+        src = getattr(self, "_last_capture_dir", None)
+        if not src or not os.path.isdir(src):
+            self.append_to_console("[Capture] no finished capture to move.")
+            return
+        if self.capture.active:
+            self.append_to_console("[Capture] stop the current capture first.")
+            return
+        dest_root = QFileDialog.getExistingDirectory(self, "Move the last capture into…",
+                                                     os.path.dirname(src))
+        if not dest_root:
+            return
+        dest = os.path.join(dest_root, os.path.basename(src))
+        try:
+            if os.path.exists(dest):
+                QMessageBox.warning(self, "Move capture", f"{dest} already exists — not moving.")
+                return
+            shutil.move(src, dest)            # same-volume rename, or a real copy across drives
+            self._last_capture_dir = dest
+            self.append_to_console(f"[Capture] moved to {dest}")
+        except Exception as e:
+            QMessageBox.warning(self, "Move capture", f"Could not move:\n{e}")
 
     def _open_capture_folder(self):
         os.makedirs(self.CAPTURE_ROOT, exist_ok=True)

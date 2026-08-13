@@ -78,20 +78,43 @@ def style_raw():
                  "everything is kept; the only view you can re-derive the others from")
 
 
-def style_speckle(threshold=150, thresh_type=None):
+def style_speckle(threshold=150, thresh_type=None, adaptive=True, ema=0.15):
     """Markers only — a hard two-tone view, the 'X-ray' of the speckle pattern.
 
-    Uses the SAME threshold the blob detector runs on, so what you record is what the DIC is
-    actually tracking; a prettier threshold here would be a different measurement.
+    ADAPTIVE (default): the cut level is recomputed from each frame's own histogram by Otsu's
+    method, so it follows the lighting instead of being a number chosen on one good day. A fixed
+    threshold silently fails the moment the LEDs are dimmed, warm up, or the specimen is changed —
+    it goes all-black or all-white and the recording is worthless.
+
+    The Otsu value is then EMA-smoothed (`ema`, ~1 s at 35 fps). Raw per-frame Otsu jitters by a
+    few levels on sensor noise, which makes the marker edges shimmer; smoothing tracks a real
+    lighting change within about a second while ignoring frame-to-frame noise. The very first
+    frame adopts its Otsu value outright so the run does not open mid-fade from the seed.
+
+    `threshold` is the fallback used when adaptive is off — the same number the blob detector runs
+    on, so what is recorded is what the DIC is actually tracking.
     """
     import cv2 as _cv2
     tt = _cv2.THRESH_BINARY_INV if thresh_type is None else thresh_type
+    # THRESH_OTSU cannot be OR-ed with a type that already carries OTSU (the Black preset does).
+    base = tt & ~_cv2.THRESH_OTSU
+    state = {"t": None}
 
-    def _t(f):
-        return _cv2.threshold(f, threshold, 255, tt)[1]
+    def _fixed(f):
+        return _cv2.threshold(f, threshold, 255, base)[1]
 
-    return Style("speckle", "Speckle only (markers on black)", _t, 1,
-                 "markers only; 23x smaller on disk, but grey detail is gone for good")
+    def _adaptive(f):
+        # Otsu picks the level; we then re-threshold at the SMOOTHED level, so the mask that gets
+        # written is never the raw jittery one.
+        chosen, _ = _cv2.threshold(f, 0, 255, base | _cv2.THRESH_OTSU)
+        prev = state["t"]
+        state["t"] = chosen if prev is None else (1 - ema) * prev + ema * chosen
+        return _cv2.threshold(f, state["t"], 255, base)[1]
+
+    return Style("speckle", "Speckle only — adaptive (markers on black)",
+                 _adaptive if adaptive else _fixed, 1,
+                 "markers only, cut level follows the lighting; 23x smaller on disk, "
+                 "but grey detail is gone for good")
 
 
 def style_boost(clip=2.5, tile=8):
