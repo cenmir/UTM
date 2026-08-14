@@ -144,6 +144,29 @@ def _stamp():
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
+def write_manifest(run_dir, info):
+    """Drop run.json into a capture folder so the frames can be traced back to their test.
+
+    A capture folder and its CSV are written minutes apart by different parts of the app, and
+    without this the only thing joining a multi-gigabyte pile of frames to the force data is the
+    operator remembering which is which. Both halves of the link are written: this file points at
+    the CSV, and the CSV header points back here.
+    """
+    import json
+    path = os.path.join(run_dir, "run.json")
+    try:
+        existing = {}
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                existing = json.load(f)
+        existing.update({k: v for k, v in info.items() if v is not None})
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(existing, f, indent=2, ensure_ascii=False)
+        return path
+    except Exception:
+        return None
+
+
 class _Sink:
     """One worker thread draining one bounded buffer. Subclasses do the actual writing."""
 

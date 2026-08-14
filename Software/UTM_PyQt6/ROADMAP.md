@@ -43,6 +43,18 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 - **Strain-rate fracture test** — closed-loop constant *gauge* strain rate → fracture → auto-stop.
 - **Safety net (3 layers):** load-collapse fracture detector · **stall guard** (crosshead frozen <0.05 mm/6 s under load — in BOTH the auto-stop path and the strain-rate loop) · **10 kN / 30 mm** force/travel backstop · **dead-DIC guard** (freeze speed at 0.2 s, halt at 1.0 s).
 - **CSV richness** — `DIC_Blobs` health column + `# DIC Health` header + infill label.
+- **SF11 — auto-metadata / capture↔CSV link** (2026-08-14). A run left three artefacts with nothing
+  joining them: the CSV, the report, and a multi-gigabyte capture folder. Pressing Save now:
+  writes `# Capture: <folder>` into the CSV header and `run.json` (csv path, File ID, geometry,
+  recording window, app version) into the capture folder, so **either half finds the other**;
+  appends the row to `registry.json` (default ON); optionally builds the report (default OFF).
+  The capture is matched to the data by **time-window OVERLAP, not recency** — run two tests before
+  saving and "most recent" silently attaches the wrong frames to the force data, and a mislabelled
+  link is worse than none because it looks authoritative. `utm_analysis.read_meta` parses the new
+  key (splitting on the FIRST colon only, or a Windows drive letter truncates the path).
+  Registry auto-add self-skips on a non-destructive run — `analyze()` needs a fracture — and says so
+  rather than raising. ⬜ Per-specimen FOLDERING is deliberately not included: silently redirecting
+  where a file lands is riskier than the typing it saves.
 - **GUI responsiveness** (2026-08-13) — the app was spending **~700 ms of every wall-clock second**
   on the single GUI thread, which is what the lag was. Measured, not guessed (`perf_probe.py`):
   one matplotlib redraw of these figures costs **22.5 ms** (14.2 ms of it is the datetime axis), and
@@ -142,7 +154,7 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 >    real (uneven) lighting rather than a synthetic one. This is the MOT extensometer prerequisite.
 >
 > **⬜ Software, in the order I would take it:**
-> 5. **SF11** auto-metadata + foldering. 6. **SF12** DIC auto-calibrate. 7. **SF13** guided wizard.
+> 5. **SF12** DIC auto-calibrate. 6. **SF13** guided wizard.
 >
 > **⬜ Decisions that are the operator's, not mine:**
 > - **The E fit window.** 0.05–0.40 % lands on the TOE on both specimens checked: S16 reads

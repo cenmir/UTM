@@ -57,6 +57,10 @@ def read_meta(path):
                     meta["duration"] = s.split(":", 1)[1].strip()
                 elif low.startswith("comment:"):
                     meta["comment"] = s.split(":", 1)[1].strip()
+                elif low.startswith("capture:"):
+                    # SF11: folder holding this run's DIC frames / video. A Windows path carries a
+                    # drive-letter colon, so split on the FIRST colon only and keep the rest.
+                    meta["capture"] = s.split(":", 1)[1].strip()
                 elif "area:" in low:
                     meta["area"] = float(s.split("Area:", 1)[1].split("mm")[0].strip())
                     if "gauge length:" in low:

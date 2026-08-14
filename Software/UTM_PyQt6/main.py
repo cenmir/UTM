@@ -975,6 +975,7 @@ class UTMApplication(QMainWindow):
         from utm_capture import CaptureManager
         self.capture = CaptureManager(root=self.CAPTURE_ROOT,
                                       fps=getattr(CameraManager, "FRAME_RATE", 35))
+        self._capture_runs = []          # [{dir, start, end}] — matched to a CSV by time overlap
         self._cam_err_last, self._cam_err_t, self._cam_err_n = None, 0.0, 0   # see on_camera_error
         self._last_feed_paint = 0.0                                          # feed throttle
         self.dic_recording_enabled = False
@@ -3776,6 +3777,73 @@ class UTMApplication(QMainWindow):
             steps = -round(200 * 8 * 20 * distance / 5)
             self.serial_manager.send_command(f"MoveSteps {steps}")
 
+    # ===== SF11 — auto-metadata: tie a saved CSV to its capture folder, registry row, report =====
+    #
+    # A run used to leave three artefacts on disk with nothing joining them: the CSV, the report,
+    # and a multi-gigabyte capture folder whose only connection to the force data was the operator
+    # remembering which was which. That is the bookkeeping step this removes.
+
+    def _capture_run_for(self, t_first, t_last):
+        """The capture folder whose recording window OVERLAPS this data, or None.
+
+        Overlap, not "the last one": run two tests before saving and last-one silently attaches the
+        wrong frames to the force data — a mislabelled link is worse than no link, because it looks
+        authoritative. A capture still running (end=None) is treated as extending to now.
+        """
+        best = None
+        for r in self._capture_runs:
+            start, end = r["start"], r["end"] or datetime.now()
+            if start <= t_last and end >= t_first:                      # intervals intersect
+                overlap = (min(end, t_last) - max(start, t_first)).total_seconds()
+                if best is None or overlap > best[0]:
+                    best = (overlap, r)
+        return best[1] if best else None
+
+    def _sf11_after_save(self, csv_path):
+        """Everything that used to be a remembered manual step after pressing Save."""
+        import utm_capture as _cap
+        done = []
+
+        # 1. the capture link (the other half is written into the CSV header by _export_csv)
+        run = getattr(self, "_pending_capture_run", None)
+        if run:
+            p = _cap.write_manifest(run["dir"], {
+                "csv": os.path.abspath(csv_path),
+                "csv_name": os.path.basename(csv_path),
+                "file_id": self.fileIdLineEdit.text().strip() or None,
+                "captured_from": run["start"].isoformat(timespec="seconds"),
+                "captured_to": (run["end"] or datetime.now()).isoformat(timespec="seconds"),
+                "area_mm2": self.cross_sectional_area,
+                "gauge_mm": self.gauge_length,
+                "app_version": __version__,
+            })
+            if p:
+                done.append(f"linked capture {os.path.basename(run['dir'])}")
+
+        # 2. the registry. analyze() needs a detectable fracture, so a cyclic/creep/relaxation run
+        # legitimately fails here — that is not an error worth alarming about, just a skip.
+        if self.autoRegistryAct.isChecked():
+            try:
+                import utm_registry
+                rec = utm_registry.add(csv_path, extra={"area": self.cross_sectional_area,
+                                                        "gauge": self.gauge_length})
+                done.append(f"registry: {rec.get('specimen') or '?'} "
+                            f"UTS {rec.get('uts', 0):.1f} MPa")
+            except Exception as e:
+                self.append_to_console(f"[SF11] registry skipped — {type(e).__name__}: {e}. "
+                                       "(Normal for a non-destructive run: no fracture to analyse.)")
+
+        # 3. the report
+        if self.autoReportAct.isChecked():
+            try:
+                self.on_generate_report()
+                done.append("report")
+            except Exception as e:
+                self.append_to_console(f"[SF11] report failed: {e}")
+
+        if done:
+            self.append_to_console("[SF11] " + " · ".join(done))
+
     # ========== Data Export Functions ==========
 
     def on_save_data(self):
@@ -3810,6 +3878,7 @@ class UTMApplication(QMainWindow):
             self.data_unsaved = False
             self._update_plot_title()
             self.append_to_console(f"Data saved to: {file_path}")
+            self._sf11_after_save(file_path)      # capture link, registry row, optional report
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to save data:\n{str(e)}")
             self.append_to_console(f"Export error: {str(e)}")
@@ -3888,6 +3957,12 @@ class UTMApplication(QMainWindow):
             f.write(f"# Test Date: {first_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"# Duration: {duration_s:.1f} s\n")
             f.write(f"# Data Points: {n_points}\n")
+            # SF11: the CSV half of the capture link. Matched by time overlap, not recency —
+            # see _capture_run_for. Stashed so _sf11_after_save can write the other half.
+            self._pending_capture_run = self._capture_run_for(first_time,
+                                                              self.load_plot_times[-1])
+            if self._pending_capture_run:
+                f.write(f"# Capture: {os.path.abspath(self._pending_capture_run['dir'])}\n")
             if comment:
                 f.write(f"# Comment: {comment}\n")
             f.write("#\n")
@@ -4613,6 +4688,23 @@ class UTMApplication(QMainWindow):
         self._styleActions["raw"].setChecked(True)
 
         menu.addSeparator()
+        # SF11 — the bookkeeping that used to be remembered manual steps after pressing Save.
+        self.autoRegistryAct = QAction("On save: add to the test registry", self, checkable=True)
+        self.autoRegistryAct.setToolTip(
+            "Append the saved test to registry.json with its computed E / σ_y / UTS / ε_f / anchor.\n"
+            "Was a CLI you had to remember to run (utm_registry.py scan).\n"
+            "Skipped automatically on a non-destructive run — the analysis needs a fracture.")
+        self.autoRegistryAct.toggled.connect(
+            lambda on: self._remember("sf11/registry", bool(on)))
+        menu.addAction(self.autoRegistryAct)
+
+        self.autoReportAct = QAction("On save: generate the report", self, checkable=True)
+        self.autoReportAct.setToolTip("Build the one-page PDF + graphs next to the CSV, "
+                                      "without the extra click. Takes a few seconds.")
+        self.autoReportAct.toggled.connect(lambda on: self._remember("sf11/report", bool(on)))
+        menu.addAction(self.autoReportAct)
+
+        menu.addSeparator()
         folder = menu.addMenu("Where to save")
         act_set = QAction("Set capture folder…", self)
         act_set.setToolTip("Where new capture runs are created. Each run still gets its own "
@@ -4655,6 +4747,14 @@ class UTMApplication(QMainWindow):
         self.actAskFolder.blockSignals(True)
         self.actAskFolder.setChecked(self._recall_bool("capture/ask_folder", False))
         self.actAskFolder.blockSignals(False)
+        # Registry ON by default: it is cheap, it self-skips when there is no fracture, and a test
+        # missing from the registry is the bug this feature exists to stop. Report OFF — it costs
+        # seconds and the operator often wants to crop the data first.
+        for act, key, dflt in ((self.autoRegistryAct, "sf11/registry", True),
+                               (self.autoReportAct, "sf11/report", False)):
+            act.blockSignals(True)
+            act.setChecked(self._recall_bool(key, dflt))
+            act.blockSignals(False)
         self._capture_sync_menu()
 
     def _make_style(self, key):
@@ -4812,6 +4912,12 @@ class UTMApplication(QMainWindow):
                                + f"  in {os.path.dirname(p[0])}" if p else "AVI → (none)")
         if started:
             cm.frame_sink = self.capture.submit          # arm the camera-thread hook
+            # Record WHEN this folder was live. On save, the CSV is matched to the capture whose
+            # window overlaps the data — not simply to the most recent one, which would mislabel
+            # the frames the moment two tests are run before saving.
+            d = self.capture.run_dir()
+            if not any(r["dir"] == d for r in self._capture_runs):
+                self._capture_runs.append({"dir": d, "start": datetime.now(), "end": None})
             for s in started:
                 self.append_to_console(f"[Capture] started{(' ' + reason) if reason else ''}: {s}")
         self._capture_sync_menu()
@@ -4826,6 +4932,9 @@ class UTMApplication(QMainWindow):
             self.capture.stop_video()
         if not self.capture.active:
             self.camera_manager.frame_sink = None        # disarm the hot path entirely
+            for r in self._capture_runs:
+                if r["dir"] == self._last_capture_dir and r["end"] is None:
+                    r["end"] = datetime.now()
             pending = getattr(self, "_pending_style", None)
             if pending is not None:                      # style chosen mid-run applies now
                 self.capture.png_styles = pending
