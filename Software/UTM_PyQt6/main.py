@@ -4889,16 +4889,26 @@ class UTMApplication(QMainWindow):
             self.append_to_console("[Camera] manual setup cancelled — parameters unchanged.")
         self._update_camera_params()
 
-    def _update_camera_params(self):
-        """Live camera settings in the DIC group titles — free real estate, always visible.
+    # Below this many strain readings per second the DIC is the bottleneck, not the camera, and the
+    # readout says so. Chosen against the load-cell rate (~11 Hz): once DIC drops under half of it,
+    # most CSV rows carry no strain and everything downstream degrades — including the fracture
+    # detector, which is exactly how S24's epsilon_f came out at 17.5 % instead of 7.4 %.
+    DIC_RATE_WARN_HZ = 6.0
 
-        The info row underneath is already carrying the health badge, CAP/REC and three live
-        numbers, and the page has ~11 px of vertical headroom, so a new row was not available.
-        A group-box title costs nothing and is exactly where you look to ask 'what is it set to'.
+    def _update_camera_params(self):
+        """Live camera settings BESIDE the strain values they produce.
+
+        These used to live in the group-box title. They belong next to the numbers instead: when a
+        strain reading looks wrong the next question is always "what is the camera set to", and
+        that should be answerable in the same glance rather than by looking up to the heading.
+
+        The readout carries the MEASURED grab rate and the MEASURED DIC rate, not the camera's
+        configured frame rate. On S24 the title said "35 fps" while frames arrived at 19.9 and only
+        3.0 strain readings per second reached the CSV. Nothing on screen showed that 6x loss.
         """
         p = self.camera_manager.camera_params()
         if not p:
-            txt = "DIC Camera"
+            txt, tip, warn = "—", "", False
         else:
             bits = []
             if "exposure_us" in p:
@@ -4907,22 +4917,39 @@ class UTMApplication(QMainWindow):
             # computed per frame. Printing "thr 0" would read as a broken setting.
             import cv2 as _cv2
             if getattr(self.camera_manager, "THRESHOLD_TYPE", 0) & _cv2.THRESH_OTSU:
-                bits.append("thr auto (Otsu)")
+                bits.append("thr auto")
             else:
                 bits.append(f"thr {p['threshold']:.0f}")
-            if "fps_actual" in p:
-                bits.append(f"{p['fps_actual']:.0f} fps")
             if "gain" in p and p["gain"]:
                 bits.append(f"gain {p['gain']:.1f}")
-            if "roi" in p:
-                bits.append(p["roi"])
-            if "mean" in p:
-                bits.append(f"mean {p['mean']:.0f}")
-            txt = "DIC Camera   ·   " + "  ·  ".join(bits)
+            grab, dic = p.get("fps_grab", 0.0), p.get("hz_dic", 0.0)
+            if grab:
+                bits.append(f"{grab:.0f} fps")
+            warn = bool(grab) and dic < self.DIC_RATE_WARN_HZ
+            if grab or dic:
+                bits.append(f"DIC {dic:.1f} Hz" + (" ⚠" if warn else ""))
+            txt = "  ·  ".join(bits)
+            tip = (f"Exposure {p.get('exposure_us', 0)/1000:.1f} ms · "
+                   f"threshold {p['threshold']:.0f} ({p.get('mode','?')} preset)\n"
+                   f"ROI {p.get('roi','?')} · frame mean {p.get('mean', 0):.0f} grey\n\n"
+                   f"Frames grabbed   {grab:.1f} /s   (camera configured for "
+                   f"{p.get('fps_actual', 0):.0f})\n"
+                   f"Strain readings  {dic:.1f} /s\n\n"
+                   + ("⚠ Far fewer strain readings than frames: most load samples will carry no "
+                      "strain, which degrades the fracture detector and every integrated quantity."
+                      if warn else
+                      "These should be close. A large gap means frames are arriving but not "
+                      "producing strain."))
+        for lbl, w in (("dicParamsLabel", None), ("dicParamsLabelLP", None)):
+            g = getattr(self, lbl, None)
+            if g is not None:
+                g.setText(txt)
+                g.setToolTip(tip)
+                g.setStyleSheet("color: #d29922; font-weight: bold;" if warn else "color: #8a8f98;")
         for name in ("cameraGroupBox", "cameraGroupBoxLP"):
             g = getattr(self, name, None)
-            if g is not None and g.title() != txt:
-                g.setTitle(txt)
+            if g is not None and g.title() != "DIC Camera":
+                g.setTitle("DIC Camera")
 
     def _make_capture_badges(self, row):
         """CAP (stills) and REC (video) beside the DIC health badge — indicator AND button.
@@ -5690,6 +5717,14 @@ class UTMApplication(QMainWindow):
         self.dicTrueLabel = QLabel("—")
         self.dicTrueLabel.setStyleSheet("font-weight: bold; color: #cc6600;")
         info_row.addWidget(self.dicTrueLabel)
+        info_row.addSpacing(20)
+        # Camera settings sit BESIDE the numbers they produce, not in the group title. Exposure and
+        # threshold are what those two strain figures are made of — when the strain looks wrong the
+        # next question is always "what is the camera set to", and the answer should be in the same
+        # glance rather than at the top of the box.
+        self.dicParamsLabel = QLabel("—")
+        self.dicParamsLabel.setStyleSheet("color: #8a8f98;")
+        info_row.addWidget(self.dicParamsLabel)
         info_row.addStretch()
         camera_layout.addLayout(info_row)
 
@@ -5893,6 +5928,10 @@ class UTMApplication(QMainWindow):
         self.dicTrueLabelLP = QLabel("—")
         self.dicTrueLabelLP.setStyleSheet("font-weight: bold; color: #cc6600;")
         info_row.addWidget(self.dicTrueLabelLP)
+        info_row.addSpacing(20)
+        self.dicParamsLabelLP = QLabel("—")           # mirror — see dicParamsLabel
+        self.dicParamsLabelLP.setStyleSheet("color: #8a8f98;")
+        info_row.addWidget(self.dicParamsLabelLP)
         info_row.addStretch()
         lay.addLayout(info_row)
 

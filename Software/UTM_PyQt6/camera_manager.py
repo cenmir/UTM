@@ -102,6 +102,10 @@ class CameraManager(QObject):
         # Queue of recent DIC readings: (pc_timestamp_datetime, cauchy, true_strain)
         # Keeps last ~500 frames for time-matching with load cell
         self.dic_history = deque(maxlen=500)
+        # Rolling timestamps for the MEASURED grab / DIC rates (see camera_params). ~4 s at 35 fps,
+        # long enough to be steady and short enough to react when the pipeline stalls.
+        self._rate_grab = deque(maxlen=140)
+        self._rate_dic = deque(maxlen=140)
 
     def set_specimen_mode(self, mode: str):
         """Switch between 'White' and 'Black' specimen presets."""
@@ -201,6 +205,7 @@ class CameraManager(QObject):
                 img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
                 grab_result.Release()
                 self.latest_frame = img  # add this
+                self._rate_grab.append(time.monotonic())
                 # Run blob detection on every frame
                 sink = self.frame_sink
                 if sink is not None:
@@ -301,12 +306,29 @@ class CameraManager(QObject):
             self.error_occurred.emit(f"Exposure change failed: {e}")
             return None
 
+    @staticmethod
+    def _hz(stamps):
+        """Rate from a rolling deque of timestamps (0.0 until there are two)."""
+        if len(stamps) < 2:
+            return 0.0
+        span = stamps[-1] - stamps[0]
+        return (len(stamps) - 1) / span if span > 0 else 0.0
+
     def camera_params(self):
         """Live parameter snapshot for the GUI readout (empty dict when not connected)."""
         if self.camera is None:
             return {}
         out = {"threshold": self.THRESHOLD, "mode": self.specimen_mode,
                "fps_set": self.FRAME_RATE}
+        # MEASURED rates, not the camera's configured one.
+        #
+        # ResultingFrameRate is what the sensor is set up to deliver; it says nothing about how many
+        # frames Python actually got, nor how many of those produced a strain reading. On S24
+        # (2026-08-14) the configured rate read 35 fps, frames arrived at 19.9, and only 3.0 strain
+        # readings per second reached the CSV -- a 6x loss nothing on screen would have shown. The
+        # gap between these two numbers is the diagnostic.
+        out["fps_grab"] = self._hz(self._rate_grab)
+        out["hz_dic"] = self._hz(self._rate_dic)
         for name, key in (("ExposureTime", "exposure_us"), ("Gamma", "gamma"),
                           ("Gain", "gain"), ("ResultingFrameRate", "fps_actual")):
             try:
@@ -365,5 +387,6 @@ class CameraManager(QObject):
         # Append to history queue for time-matching with load cell
         # Tuple layout: (timestamp, cauchy, true_strain, L_px, dx_px)
         self.dic_history.append((now, cauchy, true_strain, current_distance, dx_px))
+        self._rate_dic.append(time.monotonic())
         self.dic_strain_updated.emit(cauchy, true_strain)
         return cauchy, true_strain
