@@ -101,13 +101,38 @@ def find_fracture(data, mv_i):
 
     NOTE: the old marker-separation test (L_px > 1.06*L0) is deliberately NOT used — it
     misfires on ductile specimens whose gauge strain crosses ~6 % during normal drawing.
+
+    THE GUARD COMPARES CONSECUTIVE *TRACKED* SAMPLES, NOT ADJACENT ROWS. A CSV row only
+    carries a DIC reading when one was within DIC_STALE_THRESHOLD_MS of that load sample;
+    every other row is written with ec = 0.0 and lpx = 0.0. The original test required
+    data[i-1] and data[i] to BOTH be tracked, which silently made it a function of how
+    densely DIC happened to land in the CSV:
+
+        V5  (2026-06-12)  3057/3057 rows tracked -> 100.0 % adjacent pairs, guard alive
+        S24 (2026-08-14)   571/2135 rows tracked ->   7.3 % adjacent pairs, guard DEAD
+
+    On S24 a dropout row sat between the last intact sample and the post-fracture jump, so
+    the guard could not see a 10.1-percentage-point strain step. Detection fell through to
+    load-collapse, which fires one sample late, and epsilon_f was read from a sample taken
+    AFTER the specimen had broken: 17.5 % instead of 7.4 %, and toughness 2.26x too high.
+
+    dt_max keeps this a JUMP test rather than a drift test: 3 % of strain accumulated
+    slowly is a ductile specimen drawing, which is exactly what the removed L_px test used
+    to misfire on.
     """
     pk = max(range(mv_i, len(data)), key=lambda i: data[i]["F"])
     fr_load = next((i for i in range(pk, len(data)) if data[i]["F"] < 0.5 * data[pk]["F"]),
                    len(data) - 1)
-    fr_glitch = next((i for i in range(mv_i + 1, len(data))
-                      if data[i - 1]["lpx"] > 100 and data[i]["lpx"] > 100
-                      and data[i]["ec"] - data[i - 1]["ec"] > 0.03), None)
+
+    fr_glitch, prev, dt_max = None, None, 1.0
+    for i in range(mv_i + 1, len(data)):
+        if data[i]["lpx"] <= 100:               # no DIC on this row - skip, do not reset
+            continue
+        if prev is not None and data[i]["t"] - data[prev]["t"] <= dt_max \
+                and data[i]["ec"] - data[prev]["ec"] > 0.03:
+            fr_glitch = i
+            break
+        prev = i
     return min([fr_load] + ([fr_glitch] if fr_glitch is not None else []))
 
 
@@ -155,7 +180,25 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
 
     test = [d for d in pre[mv_i:] if d["lpx"] > 100]
     uts = max(test, key=lambda d: d["sig"])
-    last = max(test, key=lambda d: d["t"])
+
+    # PHYSICAL BACKSTOP on the fracture sample, independent of how it was chosen.
+    #
+    # Strain is a ratio; multiply it back into millimetres and it must fit inside what the
+    # machine actually did. The 80 mm gauge cannot stretch further than the crosshead
+    # travelled, because the crosshead moved the grips, the load train, the frame AND the
+    # specimen. Any sample claiming otherwise is measuring two separated halves, not
+    # material — so walk back to the last tracked sample that is physically possible.
+    #
+    # On S24 this alone would have caught it: 17.5 % of 80 mm is 14.04 mm of gauge stretch
+    # against 9.35 mm of total travel. analyze() was already REPORTING that as
+    # gauge_share = 150 %; nothing was acting on it.
+    test.sort(key=lambda d: d["t"])
+    dropped = 0
+    while len(test) > 1 and test[-1]["travel"] > 0 \
+            and (test[-1]["ec"] - ec0) * gauge > test[-1]["travel"]:
+        test.pop()
+        dropped += 1
+    last = test[-1]
     win = [d for d in test if 0.0005 <= d["ecz"] <= 0.004]
     E, c1, r1 = linfit([d["ecz"] for d in win], [d["sig"] for d in win])
     sy = next(d for d in test if E * (d["ecz"] - 0.002) + c1 >= d["sig"])
@@ -176,7 +219,7 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
         "dur": last["t"] - t0,
         "rate": (data[fr_i]["pos"] - data[mv_i]["pos"]) / (t_fr - t0) if (t_fr - t0) else 0.0,
         "uts_ec": uts["ecz"] * 100, "sy_ec": sy["ecz"] * 100, "c1": c1,
-        "curve": curve, "fr_i": fr_i, "mv_i": mv_i,
+        "curve": curve, "fr_i": fr_i, "mv_i": mv_i, "ef_backstepped": dropped,
     }
 
 

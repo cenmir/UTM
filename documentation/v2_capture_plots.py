@@ -78,7 +78,7 @@ i_coll = int(np.argmin(np.diff(F))) + 1                     # the load collapse
 i_last = int(np.where(valid & (t < t[i_coll - 1]))[0][-1])  # last honest DIC sample
 i_post = int(np.where(valid & (t > t[i_coll - 2]))[0][0])   # first sample after the halves parted
 ec = ecz                                                     # everything below plots zeroed strain
-ef_true, ef_rep = ec[i_last], r["ef"]
+ef_true, ef_rep = ec[i_last], 0.1755        # ef_rep = pre-fix analyze(), see EF_PREFIX below
 
 print(f"  true ef {ef_true*100:.2f} %  ·  reported {ef_rep*100:.1f} %  ·  "
       f"UTS {np.nanmax(sig):.2f} MPa")
@@ -208,7 +208,11 @@ fig, ax = plt.subplots(figsize=(9.0, 3.4))
 labels = ["UTS\n(MPa)", "σ_y\n(MPa)", "E\n(GPa)", "ε_f\n(%)", "Toughness\n(MJ/m³)"]
 mm = valid & (t <= t[i_last])
 tough_true = float(np.trapezoid(sig[mm], ec[mm]))
-rep = [r["uts"], r["sy"], r["E"], ef_rep * 100, r["tough"] / 1000]
+# The "as reported" column is what analyze() returned BEFORE the fracture-index fix. It has to be
+# stated literally, because analyze() now returns the corrected values for both — which would draw
+# two identical bars and quietly erase the finding this slide exists to show.
+EF_PREFIX, TOUGH_PREFIX = 17.55, 6.774          # pre-fix analyze(), commit 4f009eb
+rep = [r["uts"], r["sy"], r["E"], EF_PREFIX, TOUGH_PREFIX]
 cor = [r["uts"], r["sy"], r["E"], ef_true * 100, tough_true]
 x = np.arange(len(labels)); wd = 0.36
 ax.bar(x - wd / 2, rep, wd, label="As reported", color=RED)

@@ -39,6 +39,27 @@ def parse_ids(csv_path):
     return out
 
 
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _rel(csv_path):
+    """Store the CSV path relative to the repo root, forward-slashed.
+
+    Every row seeded by the CLI is relative ("Software/UTM_PyQt6/8.6.20 - .../x.csv"), but SF11's
+    auto-add hands `add()` whatever absolute path the app just saved to. Since rows are de-duplicated
+    by exact string match on "csv", an absolute row and a relative row for the SAME file are two
+    different rows — so re-scanning a folder would silently duplicate anything the app registered.
+    Relativising here fixes both halves at once, and keeps the registry portable between machines.
+    """
+    p = os.path.abspath(csv_path)
+    try:
+        if os.path.commonpath([p, REPO_ROOT]) == REPO_ROOT:
+            p = os.path.relpath(p, REPO_ROOT)
+    except ValueError:                       # different drive — keep it absolute
+        pass
+    return p.replace("\\", "/")
+
+
 def _record(csv_path, extra=None):
     """Build one registry record from a CSV (parsed ids + metadata + shared analysis)."""
     extra = extra or {}
@@ -54,7 +75,7 @@ def _record(csv_path, extra=None):
         except (ValueError, TypeError):
             pass
     rec = {
-        "csv": csv_path.replace("\\", "/"),
+        "csv": _rel(csv_path),
         "specimen": ids["specimen"], "test": ids["test"], "date": ids["date"] or meta.get("date"),
         "material": "PLA", "infill_pct": infill,
         "area_mm2": area, "gauge_mm": gauge, "comment": meta.get("comment"),
