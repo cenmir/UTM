@@ -4148,6 +4148,14 @@ class UTMApplication(QMainWindow):
             # while only 571 of 2135 rows held a reading, and nothing in the file said so. That
             # sparseness is what disabled the fracture detector's strain-jump guard and put
             # epsilon_f at 17.5 % instead of 7.4 %.
+            # WHICH STATE strain is measured from. Two runs analysed side by side are only
+            # comparable if they share this, and the difference is ~0.13 % of strain at a 300 N
+            # preload — small, but it lands straight on epsilon_f and toughness. The file has to
+            # carry it; nobody reconstructs a convention from memory six months later.
+            _after = self.px0_after_preload()
+            _pl = getattr(self, "_px0_load_N", None)
+            f.write(f"# DIC Px0 reference: {'AFTER preload' if _after else 'BEFORE preload'}"
+                    + (f" (captured at {_pl:.0f} N)" if _pl is not None else "") + "\n")
             _n = len(self.load_plot_dic_L_px)
             _cov = sum(1 for v in self.load_plot_dic_L_px if v > 100.0)
             if _n:
@@ -5137,6 +5145,21 @@ class UTMApplication(QMainWindow):
                            "chosen by hand under one set of LEDs.")
         act_cal.triggered.connect(self.on_autocalibrate_dic)
         cam_menu.addAction(act_cal)
+
+        # The strain-zero convention. A measurement decision, so it is set once, remembered, and
+        # written into every CSV header — not a habit that lives in whoever ran the test.
+        act_px0 = QAction("Zero strain AFTER preload", self, checkable=True)
+        act_px0.setChecked(self.px0_after_preload())
+        act_px0.setToolTip(
+            "OFF — Px₀ is frozen before preload, so strain covers every bit of deformation the "
+            "specimen saw.\n"
+            "ON  — Px₀ is frozen after preload, so strain starts from the seated state and the "
+            "preload stretch is excluded.\n\n"
+            "At 300 N on 80 mm² the two differ by roughly 0.13 % of strain, which lands directly "
+            "on ε_f and toughness. Do not mix conventions within a series.")
+        act_px0.toggled.connect(self.on_px0_convention_changed)
+        cam_menu.addAction(act_px0)
+        self.actPx0AfterPreload = act_px0
 
         act_man = QAction("Set parameters manually…", self)
         act_man.setToolTip("Type exposure, threshold and the blob gates yourself.\n"
@@ -6508,11 +6531,42 @@ class UTMApplication(QMainWindow):
         skip the dialog."""
         self.on_tare_dic(confirm=True)
 
+    def on_px0_convention_changed(self, on):
+        """Switching the strain-zero convention invalidates the Px₀ currently held, because that
+        one was frozen under the OTHER rule. Say so rather than letting the next test inherit it."""
+        self._remember("dic/px0_after_preload", bool(on))
+        where = "AFTER preload (seated state)" if on else "BEFORE preload (unloaded state)"
+        self.append_to_console(f"[DIC] Strain zero convention: {where}. Recorded in every CSV header.")
+        if self.camera_manager.initial_distance is not None:
+            self.append_to_console(
+                "[DIC] ⚠ The Px₀ currently held was frozen under the previous convention — "
+                "re-run Calibrate Px₀ before the next test, or its strain will not mean what the "
+                "header says.")
+
+    def px0_after_preload(self):
+        """Which state strain is measured FROM. A convention, not a preference.
+
+        BEFORE preload — zero at the as-mounted, near-unloaded specimen. Strain then covers every
+        bit of deformation the specimen ever saw, including what the preload put in.
+
+        AFTER preload — zero at the seated, preloaded state. Reproducible, and it starts from a
+        defined force rather than from however the specimen happened to sit in the grips; but the
+        preload stretch is excluded from every reading that follows.
+
+        Neither is wrong. Mixing them silently IS: at 300 N on 80 mm² the two differ by roughly
+        0.13 % of strain, which lands directly on epsilon_f and on toughness. So the choice is
+        explicit, it is remembered, and it is written into the CSV header of every test.
+        """
+        return self._recall_bool("dic/px0_after_preload", False)
+
     def _confirm_px0(self, load):
         """Ask before freezing the strain zero. This is the one click in the workflow whose TIMING
-        changes the numbers, so it is worth a question."""
+        changes the numbers, so it is worth a question — and the question depends on the convention
+        in force, because "300 N showing" is a mistake under one and the whole point of the other."""
         from PyQt6.QtWidgets import QMessageBox
-        hot = load > self.PX0_LOAD_WARN_N
+        after = self.px0_after_preload()
+        # "Wrong" means: not in the state this convention expects.
+        hot = (load <= self.PX0_LOAD_WARN_N) if after else (load > self.PX0_LOAD_WARN_N)
         msg = QMessageBox(self)
         msg.setIcon(QMessageBox.Icon.Warning if hot else QMessageBox.Icon.Question)
         msg.setWindowTitle("Calibrate Px₀")
@@ -6521,13 +6575,21 @@ class UTMApplication(QMainWindow):
                 "the ZERO of strain.\n\nConfirm that:\n"
                 "   •  the specimen is mounted in BOTH grips\n"
                 "   •  it is straight — not slack, not bowed\n"
-                "   •  preload has NOT been applied yet\n\n"
-                f"Load right now: {load:.1f} N")
-        if hot:
-            body += ("\n\n⚠  That is above %.0f N, so the specimen is already stretched. Anything "
-                     "already in it becomes invisible to every strain reading from here on — at "
-                     "300 N that is roughly 2500 µε. Release the load first unless you have a "
-                     "reason not to." % self.PX0_LOAD_WARN_N)
+                + ("   •  preload HAS been applied and settled\n" if after
+                   else "   •  preload has NOT been applied yet\n")
+                + f"\nConvention: zero strain at the {'PRELOADED' if after else 'UNLOADED'} state"
+                + f"\nLoad right now: {load:.1f} N")
+        if hot and after:
+            body += (f"\n\n⚠  This convention expects the preload to be ON, but the load is only "
+                     f"{load:.1f} N. Freezing here measures strain from the unloaded state instead "
+                     "— the opposite of what is set.")
+        elif hot:
+            area = getattr(self, "cross_sectional_area", 0.0) or 0.0
+            extra = f" — that is {load/area:.2f} MPa already in it" if area > 0 else ""
+            body += (f"\n\n⚠  That is above {self.PX0_LOAD_WARN_N:.0f} N, so the specimen is already "
+                     f"stretched{extra}. Anything already in it becomes invisible to every strain "
+                     "reading from here on. Release the load first, or switch the convention in "
+                     "Settings ▸ DIC camera setup.")
         msg.setInformativeText(body)
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
         msg.setDefaultButton(QMessageBox.StandardButton.Cancel if hot
@@ -6559,7 +6621,13 @@ class UTMApplication(QMainWindow):
         self.append_to_console(
             f"[DIC] Px₀ = {px0:.1f} px  (gauge {self.gauge_length:.1f} mm → "
             f"{self.camera_manager.px_per_mm:.2f} px/mm), captured at {load:.1f} N")
-        if load > self.PX0_LOAD_WARN_N:
+        if self.px0_after_preload():
+            area = getattr(self, "cross_sectional_area", 0.0) or 0.0
+            self.append_to_console(
+                f"[DIC] Convention: strain is measured from the PRELOADED state ({load:.0f} N"
+                + (f" = {load/area:.2f} MPa" if area > 0 else "") + "). The stretch already in the "
+                "specimen is excluded by design; the CSV header records this.")
+        elif load > self.PX0_LOAD_WARN_N:
             self.append_to_console(
                 f"[DIC] ⚠ Px₀ was captured under {load:.0f} N. Strain is measured from HERE, so the "
                 "stretch already in the specimen is excluded from every reading. Release the load, "
