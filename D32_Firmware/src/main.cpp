@@ -165,8 +165,9 @@ void ReportLoadCell(){
   if (readLoadCell){
     if ( millis() - delayTimeLoadCell >= 50 ) { // Max 20Hz, loadcell should report at 10Hz
       delayTimeLoadCell = millis();
-      Serial.print(force); Serial.print("\n");
-    }  
+      // Format: "force,mcu_timestamp_ms\n" — MCU timestamp is millis() at sample time
+      Serial.print(force); Serial.print(","); Serial.print(delayTimeLoadCell); Serial.print("\n");
+    }
   }
 }
 
