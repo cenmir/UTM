@@ -6575,8 +6575,14 @@ class UTMApplication(QMainWindow):
         Neither is wrong. Mixing them silently IS: at 300 N on 80 mm² the two differ by roughly
         0.13 % of strain, which lands directly on epsilon_f and on toughness. So the choice is
         explicit, it is remembered, and it is written into the CSV header of every test.
+
+        DEFAULTS TO AFTER-PRELOAD as of 2026-08-14 (from S25 onward). It starts strain from a
+        defined force rather than from however the specimen happened to sit in the grips, which is
+        the more reproducible of the two. S24 and everything before it were run BEFORE preload —
+        their headers say so, and the two are not directly comparable on ef or toughness without
+        accounting for the offset.
         """
-        return self._recall_bool("dic/px0_after_preload", False)
+        return self._recall_bool("dic/px0_after_preload", True)
 
     def _confirm_px0(self, load):
         """Ask before freezing the strain zero. This is the one click in the workflow whose TIMING
