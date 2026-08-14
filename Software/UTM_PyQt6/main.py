@@ -970,6 +970,7 @@ class UTMApplication(QMainWindow):
         self.startCameraButtonLP.clicked.connect(self.on_start_camera)
         self.stopCameraButtonLP.clicked.connect(self.on_stop_camera)
         self.tareDICButtonLP.clicked.connect(self.on_calibrate_px0)
+        self.tareDICAliasButtonLP.clicked.connect(self.on_calibrate_px0)
         self.specimenModeComboLP.currentTextChanged.connect(self.on_specimen_mode_changed)
 
         # Added camera state variables 
@@ -6023,13 +6024,20 @@ class UTMApplication(QMainWindow):
         self.startCameraButtonLP = QPushButton("Start Camera")
         self.stopCameraButtonLP = QPushButton("Stop Camera")
         self.tareDICButtonLP = QPushButton("Calibrate Px₀")
+        # Same alias as the Stress/Strain tab — one handler, no second owner of Px₀. The Load Plot
+        # tab has its own camera row precisely so a whole test can be run without leaving it, so it
+        # needs the same pair of names.
+        self.tareDICAliasButtonLP = QPushButton("Tare DIC")
+        self.tareDICAliasButtonLP.setToolTip(self.TARE_ALIAS_TIP)
         self.stopCameraButtonLP.setEnabled(False)
         self.tareDICButtonLP.setEnabled(False)
+        self.tareDICAliasButtonLP.setEnabled(False)
         btn_row.addWidget(QLabel("Specimen:"))
         btn_row.addWidget(self.specimenModeComboLP)
         btn_row.addWidget(self.startCameraButtonLP)
         btn_row.addWidget(self.stopCameraButtonLP)
         btn_row.addWidget(self.tareDICButtonLP)
+        btn_row.addWidget(self.tareDICAliasButtonLP)
         lay.addLayout(btn_row)
 
         info_row = QHBoxLayout()
@@ -6308,6 +6316,12 @@ class UTMApplication(QMainWindow):
         if len(self._dic_blob_history) > 60:
             del self._dic_blob_history[:-60]
 
+    # One definition for both tabs. The Load Plot camera monitor is built BEFORE the Stress/Strain
+    # camera group, so the LP button cannot read this off the other button.
+    TARE_ALIAS_TIP = ("The same operation as Calibrate Px₀ — freezes the pixel reference that DIC "
+                      "strain is measured against.\nKept under its older name because that is what "
+                      "it is called in the protocol sheets.")
+
     MARGIN_EVERY_S = 2.0        # contrast-margin recompute interval — see _update_dic_health
 
     def _update_dic_health(self):
@@ -6427,7 +6441,9 @@ class UTMApplication(QMainWindow):
                 start.setEnabled(not running)
         for w in (self.stopCameraButton, self.tareDICButton,
                   getattr(self, "tareDICAliasButton", None),
-                  getattr(self, "stopCameraButtonLP", None), getattr(self, "tareDICButtonLP", None)):
+                  getattr(self, "stopCameraButtonLP", None),
+                  getattr(self, "tareDICButtonLP", None),
+                  getattr(self, "tareDICAliasButtonLP", None)):
             if w is not None:
                 w.setEnabled(running)
         for combo in (self.specimenModeCombo, getattr(self, "specimenModeComboLP", None)):
