@@ -863,6 +863,7 @@ class UTMApplication(QMainWindow):
 
         # Right panel - Position and incremental move
         self.tareLocationButton.clicked.connect(self.on_tare_location)
+        self._add_return_zero_button()
         self.moveUpButton.clicked.connect(self.on_move_up)
         self.moveDownButton.clicked.connect(self.on_move_down)
 
@@ -1953,6 +1954,8 @@ class UTMApplication(QMainWindow):
         # Position group - enabled only when connected
         self.displacementLabel.setEnabled(connected)
         self.tareLocationButton.setEnabled(connected)
+        if getattr(self, 'returnZeroButton', None) is not None:
+            self.returnZeroButton.setEnabled(connected)
 
         # Incremental Move group - enabled when connected AND motors enabled
         self.moveUpButton.setEnabled(direction_enabled)
@@ -2222,6 +2225,10 @@ class UTMApplication(QMainWindow):
         if getattr(self, '_release_active', False):
             self._release_active = False
             self._restore_release_buttons()
+        if getattr(self, '_return_active', False):
+            self._return_active = False
+            if getattr(self, 'returnZeroButton', None) is not None:
+                self.returnZeroButton.setText("Return to 0 mm")
         if getattr(self, 'active_policy', None) is not None:
             self.active_policy = None                       # manual takeover ends any test-mode policy
             if getattr(self, '_policy_button', None) is not None:
@@ -2486,6 +2493,158 @@ class UTMApplication(QMainWindow):
             self.preloadButton.setText("Preload tension")
         if getattr(self, 'preloadTargetSpinBox', None) is not None:
             self.preloadTargetSpinBox.setEnabled(True)
+
+    # ---- Return the crosshead to the tared zero, ready for the next specimen ----------------
+    #
+    # After a fracture the crosshead sits wherever the pull ended (~9-10 mm), and getting back to
+    # the mounting position meant nudging it by hand with the incremental controls. This drives it
+    # to δ = 0 and stops there.
+    #
+    # It is a REPOSITIONING move, not a measurement, so it runs faster than a test — but it is
+    # still a motor command with a specimen possibly in the grips, so it carries the same shape of
+    # safety net as preload and release: a load ceiling that both gates the start and aborts mid-
+    # move, a timeout, and a taper so it does not overshoot the target it is driving at.
+    RETURN_SPEED_MM_S = 0.50        # brisk approach
+    RETURN_SLOW_MM = 0.60           # taper inside this distance from zero
+    RETURN_SLOW_SPEED_MM_S = 0.10
+    RETURN_TOL_MM = 0.05            # "arrived"
+    RETURN_MAX_LOAD_N = 60.0        # refuse to start, and abort, above this
+    RETURN_TIMEOUT_S = 240
+
+    def _add_return_zero_button(self):
+        """Put 'Return to 0 mm' directly under Tare Location, inside the Crosshead position box.
+
+        It belongs beside the δ readout it acts on, not in the motor-control column: the two
+        buttons are the pair of things you do to that number — redefine zero, or go back to it.
+        """
+        from PyQt6.QtWidgets import QPushButton
+        self.returnZeroButton = QPushButton("Return to 0 mm")
+        self.returnZeroButton.setToolTip(
+            "Drive the crosshead back to δ = 0 — the mounting position for the next specimen.\n"
+            "Slows near the target and stops within 0.05 mm.\n"
+            f"Refuses to start, and aborts, above {self.RETURN_MAX_LOAD_N:.0f} N, so it cannot "
+            "drive against a specimen that is still gripped. Press again to cancel.")
+        self.returnZeroButton.clicked.connect(self.on_return_to_zero)
+        self.returnZeroButton.setEnabled(False)
+        lay = self.positionGroup.layout()
+        if lay is not None:
+            lay.addWidget(self.returnZeroButton)
+        else:                                   # .ui uses absolute geometry in this group
+            g = self.tareLocationButton.geometry()
+            self.returnZeroButton.setParent(self.positionGroup)
+            self.returnZeroButton.setGeometry(g.x(), g.y() + g.height() + 4, g.width(), g.height())
+            self.positionGroup.setMinimumHeight(g.y() + 2 * g.height() + 14)
+            self.returnZeroButton.show()
+
+    def on_return_to_zero(self):
+        """Drive the crosshead back to δ = 0. Cancels if pressed again while running."""
+        from PyQt6.QtWidgets import QMessageBox
+        if getattr(self, "_return_active", False):
+            self._stop_return("cancelled by user"); return
+        if not self.connected:
+            self.append_to_console("[Return] Not connected — cannot move."); return
+        if not self.motorsSwitch.isChecked():
+            self.append_to_console("[Return] Enable motors first."); return
+        if self.preload_active or getattr(self, "_release_active", False) \
+                or getattr(self, "active_policy", None) is not None:
+            self.append_to_console("[Return] Finish the preload / release / test mode first."); return
+
+        d = self.motor_displacement_mm
+        if abs(d) <= self.RETURN_TOL_MM:
+            self.append_to_console(f"[Return] Already at δ = {d:+.3f} mm — nothing to do."); return
+
+        # A specimen still carrying load is the case this must not blunder into: driving toward
+        # zero would compress or snap it. Refuse, and say which button fixes it.
+        load = abs(self.current_load or 0.0)
+        if load > self.RETURN_MAX_LOAD_N:
+            self.append_to_console(
+                f"[Return] Load is {load:.0f} N — release it first (Release fully), otherwise "
+                "driving back to zero would push against a specimen that is still gripped.")
+            QMessageBox.warning(self, "Return to zero",
+                                f"Load is {load:.0f} N.\n\nRelease the load first — returning to "
+                                "zero now would drive the crosshead against a loaded specimen.")
+            return
+
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setWindowTitle("Return to zero")
+        msg.setText(f"Drive the crosshead from δ = {d:+.3f} mm back to 0?")
+        msg.setInformativeText(
+            f"It will move {abs(d):.2f} mm at {self.RETURN_SPEED_MM_S:.2f} mm/s, slowing near the "
+            f"end, and stop within {self.RETURN_TOL_MM:.2f} mm.\n\n"
+            f"Aborts on its own if the load exceeds {self.RETURN_MAX_LOAD_N:.0f} N. "
+            "Press Stop / E-Stop at any time.")
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setDefaultButton(QMessageBox.StandardButton.Yes)
+        if msg.exec() != QMessageBox.StandardButton.Yes:
+            self.append_to_console("[Return] cancelled."); return
+
+        import time
+        self._return_active = True
+        self._return_start_t = time.monotonic()
+        self._return_start_d = d
+        self._return_last_log = 0.0
+        self._return_speed = None
+        # Positive δ means the crosshead travelled in TENSION, so coming back is the release
+        # direction — the same latch the release loop uses. Negative δ is the mirror.
+        btn = self.downRadioButton if d > 0 else self.upRadioButton
+        cmd = "Up" if d > 0 else "Down"
+        btn.blockSignals(True); btn.setChecked(True); btn.blockSignals(False)
+        self._return_cmd = cmd
+        self._set_return_speed(self.RETURN_SPEED_MM_S)
+        self.serial_manager.send_command(cmd)
+        self._start_movement_grace_period()
+        self.returnZeroButton.setText("Cancel return")
+        self.append_to_console(f"[Return] driving from δ = {d:+.3f} mm to 0 "
+                               f"at {self.RETURN_SPEED_MM_S:.2f} mm/s ...")
+        self.set_status("Returning crosshead to zero ...")
+
+    def _set_return_speed(self, mm_s):
+        """Only re-send SetSpeed when it actually changes — the taper would otherwise spam it."""
+        if self._return_speed is not None and abs(self._return_speed - mm_s) < 1e-6:
+            return
+        self._return_speed = mm_s
+        self.serial_manager.send_command(f"SetSpeed {self._fw_speed(mm_s)}")
+
+    def _return_check(self):
+        """Live loop: taper near zero, stop on arrival, and bail out on load / timeout."""
+        import time
+        d = self.motor_displacement_mm
+        load = abs(self.current_load or 0.0)
+
+        if load > self.RETURN_MAX_LOAD_N:
+            if self.connected:
+                self.serial_manager.send_command("Stop")
+            self._stop_return(f"SAFETY — load reached {load:.0f} N; something is in the grips",
+                              warn=True)
+            return
+        if time.monotonic() - self._return_start_t > self.RETURN_TIMEOUT_S:
+            self._stop_return("timed out", warn=True); return
+        # Overshoot past zero counts as arrived: the sign of δ flipped, so continuing would drive
+        # away from the target rather than toward it.
+        if abs(d) <= self.RETURN_TOL_MM or (d * self._return_start_d) < 0:
+            self._stop_return(f"at δ = {d:+.3f} mm — ready for the next specimen")
+            return
+        self._set_return_speed(self.RETURN_SLOW_SPEED_MM_S if abs(d) <= self.RETURN_SLOW_MM
+                               else self.RETURN_SPEED_MM_S)
+        now = time.monotonic()
+        if now - self._return_last_log >= 1.0:
+            self._return_last_log = now
+            self.append_to_console(f"[Return] δ = {d:+.3f} mm  ->  0")
+
+    def _stop_return(self, message, warn=False):
+        self._return_active = False
+        self.stopRadioButton.blockSignals(True); self.stopRadioButton.setChecked(True)
+        self.stopRadioButton.blockSignals(False)
+        self.movement_start_grace_period = False
+        if getattr(self, "grace_period_timer", None) is not None:
+            self.grace_period_timer.stop()
+        if self.connected:
+            self.serial_manager.send_command("Stop")
+        if getattr(self, "returnZeroButton", None) is not None:
+            self.returnZeroButton.setText("Return to 0 mm")
+        self.append_to_console(f"[Return] {message}")
+        self.set_status(f"Return to zero: {message}", is_warning=warn)
 
     # ---- Release preload: back off the tension so you can preload again ----
     def on_release_to_preload(self):
@@ -3693,6 +3852,9 @@ class UTMApplication(QMainWindow):
         self.active_policy = None                           # EStop also kills any closed-loop test mode
         self._release_active = False
         self._restore_release_buttons()
+        self._return_active = False
+        if getattr(self, 'returnZeroButton', None) is not None:
+            self.returnZeroButton.setText("Return to 0 mm")
         self.set_status("⚠ EMERGENCY STOP - Motors halted", is_warning=True)
         if self.connected:
             self.serial_manager.send_command("EStop")
@@ -4355,6 +4517,8 @@ class UTMApplication(QMainWindow):
             self._preload_check()
         elif getattr(self, '_release_active', False):
             self._release_check()
+        elif getattr(self, '_return_active', False):
+            self._return_check()
         elif getattr(self, 'active_policy', None) is not None:
             self._policy_step()
         elif (getattr(self, 'autoStopFractureCheck', None) is not None and self.autoStopFractureCheck.isChecked()
