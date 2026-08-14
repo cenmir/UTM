@@ -4942,13 +4942,30 @@ class UTMApplication(QMainWindow):
             # Load Data is positioned by absolute geometry from the .ui — rows at y = 100 and 130
             # in a box fixed at 190 px, so there is room for ONE more row and two are needed. Give
             # it a real QFormLayout and migrate the existing pairs in, so it sizes itself from here.
-            rows = sorted((c for c in group.findChildren(QLabel) if c.parentWidget() is group),
-                          key=lambda c: (c.y(), c.x()))
+            #
+            # Collect by DESCENDANT, not direct child, and sort on the position mapped INTO the
+            # group. Qt Designer wraps a nested layout in an unnamed "layoutWidget", so Current Load
+            # is a grandchild: a direct-children scan silently left that pair absolutely positioned
+            # and it floated on top of the migrated rows.
+            labels = [c for c in group.findChildren(QLabel)]
+            labels.sort(key=lambda c: (c.mapTo(group, c.rect().topLeft()).y(),
+                                       c.mapTo(group, c.rect().topLeft()).x()))
+            wrappers = {c.parentWidget() for c in labels if c.parentWidget() is not group}
             lay = QFormLayout(group)
-            lay.setContentsMargins(8, 4, 8, 4)
-            lay.setSpacing(4)
-            for i in range(0, len(rows) - 1, 2):
-                lay.addRow(rows[i], rows[i + 1])
+            lay.setContentsMargins(10, 6, 10, 6)
+            lay.setHorizontalSpacing(10)
+            lay.setVerticalSpacing(5)
+            lay.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            lay.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+            for i in range(0, len(labels) - 1, 2):
+                for c in (labels[i], labels[i + 1]):
+                    c.setParent(group)              # out of the wrapper, into the group
+                    c.setMinimumSize(0, 0)
+                    c.setMaximumSize(16777215, 16777215)
+                lay.addRow(labels[i], labels[i + 1])
+            for wdg in wrappers:                    # the emptied Designer wrappers
+                wdg.setParent(None)
+                wdg.deleteLater()
         for caption, attr, colour in fields:
             cap = QLabel(caption)
             cap.setStyleSheet("color:#8a8f98;")
