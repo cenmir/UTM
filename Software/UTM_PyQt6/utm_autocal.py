@@ -82,9 +82,12 @@ def frame_score(frame, threshold, thresh_type=cv2.THRESH_BINARY_INV,
 
     # Contrast margin: how far marker and background grey levels sit from the cut. Sampled from the
     # mask itself rather than assumed, so it works for either polarity.
-    mask = binary > 0
-    fg = float(frame[mask].mean()) if mask.any() else used
-    bg = float(frame[~mask].mean()) if (~mask).any() else used
+    #
+    # cv2.mean with a mask, NOT frame[mask].mean(): boolean indexing copies the selected pixels into
+    # a new array, which on a 1 MP frame costs milliseconds and allocates every call. This runs at
+    # 2 Hz on the GUI thread to drive the health badge, so it has to be cheap.
+    fg = cv2.mean(frame, mask=binary)[0]
+    bg = cv2.mean(frame, mask=cv2.bitwise_not(binary))[0]
     margin = min(abs(fg - used), abs(bg - used))
     out["contrast"] = float(np.clip((margin - MIN_MARGIN) / (GOOD_MARGIN - MIN_MARGIN), 0, 1))
     out["margin"] = margin

@@ -16,6 +16,7 @@ import sys
 import time            # module-level: _live_blob_count/_on_dic_blobs need it at signal time
 import math            # DIC overlay geometry (dashed line / marker travel)
 import os              # capture folder paths
+from utm_autocal import MIN_MARGIN as _AC_MIN_MARGIN   # "fragile" line for the DIC health badge
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QProgressDialog, QVBoxLayout, QFileDialog
 from PyQt6.QtCore import QTimer, Qt, QSize
@@ -4795,81 +4796,45 @@ class UTMApplication(QMainWindow):
         from PyQt6.QtGui import QAction
         menu = self.menuBar().addMenu("&Settings")
 
-        cap_hdr = QAction("Auto-save PNG frames with each test", self, checkable=True)
-        cap_hdr.setToolTip("Start saving stills automatically when a test starts.\n"
-                           "Every grabbed frame as a lossless PNG (~1.9 GB per minute at 35 fps in "
-                           "Raw, ~0.08 GB/min in Speckle only), plus index.csv mapping each file to "
-                           "its timestamp.\nThe CAP button on the camera feed starts it by hand.")
-        cap_hdr.toggled.connect(self._on_capture_armed)
-        menu.addAction(cap_hdr)
-        self.actCaptureArm = cap_hdr
-        self.actCaptureStart = QAction("      Start capturing now", self)
-        self.actCaptureStart.triggered.connect(lambda: self._capture_start(png=True, manual=True))
-        self.actCaptureStop = QAction("      Stop capturing", self)
-        self.actCaptureStop.triggered.connect(lambda: self._capture_stop(png=True))
-        menu.addAction(self.actCaptureStart)
-        menu.addAction(self.actCaptureStop)
+        # ONE dialog instead of two enable ticks plus two view submenus. The menu form could not
+        # answer the question that actually matters -- how much disk this will eat -- because the
+        # answer depended on six checkboxes across two submenus and nothing added them up.
+        act_setup = QAction("Capture setup…", self)
+        act_setup.setToolTip("What to record (stills, video, and which views of each), where it "
+                             "goes, and what it costs per minute of test.")
+        act_setup.triggered.connect(self.on_capture_setup)
+        menu.addAction(act_setup)
 
-        menu.addSeparator()
-
-        rec_hdr = QAction("Auto-record AVI video with each test", self, checkable=True)
-        rec_hdr.setToolTip("Start recording automatically when a test starts.\n"
-                           "One AVI, MJPG-encoded (~0.6 GB per minute at 35 fps in Raw, ~0.2 in "
-                           "Speckle only). Intra-frame, so extensometer software can seek it.\n"
-                           "The REC button on the camera feed starts it by hand.")
-        rec_hdr.toggled.connect(self._on_record_armed)
-        menu.addAction(rec_hdr)
-        self.actRecordArm = rec_hdr
-        self.actRecordStart = QAction("      Start recording now", self)
-        self.actRecordStart.triggered.connect(lambda: self._capture_start(video=True, manual=True))
-        self.actRecordStop = QAction("      Stop recording", self)
-        self.actRecordStop.triggered.connect(lambda: self._capture_stop(video=True))
-        menu.addAction(self.actRecordStart)
-        menu.addAction(self.actRecordStop)
-
-        menu.addSeparator()
-        # What gets written. Applies to BOTH sinks — a run should not have stills and video
-        # disagreeing about what the specimen looked like.
-        from PyQt6.QtGui import QActionGroup
-        import utm_capture as _cap
-        MAKERS = (("raw", _cap.style_raw), ("speckle", _cap.style_speckle),
-                  ("boost", _cap.style_boost))
-
-        # TWO SEPARATE SUBMENUS, not one menu with section headings. QMenu.addSection() degrades to
-        # a bare separator on the Windows style, so the headings never drew and the same three
-        # views appeared twice with nothing to say which set was which. A submenu title always
-        # renders, so the distinction cannot be lost to a style.
-        #
-        # VIDEO is multi-select: raw and speckle answer different questions -- archival record vs
-        # marker motion at a glance -- so recording both at once is the normal case. Each gets its
-        # own file and its own worker.
-        vid_menu = menu.addMenu("Video views  (multi-select)")
-        vid_menu.setToolTipsVisible(True)
-        self._vidStyleActions = {}
-        for key, maker in MAKERS:
-            proto = maker()
-            act = QAction(f"{proto.label}   ~{proto.gb_per_min():.2f} GB/min", self, checkable=True)
-            act.setToolTip(proto.note)
-            act.toggled.connect(self._sync_video_styles)
-            vid_menu.addAction(act)
-            self._vidStyleActions[key] = act
-        self._vidStyleActions["raw"].setChecked(True)
-
-        # STILLS are also multi-select, but they are the EXPENSIVE sink: a second raw view is
-        # another ~1.9 GB/min, where a second video view is ~0.3. Picking more than one therefore
-        # goes through a confirmation that states the size in GB for a one-minute test.
-        png_menu = menu.addMenu("PNG stills  (multi-select)")
-        png_menu.setToolTipsVisible(True)
-        self._styleActions = {}
-        for key, maker in MAKERS:
-            proto = maker()
-            act = QAction(f"{proto.label}   ~{proto.gb_per_min(png=True):.2f} GB/min",
-                          self, checkable=True)
-            act.setToolTip(proto.note)
-            act.toggled.connect(self._sync_png_styles)
-            png_menu.addAction(act)
-            self._styleActions[key] = act
+        # The arm flags and the view lists are now owned by that dialog. They stay as QActions so
+        # every existing path -- _capture_autostart, _capture_sync_menu, the suites -- is unchanged;
+        # they are simply not shown in the menu any more.
+        self.actCaptureArm = QAction("armed: PNG stills", self, checkable=True)
+        self.actRecordArm = QAction("armed: AVI video", self, checkable=True)
+        self.actCaptureArm.toggled.connect(self._on_capture_armed)
+        self.actRecordArm.toggled.connect(self._on_record_armed)
+        self._styleActions = {k: QAction(k, self, checkable=True) for k in ("raw", "speckle", "boost")}
+        self._vidStyleActions = {k: QAction(k, self, checkable=True) for k in ("raw", "speckle", "boost")}
         self._styleActions["raw"].setChecked(True)
+        self._vidStyleActions["raw"].setChecked(True)
+        # Still wired to the sync handlers: the dialog is the visible route, but these remain the
+        # single place the view lists are derived from, so setting one anywhere stays truthful.
+        for a in self._styleActions.values():
+            a.toggled.connect(self._sync_png_styles)
+        for a in self._vidStyleActions.values():
+            a.toggled.connect(self._sync_video_styles)
+
+        self.actCaptureStart = QAction("Start capturing now", self)
+        self.actCaptureStart.triggered.connect(lambda: self._capture_start(png=True, manual=True))
+        self.actCaptureStop = QAction("Stop capturing", self)
+        self.actCaptureStop.triggered.connect(lambda: self._capture_stop(png=True))
+        self.actRecordStart = QAction("Start recording now", self)
+        self.actRecordStart.triggered.connect(lambda: self._capture_start(video=True, manual=True))
+        self.actRecordStop = QAction("Stop recording", self)
+        self.actRecordStop.triggered.connect(lambda: self._capture_stop(video=True))
+        for a in (self.actCaptureStart, self.actCaptureStop,
+                  self.actRecordStart, self.actRecordStop):
+            menu.addAction(a)
+
 
         menu.addSeparator()
         # Two ways to set the camera up, both ending in the same place. Kept as two ACTIONS rather
@@ -4944,7 +4909,7 @@ class UTMApplication(QMainWindow):
         pw = str(self._recall("capture/png_styles", "raw") or "raw").split(",")
         for k, a in self._styleActions.items():
             a.blockSignals(True); a.setChecked(k in pw); a.blockSignals(False)
-        self._sync_png_styles()
+        self._sync_png_styles(confirm=False)     # restore, not a new decision — see the docstring
         want = str(self._recall("capture/video_styles", "raw") or "raw").split(",")
         for k, a in self._vidStyleActions.items():
             a.blockSignals(True); a.setChecked(k in want); a.blockSignals(False)
@@ -5000,12 +4965,16 @@ class UTMApplication(QMainWindow):
 
     TEST_MIN_FOR_ESTIMATE = 1.0          # the warning is quoted per minute of test
 
-    def _sync_png_styles(self, *_):
+    def _sync_png_styles(self, *_, confirm=True):
         """Turn the stills tick-boxes into the list of frame folders the next capture writes.
 
         Selecting a SECOND view is confirmed, because stills are where the disk actually goes: a
         second raw view is another ~1.9 GB/min against ~0.3 for a second video view. The dialog
         quotes GB for a one-minute test, which is the length of a real fracture pull.
+
+        `confirm=False` for the STARTUP restore. Re-selecting what the operator already agreed to
+        last session is not a new decision, and raising a modal during __init__ hangs the app before
+        there is a window to show it against — which is exactly what it did.
         """
         keys = [k for k, a in self._styleActions.items() if a.isChecked()]
         if not keys:
@@ -5015,7 +4984,7 @@ class UTMApplication(QMainWindow):
             keys = ["raw"]
         styles = [self._make_style(k) for k in keys]
 
-        if len(styles) > 1 and not self._confirm_png_multi(styles):
+        if confirm and len(styles) > 1 and not self._confirm_png_multi(styles):
             # Declined: drop back to the single view that was already in effect.
             keep = (self.capture.png_styles[0].key if self.capture.png_styles else "raw")
             for k, a in self._styleActions.items():
@@ -5060,6 +5029,40 @@ class UTMApplication(QMainWindow):
         box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
         box.setDefaultButton(QMessageBox.StandardButton.Cancel)
         return box.exec() == QMessageBox.StandardButton.Yes
+
+    def on_capture_setup(self):
+        """One panel: what to record, in what views, where, and the running disk total."""
+        from PyQt6.QtWidgets import QDialog
+        from utm_capdlg import CaptureSetupDialog
+        if self.capture.active:
+            self.append_to_console("[Capture] Stop the current capture before changing setup.")
+            return
+        dlg = CaptureSetupDialog(self.capture, self._make_style, self,
+                                 armed=(self.actCaptureArm.isChecked(),
+                                        self.actRecordArm.isChecked()))
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        png_on, avi_on = dlg.apply_to(self.capture)
+        self._remember("capture/root", self.capture.root)
+        self._remember("capture/png_styles", ",".join(s.key for s in self.capture.png_styles))
+        self._remember("capture/video_styles", ",".join(s.key for s in self.capture.video_styles))
+        for act, on in ((self.actCaptureArm, png_on), (self.actRecordArm, avi_on)):
+            act.blockSignals(True); act.setChecked(on); act.blockSignals(False)
+        # Mirror onto the hidden view actions so anything still reading them stays truthful.
+        for acts, styles in ((self._styleActions, self.capture.png_styles),
+                             (self._vidStyleActions, self.capture.video_styles)):
+            keys = {s.key for s in styles}
+            for k, a in acts.items():
+                a.blockSignals(True); a.setChecked(k in keys); a.blockSignals(False)
+        gb = (sum(s.gb_per_min(png=True) for s in self.capture.png_styles) if png_on else 0) + \
+             (sum(s.gb_per_min() for s in self.capture.video_styles) if avi_on else 0)
+        self.append_to_console(
+            f"[Capture] stills: {'+'.join(s.key for s in self.capture.png_styles)}"
+            f"{' (armed)' if png_on else ' (off)'}  ·  "
+            f"video: {'+'.join(s.key for s in self.capture.video_styles)}"
+            f"{' (armed)' if avi_on else ' (off)'}  ·  ~{gb:.2f} GB per minute of test")
+        self.append_to_console(f"[Capture] folder: {self.capture.root}")
+        self._capture_sync_menu()
 
     def _on_capture_armed(self, on):
         self.append_to_console(
@@ -5975,6 +5978,8 @@ class UTMApplication(QMainWindow):
         if len(self._dic_blob_history) > 60:
             del self._dic_blob_history[:-60]
 
+    MARGIN_EVERY_S = 2.0        # contrast-margin recompute interval — see _update_dic_health
+
     def _update_dic_health(self):
         """Refresh the live DIC health badge (~2 Hz timer)."""
         # Same 2 Hz tick drives the CAP/REC chips — that is a camera-style blink rate already, and
@@ -6003,10 +6008,48 @@ class UTMApplication(QMainWindow):
                        current_blobs=self._dic_blob_count,
                        expected_markers=getattr(self, "_expected_markers", 2))
         txt = health_text(h)
-        style = f"font-weight: bold; padding: 1px 6px; border-radius: 6px; color: white; background: {h['color']};"
+        colour = h["color"]
+        # CONTRAST MARGIN — the one thing the existing badge could not see. Tracking %, marker count
+        # and jitter all report whether it is working NOW; margin reports how close it is to not
+        # working, which is what you want to know BEFORE the pull rather than after. A frame can sit
+        # at a confident 2/2 with the markers 9 grey levels from the cut and lose them on a flicker.
+        #
+        # Auto-calibration deliberately never runs by itself, so this is how the operator finds out
+        # that it is worth running.
+        # Scoring costs ~4 ms, and this badge refreshes at 2 Hz — enough of a periodic hitch to show
+        # up in the GUI-latency check. Margin is a property of the LIGHTING, which moves over
+        # seconds to minutes, so it is recomputed every MARGIN_EVERY_S and cached in between.
+        tip = ""
+        now = time.monotonic()
+        frame = getattr(cm, "latest_frame", None)
+        if frame is not None and h.get("blobs") != 0 and \
+                now - getattr(self, "_margin_t", 0.0) >= self.MARGIN_EVERY_S:
+            self._margin_t = now
+            try:
+                import utm_autocal as _ac
+                m = _ac.frame_score(frame, cm.THRESHOLD, cm.THRESHOLD_TYPE,
+                                    min_area=cm.MIN_AREA, max_area=cm.MAX_AREA,
+                                    min_circ=cm.MIN_CIRCULARITY)
+                self._margin = m.get("margin") if m["n_blobs"] == 2 else None
+            except Exception:
+                self._margin = None
+        margin = getattr(self, "_margin", None)
+        if margin is not None:
+            txt += f" · margin {margin:.0f}"
+            if margin < _AC_MIN_MARGIN:
+                # Downgrade a green badge: it IS tracking, which is exactly why this is worth
+                # saying — nothing else on screen would tell you it is about to stop.
+                colour = "#d29922"
+                txt = txt.replace("DIC OK", "DIC FRAGILE")
+                tip = (f"\n\n⚠ Markers are only {margin:.0f} grey levels from the threshold. "
+                       "Tracking now, but one lighting flicker from losing them.\n"
+                       "Settings ▸ DIC camera setup ▸ Auto-calibrate… would fix this.")
+        style = f"font-weight: bold; padding: 1px 6px; border-radius: 6px; color: white; background: {colour};"
         for b in badges:
             if b is not None:
                 b.setText(txt); b.setStyleSheet(style)
+                b.setToolTip("Live DIC tracking health: markers found / % of recent frames tracked "
+                             "/ pixel jitter / contrast margin in grey levels." + tip)
 
     def update_dic_strain_label(self, cauchy, true_strain):
         self.latest_dic_cauchy = cauchy
