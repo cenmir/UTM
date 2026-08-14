@@ -60,6 +60,14 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
   (9 → 25 → 50 ms against a true 60 ms, score 0.00 → 0.92).
   ⚠️ **Session-only** — the preset in `camera_manager.py` is untouched, so a restart returns to the
   hand-set values. Refuses to run mid-capture (would put mixed settings in one recording).
+  **Two routes, `Settings ▸ DIC camera setup`:** *Auto-calibrate…* (the sweep) and *Set parameters
+  manually…* — a dialog for exposure / threshold / Otsu / area gates / circularity with a **live
+  trackability readout** that re-scores the current frame on every keystroke, so you can see whether
+  a value tracks before committing. Exposure is pushed to the sensor as you drag it (the feed
+  reacts), which is exactly why Cancel restores it. Typing numbers blind is how the preset came to
+  be wrong in the first place. Kept as two ACTIONS rather than a Manual/Auto radio pair: a mode
+  whose only effect is to open a dialog is not a mode, and a stale radio would claim a state the
+  camera is not in.
   Live parameters now show in the **DIC Camera group titles** (`exp 50.0 ms · thr 150 · 35 fps ·
   419×2348 · mean 171`) — free real estate, since the info row is full and the page has ~11 px of
   vertical headroom. Otsu presets read `thr auto (Otsu)`, not a misleading `thr 0`.

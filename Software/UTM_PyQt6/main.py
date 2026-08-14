@@ -4598,9 +4598,9 @@ class UTMApplication(QMainWindow):
         import utm_autocal as AC
         cm = self.camera_manager
         if getattr(cm, "camera", None) is None:
-            self.append_to_console("[Auto-cal] Start the camera first."); return
+            self.append_to_console("[Camera auto-cal] Start the camera first."); return
         if self.capture.active:
-            self.append_to_console("[Auto-cal] Stop the capture first — this changes exposure "
+            self.append_to_console("[Camera auto-cal] Stop the capture first — this changes exposure "
                                    "mid-stream and would put mixed settings in one recording.")
             return
 
@@ -4647,7 +4647,7 @@ class UTMApplication(QMainWindow):
         win, table = AC.pick_best(samples)
         if not win:
             cm.set_exposure(start_exp)
-            self.append_to_console("[Auto-cal] No setting tracked both markers. Check the "
+            self.append_to_console("[Camera auto-cal] No setting tracked both markers. Check the "
                                    "specimen is in frame and the markers are not obscured, then "
                                    "retry.")
             QMessageBox.warning(self, "DIC auto-calibration",
@@ -4685,20 +4685,43 @@ class UTMApplication(QMainWindow):
         box.setDefaultButton(QMessageBox.StandardButton.Apply)
         if box.exec() != QMessageBox.StandardButton.Apply:
             cm.set_exposure(start_exp)
-            self.append_to_console("[Auto-cal] cancelled — exposure and threshold unchanged.")
+            self.append_to_console("[Camera auto-cal] cancelled — exposure and threshold unchanged.")
             return
 
         cm.set_exposure(new_exp)
         cm.THRESHOLD = new_thr
         self.append_to_console(
-            f"[Auto-cal] applied: exposure {start_exp/1000:.1f} → {new_exp/1000:.1f} ms, "
+            f"[Camera auto-cal] applied: exposure {start_exp/1000:.1f} → {new_exp/1000:.1f} ms, "
             f"threshold {start_thr:.0f} → {new_thr:.0f}  "
             f"(detect {win['detect_rate']*100:.0f} %, contrast {win['contrast']:.2f})")
         if at_edge:
-            self.append_to_console("[Auto-cal] ⚠ best value was at the EDGE of the swept range — "
+            self.append_to_console("[Camera auto-cal] ⚠ best value was at the EDGE of the swept range — "
                                    "run auto-calibrate again to reach the true optimum.")
-        self.append_to_console("[Auto-cal] this session only — the preset in camera_manager.py is "
+        self.append_to_console("[Camera auto-cal] this session only — the preset in camera_manager.py is "
                                "unchanged, so a restart returns to the hand-set values.")
+        self._update_camera_params()
+
+    def on_camera_params_manual(self):
+        """Type the camera parameters, with the live trackability check beside the fields."""
+        from PyQt6.QtWidgets import QDialog
+        from utm_camdlg import CameraParamsDialog
+        if self.capture.active:
+            self.append_to_console("[Camera] Stop the capture first — changing exposure mid-stream "
+                                   "would put mixed settings in one recording.")
+            return
+        cm = self.camera_manager
+        before = (getattr(cm, "EXPOSURE_TIME", None), cm.THRESHOLD)
+        dlg = CameraParamsDialog(cm, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.append_to_console(
+                f"[Camera] manual: exposure {before[0]/1000 if before[0] else 0:.1f} → "
+                f"{cm.EXPOSURE_TIME/1000 if cm.EXPOSURE_TIME else 0:.1f} ms, "
+                f"threshold {before[1]:.0f} → {cm.THRESHOLD:.0f}, "
+                f"area {cm.MIN_AREA}–{cm.MAX_AREA} px², circ ≥ {cm.MIN_CIRCULARITY:.2f}")
+            self.append_to_console("[Camera] this session only — the preset in camera_manager.py "
+                                   "is unchanged.")
+        else:
+            self.append_to_console("[Camera] manual setup cancelled — parameters unchanged.")
         self._update_camera_params()
 
     def _update_camera_params(self):
@@ -4849,13 +4872,26 @@ class UTMApplication(QMainWindow):
         self._styleActions["raw"].setChecked(True)
 
         menu.addSeparator()
-        act_cal = QAction("Auto-calibrate DIC…", self)
+        # Two ways to set the camera up, both ending in the same place. Kept as two ACTIONS rather
+        # than a Manual/Auto radio pair: a mode whose only effect is to open a dialog the moment you
+        # pick it is not really a mode, and a stale radio would leave the menu claiming a state the
+        # camera is not in.
+        cam_menu = menu.addMenu("DIC camera setup")
+        cam_menu.setToolTipsVisible(True)
+        act_cal = QAction("Auto-calibrate…", self)
         act_cal.setToolTip("Sweep exposure and threshold against a measured trackability score, "
                            "then show the result before applying anything.\n"
                            "Use it when the lighting has changed — the preset's numbers were "
                            "chosen by hand under one set of LEDs.")
         act_cal.triggered.connect(self.on_autocalibrate_dic)
-        menu.addAction(act_cal)
+        cam_menu.addAction(act_cal)
+
+        act_man = QAction("Set parameters manually…", self)
+        act_man.setToolTip("Type exposure, threshold and the blob gates yourself.\n"
+                           "Every change is re-scored against the live frame as you make it, so "
+                           "you can see whether a value tracks before committing to it.")
+        act_man.triggered.connect(self.on_camera_params_manual)
+        cam_menu.addAction(act_man)
 
         menu.addSeparator()
         # SF11 — the bookkeeping that used to be remembered manual steps after pressing Save.
