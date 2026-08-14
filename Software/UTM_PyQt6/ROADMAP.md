@@ -43,6 +43,26 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 - **Strain-rate fracture test** — closed-loop constant *gauge* strain rate → fracture → auto-stop.
 - **Safety net (3 layers):** load-collapse fracture detector · **stall guard** (crosshead frozen <0.05 mm/6 s under load — in BOTH the auto-stop path and the strain-rate loop) · **10 kN / 30 mm** force/travel backstop · **dead-DIC guard** (freeze speed at 0.2 s, halt at 1.0 s).
 - **CSV richness** — `DIC_Blobs` health column + `# DIC Health` header + infill label.
+- **SF12 — DIC auto-calibration + live parameter readout** (2026-08-14). The preset's exposure and
+  threshold were chosen once by hand under one set of LEDs; when the lighting drifts they quietly
+  stop being right and the first symptom is a ruined test. `utm_autocal.py` scores a frame's
+  TRACKABILITY (pure NumPy/OpenCV, no camera or Qt, so it is testable): two blobs is a hard gate,
+  then **contrast margin** dominates — how far the markers sit from the cut — because that predicts
+  whether tracking SURVIVES a flicker, where the other terms only describe how comfortable it is
+  now. Headroom (clipping), area-in-band and circularity make up the rest.
+  `Settings ▸ Auto-calibrate DIC…` sweeps exposure × threshold, scores several frames per setting
+  (a single frame can look excellent on noise alone), and **proposes** — a dialog with the
+  before/after table; Cancel restores the camera exactly. Threshold picks the CENTRE of the widest
+  working band, not the peak: a setting with room either side survives a drift, a peak on a cliff
+  does not. Measured: the rig's fixed 150 finds **0 blobs** on a dim frame where auto picks 70 and
+  succeeds. The sweep is relative to the current exposure, so a badly-wrong start can leave the
+  optimum outside the range — a winner at either END is flagged, and re-running converges
+  (9 → 25 → 50 ms against a true 60 ms, score 0.00 → 0.92).
+  ⚠️ **Session-only** — the preset in `camera_manager.py` is untouched, so a restart returns to the
+  hand-set values. Refuses to run mid-capture (would put mixed settings in one recording).
+  Live parameters now show in the **DIC Camera group titles** (`exp 50.0 ms · thr 150 · 35 fps ·
+  419×2348 · mean 171`) — free real estate, since the info row is full and the page has ~11 px of
+  vertical headroom. Otsu presets read `thr auto (Otsu)`, not a misleading `thr 0`.
 - **SF11 — auto-metadata / capture↔CSV link** (2026-08-14). A run left three artefacts with nothing
   joining them: the CSV, the report, and a multi-gigabyte capture folder. Pressing Save now:
   writes `# Capture: <folder>` into the CSV header and `run.json` (csv path, File ID, geometry,
@@ -154,7 +174,7 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 >    real (uneven) lighting rather than a synthetic one. This is the MOT extensometer prerequisite.
 >
 > **⬜ Software, in the order I would take it:**
-> 5. **SF12** DIC auto-calibrate. 6. **SF13** guided wizard.
+> 5. **SF13** guided wizard.
 >
 > **⬜ Decisions that are the operator's, not mine:**
 > - **The E fit window.** 0.05–0.40 % lands on the TOE on both specimens checked: S16 reads

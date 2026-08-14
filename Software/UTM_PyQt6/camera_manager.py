@@ -283,6 +283,42 @@ class CameraManager(QObject):
             self.error_occurred.emit(str(e))
             return []
 
+    def set_exposure(self, microseconds):
+        """Change exposure on a live camera. Returns the value the camera actually accepted.
+
+        Basler clamps to the sensor's own limits and quantises to its increment, so the accepted
+        value is read BACK rather than assumed — auto-calibration must score the exposure that was
+        really used, not the one that was requested."""
+        if self.camera is None:
+            return None
+        try:
+            node = self.camera.ExposureTime
+            lo, hi = node.Min, node.Max
+            node.Value = float(max(lo, min(hi, microseconds)))
+            self.EXPOSURE_TIME = float(node.Value)
+            return self.EXPOSURE_TIME
+        except Exception as e:
+            self.error_occurred.emit(f"Exposure change failed: {e}")
+            return None
+
+    def camera_params(self):
+        """Live parameter snapshot for the GUI readout (empty dict when not connected)."""
+        if self.camera is None:
+            return {}
+        out = {"threshold": self.THRESHOLD, "mode": self.specimen_mode,
+               "fps_set": self.FRAME_RATE}
+        for name, key in (("ExposureTime", "exposure_us"), ("Gamma", "gamma"),
+                          ("Gain", "gain"), ("ResultingFrameRate", "fps_actual")):
+            try:
+                out[key] = float(getattr(self.camera, name).Value)
+            except Exception:
+                pass
+        f = self.latest_frame
+        if f is not None:
+            out["roi"] = f"{f.shape[1]}×{f.shape[0]}"
+            out["mean"] = float(f.mean())
+        return out
+
     def tare_dic(self):
         frame = self.latest_frame
         if frame is None:

@@ -4575,6 +4575,167 @@ class UTMApplication(QMainWindow):
     # is why the feed, the plots and the load-cell rate are unaffected.
     CAPTURE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "captures")
 
+    # ===== SF12 — DIC auto-calibration ==========================================================
+    #
+    # The preset's exposure and threshold were chosen once, by hand, under one set of LEDs. When the
+    # lighting drifts those numbers quietly stop being right and the first symptom is a ruined test.
+    # This sweeps both against a measured trackability score (utm_autocal) and proposes the winner.
+    #
+    # Deliberately PROPOSES rather than applies: it changes what the DIC measures, so it ends in a
+    # dialog showing the before/after numbers, and Cancel puts the camera back exactly as it was.
+    # Multiples of the CURRENT exposure, so the sweep is centred on wherever the rig is now. That
+    # also means a badly-wrong starting value can leave the true optimum outside the range — the
+    # handler detects a winner sitting at either END and says to run it again rather than
+    # presenting an edge value as if it were the answer.
+    AUTOCAL_EXPOSURE_STEPS = (0.3, 0.5, 0.7, 1.0, 1.4, 2.0, 2.8)
+    AUTOCAL_FRAMES = 4                    # frames scored per exposure — see utm_autocal.pick_best
+    AUTOCAL_SETTLE_S = 0.35               # let the sensor and the grab queue catch up after a change
+
+    def on_autocalibrate_dic(self):
+        """Sweep exposure x threshold, score each, and offer the best."""
+        import time as _t
+        from PyQt6.QtWidgets import QProgressDialog, QMessageBox
+        import utm_autocal as AC
+        cm = self.camera_manager
+        if getattr(cm, "camera", None) is None:
+            self.append_to_console("[Auto-cal] Start the camera first."); return
+        if self.capture.active:
+            self.append_to_console("[Auto-cal] Stop the capture first — this changes exposure "
+                                   "mid-stream and would put mixed settings in one recording.")
+            return
+
+        start_exp = getattr(cm, "EXPOSURE_TIME", None)
+        start_thr = cm.THRESHOLD
+        kw = dict(min_area=cm.MIN_AREA, max_area=cm.MAX_AREA, min_circ=cm.MIN_CIRCULARITY)
+        samples, best_thr_for = [], {}
+
+        dlg = QProgressDialog("Sweeping exposure…", "Cancel", 0,
+                              len(self.AUTOCAL_EXPOSURE_STEPS), self)
+        dlg.setWindowTitle("DIC auto-calibration")
+        dlg.setMinimumDuration(0); dlg.setValue(0)
+        try:
+            for i, mult in enumerate(self.AUTOCAL_EXPOSURE_STEPS):
+                if dlg.wasCanceled():
+                    break
+                got = cm.set_exposure(start_exp * mult)
+                if got is None:
+                    continue
+                dlg.setLabelText(f"Exposure {got/1000:.1f} ms  ({i+1}/"
+                                 f"{len(self.AUTOCAL_EXPOSURE_STEPS)})")
+                dlg.setValue(i); QApplication.processEvents()
+                _t.sleep(self.AUTOCAL_SETTLE_S)
+
+                mets, thrs = [], []
+                for _ in range(self.AUTOCAL_FRAMES):
+                    f = cm.latest_frame
+                    if f is None:
+                        break
+                    t, best, _all = AC.best_threshold(f, cm.THRESHOLD_TYPE, **kw)
+                    if t is not None:
+                        thrs.append(t); mets.append(best)
+                    else:
+                        mets.append(AC.frame_score(f, start_thr, cm.THRESHOLD_TYPE, **kw))
+                    _t.sleep(1.0 / max(1, getattr(cm, "FRAME_RATE", 35)))
+                    QApplication.processEvents()
+                if mets:
+                    samples.append((got, mets))
+                    if thrs:
+                        best_thr_for[got] = float(sorted(thrs)[len(thrs) // 2])   # median
+        finally:
+            dlg.close()
+
+        win, table = AC.pick_best(samples)
+        if not win:
+            cm.set_exposure(start_exp)
+            self.append_to_console("[Auto-cal] No setting tracked both markers. Check the "
+                                   "specimen is in frame and the markers are not obscured, then "
+                                   "retry.")
+            QMessageBox.warning(self, "DIC auto-calibration",
+                                "No exposure found where both markers were detected.\n\n"
+                                "Exposure has been put back. Check framing and lighting.")
+            return
+
+        new_exp = win["setting"]
+        new_thr = best_thr_for.get(new_exp, start_thr)
+        # A winner at either end of the swept range means the real optimum is probably beyond it.
+        # Saying so is the difference between a useful tool and one that quietly hands back the
+        # best of a set of bad options.
+        swept = sorted(s for s, _ in samples)
+        at_edge = len(swept) > 1 and new_exp in (swept[0], swept[-1])
+        edge_note = ("\n\n⚠ The best value is at the EDGE of the swept range, so the true optimum "
+                     "is probably further out. Apply this, then run auto-calibrate AGAIN — the "
+                     "next sweep centres on the new value and will reach it." if at_edge else "")
+        rows = "\n".join(
+            f"   {r['setting']/1000:6.1f} ms   detect {r['detect_rate']*100:3.0f} %   "
+            f"contrast {r['contrast']:.2f}   clipped {r['clipped_pct']:4.1f} %   "
+            f"score {r['score']:.2f}" + ("   ← best" if r["setting"] == new_exp else "")
+            for r in table)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("DIC auto-calibration")
+        box.setText(f"Best: exposure {new_exp/1000:.1f} ms, threshold {new_thr:.0f}")
+        box.setInformativeText(
+            f"Now:  {start_exp/1000:.1f} ms, threshold {start_thr:.0f}\n"
+            f"New:  {new_exp/1000:.1f} ms, threshold {new_thr:.0f}\n\n"
+            f"{rows}\n\n"
+            "Score is mostly CONTRAST MARGIN — how far the markers sit from the threshold — "
+            "because that is what predicts whether tracking survives a flicker, not whether it "
+            f"works right now.{edge_note}\n\nApply? Cancel puts the camera back as it was.")
+        box.setStandardButtons(QMessageBox.StandardButton.Apply | QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(QMessageBox.StandardButton.Apply)
+        if box.exec() != QMessageBox.StandardButton.Apply:
+            cm.set_exposure(start_exp)
+            self.append_to_console("[Auto-cal] cancelled — exposure and threshold unchanged.")
+            return
+
+        cm.set_exposure(new_exp)
+        cm.THRESHOLD = new_thr
+        self.append_to_console(
+            f"[Auto-cal] applied: exposure {start_exp/1000:.1f} → {new_exp/1000:.1f} ms, "
+            f"threshold {start_thr:.0f} → {new_thr:.0f}  "
+            f"(detect {win['detect_rate']*100:.0f} %, contrast {win['contrast']:.2f})")
+        if at_edge:
+            self.append_to_console("[Auto-cal] ⚠ best value was at the EDGE of the swept range — "
+                                   "run auto-calibrate again to reach the true optimum.")
+        self.append_to_console("[Auto-cal] this session only — the preset in camera_manager.py is "
+                               "unchanged, so a restart returns to the hand-set values.")
+        self._update_camera_params()
+
+    def _update_camera_params(self):
+        """Live camera settings in the DIC group titles — free real estate, always visible.
+
+        The info row underneath is already carrying the health badge, CAP/REC and three live
+        numbers, and the page has ~11 px of vertical headroom, so a new row was not available.
+        A group-box title costs nothing and is exactly where you look to ask 'what is it set to'.
+        """
+        p = self.camera_manager.camera_params()
+        if not p:
+            txt = "DIC Camera"
+        else:
+            bits = []
+            if "exposure_us" in p:
+                bits.append(f"exp {p['exposure_us']/1000:.1f} ms")
+            # The Black preset's threshold is 0 because its type carries THRESH_OTSU — the level is
+            # computed per frame. Printing "thr 0" would read as a broken setting.
+            import cv2 as _cv2
+            if getattr(self.camera_manager, "THRESHOLD_TYPE", 0) & _cv2.THRESH_OTSU:
+                bits.append("thr auto (Otsu)")
+            else:
+                bits.append(f"thr {p['threshold']:.0f}")
+            if "fps_actual" in p:
+                bits.append(f"{p['fps_actual']:.0f} fps")
+            if "gain" in p and p["gain"]:
+                bits.append(f"gain {p['gain']:.1f}")
+            if "roi" in p:
+                bits.append(p["roi"])
+            if "mean" in p:
+                bits.append(f"mean {p['mean']:.0f}")
+            txt = "DIC Camera   ·   " + "  ·  ".join(bits)
+        for name in ("cameraGroupBox", "cameraGroupBoxLP"):
+            g = getattr(self, name, None)
+            if g is not None and g.title() != txt:
+                g.setTitle(txt)
+
     def _make_capture_badges(self, row):
         """CAP (stills) and REC (video) beside the DIC health badge — indicator AND button.
 
@@ -4686,6 +4847,15 @@ class UTMApplication(QMainWindow):
             png_menu.addAction(act)
             self._styleActions[key] = act
         self._styleActions["raw"].setChecked(True)
+
+        menu.addSeparator()
+        act_cal = QAction("Auto-calibrate DIC…", self)
+        act_cal.setToolTip("Sweep exposure and threshold against a measured trackability score, "
+                           "then show the result before applying anything.\n"
+                           "Use it when the lighting has changed — the preset's numbers were "
+                           "chosen by hand under one set of LEDs.")
+        act_cal.triggered.connect(self.on_autocalibrate_dic)
+        menu.addAction(act_cal)
 
         menu.addSeparator()
         # SF11 — the bookkeeping that used to be remembered manual steps after pressing Save.
@@ -5473,6 +5643,7 @@ class UTMApplication(QMainWindow):
         drive the same handlers and are kept in sync via _set_camera_controls()."""
         from PyQt6.QtWidgets import QGroupBox, QComboBox
         box = QGroupBox("DIC Camera")
+        self.cameraGroupBoxLP = box          # so _update_camera_params can retitle both mirrors
         lay = QVBoxLayout(box)
         lay.setContentsMargins(4, 4, 4, 4)
         lay.setSpacing(4)
@@ -5774,6 +5945,7 @@ class UTMApplication(QMainWindow):
         # a second timer for two labels would be waste on a thread this feature must not disturb.
         try:
             self._update_capture_badges()
+            self._update_camera_params()
         except Exception:
             pass
         cm = getattr(self, "camera_manager", None)
