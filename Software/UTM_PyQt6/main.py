@@ -3119,9 +3119,7 @@ class UTMApplication(QMainWindow):
         msg.setWindowTitle(f"{title} — destructive test")
         msg.setText(f"Run {title}?  This DESTROYS the specimen.")
         msg.setInformativeText(what + "\n\n" + meta +
-                               "\n\nConfirm you have:\n   •  mounted the specimen\n"
-                               "   •  pressed Calibrate Px₀ (BEFORE preload)\n"
-                               "   •  applied preload\n   •  pressed Prepare test (tared)\n"
+                               "\n\nConfirm you have:\n" + self._prep_checklist() +
                                "   •  set the specimen dimensions + INFILL above correctly\n\n"
                                "Stop / E-Stop aborts at any time.")
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
@@ -3752,10 +3750,8 @@ class UTMApplication(QMainWindow):
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setWindowTitle("Fracture test — checklist")
         msg.setText("Run the specimen to FRACTURE?")
-        msg.setInformativeText("Confirm you have:\n   •  mounted the specimen\n"
-                               "   •  pressed Calibrate Px₀ (BEFORE preload)\n   •  applied preload\n"
-                               "   •  pressed Prepare test (tared)\n\n"
-                               "On Yes, the gripper pulls in TENSION and auto-stops at fracture. "
+        msg.setInformativeText("Confirm you have:\n" + self._prep_checklist() +
+                               "\nOn Yes, the gripper pulls in TENSION and auto-stops at fracture. "
                                "Keep Emergency STOP in reach.")
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg.setDefaultButton(QMessageBox.StandardButton.No)
@@ -5824,12 +5820,13 @@ class UTMApplication(QMainWindow):
         self.tareDICButton = QPushButton("Calibrate Px₀")
         self.tareDICButton.setToolTip(
             "Freeze Px₀  —  this IS the DIC tare, renamed.\n"
-            "Px₀ is the marker separation in pixels that every strain is measured "
-            "against.\nPress it BEFORE preload, on a straight but barely-loaded specimen: strain "
-            "is (Px − Px₀)/Px₀, so whatever is already stretched into the specimen "
-            "when you press this is invisible for the rest of the test.\nPreloading to 300 N "
-            "first hides roughly 2500 µε.\nThe frozen marker pair stays on the live feed in cyan, "
-            "so you can watch the green live pair pull away from it.")
+            "Px₀ is the marker separation in pixels that every strain is measured against: strain "
+            "is (Px − Px₀)/Px₀, so whatever is already stretched into the specimen when you press "
+            "this is invisible for the rest of the test.\n\n"
+            "WHEN to press it is set by Settings ▸ DIC camera setup ▸ 'Zero strain AFTER preload', "
+            "and the CSV header records which was used.\n\n"
+            "The frozen marker pair stays on the live feed in cyan, so you can watch the green "
+            "live pair pull away from it.")
         self.stopCameraButton.setEnabled(False)
         self.tareDICButton.setEnabled(False)
         button_row.addWidget(QLabel("Specimen:"))
@@ -6531,6 +6528,28 @@ class UTMApplication(QMainWindow):
         skip the dialog."""
         self.on_tare_dic(confirm=True)
 
+    def _prep_checklist(self):
+        """The pre-test steps, in the order the CURRENT strain-zero convention requires.
+
+        Not just a relabelling: the convention changes the SEQUENCE. Under the after-preload rule
+        the preload comes first and Px₀ is frozen on the seated specimen, so a checklist that still
+        read "Calibrate Px₀ (BEFORE preload) · applied preload" would be walking the operator
+        through the opposite procedure to the one the app is set up for.
+
+        Calibrate Px₀ stays ahead of Prepare test in both, because Prepare test tares the FORCE —
+        after it the load reads ~0 N, and the Px₀ dialog would then object that the preload it
+        expects is not there.
+        """
+        if self.px0_after_preload():
+            return ("   •  mounted the specimen\n"
+                    "   •  applied preload\n"
+                    "   •  pressed Calibrate Px₀ (AFTER preload)\n"
+                    "   •  pressed Prepare test (tared)\n")
+        return ("   •  mounted the specimen\n"
+                "   •  pressed Calibrate Px₀ (BEFORE preload)\n"
+                "   •  applied preload\n"
+                "   •  pressed Prepare test (tared)\n")
+
     def on_px0_convention_changed(self, on):
         """Switching the strain-zero convention invalidates the Px₀ currently held, because that
         one was frozen under the OTHER rule. Say so rather than letting the next test inherit it."""
@@ -6600,9 +6619,12 @@ class UTMApplication(QMainWindow):
         """Freeze Px₀ — the marker separation in pixels that every strain is measured against.
 
         WHEN this is captured defines the zero of strain, so it is a measurement decision, not
-        bookkeeping. Capture it BEFORE preload, on a specimen that is straight but barely loaded:
-        strain is (Px − Px₀)/Px₀, so anything already stretched into the specimen at capture time is
-        invisible for the rest of the test.
+        bookkeeping: strain is (Px − Px₀)/Px₀, so anything already stretched into the specimen at
+        capture time is invisible for the rest of the test.
+
+        Which state to capture from is the convention in px0_after_preload() — before preload on a
+        straight, barely-loaded specimen, or after it on a seated one. Both are defensible; the
+        header records which, because mixing them within a series is not.
         """
         load = abs(getattr(self, "current_load", 0.0) or 0.0)
         if confirm and not self._confirm_px0(load):
