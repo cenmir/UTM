@@ -136,12 +136,30 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 >    with the strain readout (Δpx/Px₀ = ε); and the calipers grow OUTWARD rather than both one way.
 >    Blocked behind a lighting problem the operator is working on.
 >
-> **⬜ Software, in the order I would take it:**
-> 3. **Frame capture** during a test — the prerequisite for the MOT extensometer cross-check (§3a).
-> 4. **SF11** auto-metadata + foldering. 5. **SF12** DIC auto-calibrate. 6. **SF13** guided wizard.
+> 4. **Capture feature — VALIDATE ON THE RIG** (built 2026-08-13, `18551c4`…`670d630`). One pull with
+>    PNG + AVI on: confirm the stress-strain curve is unaffected, the frame rate holds, the frames
+>    and video land, `index.csv` lines up with the CSV, and the **adaptive speckle** view tracks the
+>    real (uneven) lighting rather than a synthetic one. This is the MOT extensometer prerequisite.
 >
-> **⬜ Hardware decision, not mine to make:** the motor torque ceiling — driver Vref, or wire the
-> TMC2160's SPI to the ESP32 so current and thermal status become a logged channel (§4).
+> **⬜ Software, in the order I would take it:**
+> 5. **SF11** auto-metadata + foldering. 6. **SF12** DIC auto-calibrate. 7. **SF13** guided wizard.
+>
+> **⬜ Decisions that are the operator's, not mine:**
+> - **The E fit window.** 0.05–0.40 % lands on the TOE on both specimens checked: S16 reads
+>   1.62–2.11 GPa there where the straightest part of its curve (0.6–1.2 %, R² ≥ 0.997) reads
+>   2.57–2.62. Reported E is an under-estimate. Moving the window to ~0.25–0.60 % changes **every
+>   published E** in the deck and registry — hence not done unilaterally. See
+>   `documentation/E_modulus_explained.pptx` slide 5.
+> - **Motor torque ceiling** — driver Vref, or wire the TMC2160's SPI to the ESP32 so current and
+>   thermal status become a logged channel (§4).
+> - **Merge.** 36 commits sit on `snapshot/main-py-2026-08-12`, not on `main`.
+>   `git checkout main && git merge --ff-only snapshot/main-py-2026-08-12`.
+>
+> **✅ Cleared 2026-08-13** — live Px₀ overlay · GUI responsiveness (~700 → ~285 ms/s) · Release
+> load split into "to preload" / "fully" · live stress-strain put on the report's basis (dropout
+> rows, anchor, % units, downsampler pairing bug) · E-modulus explainer deck (5 slides) · **frame
+> capture: PNG + AVI, 3 view styles, adaptive speckle, multi-select, folder choice, size warning** ·
+> Px₀ ownership (Prepare test no longer moves it) · a QSettings bool that never restored false.
 
 - ✅ **POSTERS — BUILT 2026-08-12, THREE EDITIONS from one content spec.**
   `documentation/generate_poster.py` → **`documentation/posters/`** (pptx + pdf for each):
