@@ -4137,6 +4137,20 @@ class UTMApplication(QMainWindow):
             _bl = self.load_plot_dic_blobs
             _ok = sum(1 for b in _bl if b == 2)
             f.write(f"# DIC Health - {100.0*_ok/len(_bl):.0f}% frames tracked 2/2 ({_ok}/{len(_bl)})\n" if _bl else "# DIC Health - n/a\n")
+            # STRAIN COVERAGE — a different question from marker tracking, and the one that was
+            # missing. "2/2 markers" says the detector found them; this says how many load samples
+            # actually carry a strain number. S24 (2026-08-14) recorded 2134/2135 on the line above
+            # while only 571 of 2135 rows held a reading, and nothing in the file said so. That
+            # sparseness is what disabled the fracture detector's strain-jump guard and put
+            # epsilon_f at 17.5 % instead of 7.4 %.
+            _n = len(self.load_plot_dic_L_px)
+            _cov = sum(1 for v in self.load_plot_dic_L_px if v > 100.0)
+            if _n:
+                _pct = 100.0 * _cov / _n
+                f.write(f"# DIC Coverage - {_pct:.0f}% of samples carry a strain reading "
+                        f"({_cov}/{_n})"
+                        + ("   <-- LOW: most rows have no strain; treat ef and toughness with "
+                           "caution" if _pct < 50 else "") + "\n")
             f.write("#\n")
             f.write(f"# Max Load: {self.max_load:.2f} N\n")
             f.write(f"# Max Stress: {max_stress:.4f} MPa\n")
