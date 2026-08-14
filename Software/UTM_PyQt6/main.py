@@ -349,6 +349,10 @@ class UTMApplication(QMainWindow):
         top_layout.setContentsMargins(4, 0, 4, 4)
         top_layout.setSpacing(2)
 
+        # Cross-readout: this tab plots FORCE, so it carries the two numbers it does not draw.
+        # A Qt strip above the canvas, never a matplotlib artist — anything added to the figure
+        # would also appear in the PNG/PDF the report saves.
+        top_layout.addLayout(self._make_cross_readout("load"))
         self.loadPlotFrame.setParent(top_widget)
         top_layout.addWidget(self.loadPlotFrame)
 
@@ -963,6 +967,7 @@ class UTMApplication(QMainWindow):
         self.startCameraButton.clicked.connect(self.on_start_camera)
         self.stopCameraButton.clicked.connect(self.on_stop_camera)
         self.tareDICButton.clicked.connect(self.on_calibrate_px0)
+        self.tareDICAliasButton.clicked.connect(self.on_calibrate_px0)
         self.specimenModeCombo.currentTextChanged.connect(self.on_specimen_mode_changed)
         # Load Plot tab's duplicate controls drive the same handlers (state kept in sync)
         self.startCameraButtonLP.clicked.connect(self.on_start_camera)
@@ -3473,7 +3478,9 @@ class UTMApplication(QMainWindow):
         self.fractureTestButton.setMinimumHeight(28)
 
         lay = self.motorControlGroup.layout()
-        idx = lay.indexOf(self.emergencyStopButton)
+        idx = lay.indexOf(self.advancedModesGroup)          # sit ABOVE the advanced modes
+        if idx < 0:
+            idx = lay.indexOf(self.emergencyStopButton)
         if idx >= 0:
             lay.insertWidget(idx, self.specimenTestGroup)
         else:
@@ -4525,6 +4532,7 @@ class UTMApplication(QMainWindow):
 
         self.current_load = force
         self.update_load_display()
+        self._update_cross_readout()          # the numbers the OTHER plot tab cannot show
 
         # Auto-preload: stop the motor once the target load is reached (or a safety limit trips)
         if self.preload_active:
@@ -4908,6 +4916,51 @@ class UTMApplication(QMainWindow):
     # most CSV rows carry no strain and everything downstream degrades — including the fracture
     # detector, which is exactly how S24's epsilon_f came out at 17.5 % instead of 7.4 %.
     DIC_RATE_WARN_HZ = 6.0
+
+    def _make_cross_readout(self, which):
+        """A strip of the live numbers the plot on THIS tab does not draw.
+
+        Stress/Strain plots stress against strain and never shows force; Load Plot shows force and
+        never shows stress or strain. Whichever tab you are watching, the missing quantity was the
+        one you had to switch tabs to read — during a pull, which is exactly when you cannot.
+
+        These are Qt labels above the canvas, deliberately NOT matplotlib text: anything drawn into
+        the figure would be baked into every PNG and PDF the report saves.
+        """
+        row = QHBoxLayout()
+        row.setContentsMargins(6, 1, 6, 1)
+        row.setSpacing(8)
+        row.addWidget(QLabel("LIVE"))
+        row.itemAt(0).widget().setStyleSheet("color:#8a8f98; font-size:10px; font-weight:bold;")
+        fields = (("Force", "xrForce", "#1f6fb4", " N"),) if which == "ss" else \
+                 (("Stress", "xrStress", "#7048e8", " MPa"), ("Strain (DIC)", "xrStrain", "#0066cc", " %"))
+        for caption, attr, colour, _unit in fields:
+            row.addSpacing(6)
+            cap = QLabel(f"{caption}:")
+            cap.setStyleSheet("color:#8a8f98;")
+            row.addWidget(cap)
+            lbl = QLabel("—")
+            lbl.setStyleSheet(f"font-weight: bold; color: {colour}; font-size: 15px;")
+            setattr(self, attr, lbl)
+            row.addWidget(lbl)
+        row.addStretch()
+        return row
+
+    def _update_cross_readout(self):
+        """Refresh the cross-tab numbers. Called from the live load hook, so it costs one
+        setText per tab and never touches either canvas."""
+        f = self.current_load
+        lb = getattr(self, "xrForce", None)
+        if lb is not None:
+            lb.setText("—" if f is None else f"{f:,.1f} N")
+        lb = getattr(self, "xrStress", None)
+        if lb is not None:
+            area = getattr(self, "cross_sectional_area", 0.0) or 0.0
+            lb.setText(f"{f/area:.2f} MPa" if (f is not None and area > 0) else "—")
+        lb = getattr(self, "xrStrain", None)
+        if lb is not None:
+            ec = getattr(self, "latest_dic_cauchy", None)
+            lb.setText(f"{ec*100:.4f} %" if ec else "—")
 
     def _update_camera_params(self):
         """Live camera settings BESIDE the strain values they produce.
@@ -5373,6 +5426,25 @@ class UTMApplication(QMainWindow):
                                        "up. The gap is in index.csv; consider recording video only.")
             if s["error"]:
                 self.append_to_console(f"[Capture] ⚠ writer error: {s['error']}")
+        # Say so in the STATUS BAR too, not only the console.
+        #
+        # A fracture test ends with "Auto-stopped at fracture" and then, four seconds later, the
+        # capture finishes quietly. Standing at the rig you had no way to know the recording had
+        # closed cleanly — or that it had dropped frames — without scrolling the console. The
+        # status bar is where you are already looking when the motor stops.
+        if parts and not self.capture.active:
+            dropped = s["png_dropped"] + s["vid_dropped"]
+            where = os.path.basename(self._last_capture_dir or "")
+            if s["error"]:
+                self.set_status(f"⚠ Capture FAILED — {s['error']}", is_warning=True)
+            elif dropped:
+                self.set_status(f"⚠ Capture saved with {dropped} dropped frame(s) — "
+                                + " · ".join(parts), is_warning=True)
+            else:
+                base = self.statusLineEdit.text()
+                lead = f"{base}  ·  " if base and "Auto-stopped" in base else ""
+                self.set_status(f"{lead}Capturing completed and saved — "
+                                + " · ".join(parts) + (f"  →  {where}" if where else ""))
         self._capture_sync_menu()
 
     def _capture_autostart(self, what):
@@ -5686,6 +5758,17 @@ class UTMApplication(QMainWindow):
         self.specimenModeCombo.setToolTip("White = black dots on white specimen\nBlack = white dots on black specimen")
         self.startCameraButton = QPushButton("Start Camera")
         self.stopCameraButton = QPushButton("Stop Camera")
+        # Both names for the same operation, side by side. "Tare DIC" is what this was called
+        # before it was renamed, and it is still the name that comes to mind at the rig — but a
+        # second button that also SET Px₀ would give the reference two owners, which is the bug
+        # class already fixed once when Prepare test was re-taring it. So this is an alias: same
+        # handler, same confirmation, no second path to the same state.
+        self.tareDICAliasButton = QPushButton("Tare DIC")
+        self.tareDICAliasButton.setToolTip(
+            "The same operation as Calibrate Px₀ — freezes the pixel reference that DIC strain is "
+            "measured against.\nKept under its older name because that is what it is called in the "
+            "protocol sheets.")
+        self.tareDICAliasButton.setEnabled(False)
         self.tareDICButton = QPushButton("Calibrate Px₀")
         self.tareDICButton.setToolTip(
             "Freeze Px₀  —  this IS the DIC tare, renamed.\n"
@@ -5702,6 +5785,7 @@ class UTMApplication(QMainWindow):
         button_row.addWidget(self.startCameraButton)
         button_row.addWidget(self.stopCameraButton)
         button_row.addWidget(self.tareDICButton)
+        button_row.addWidget(self.tareDICAliasButton)
         camera_layout.addLayout(button_row)
 
         # --- Info row: L0 and DIC Strain ---
@@ -5778,6 +5862,7 @@ class UTMApplication(QMainWindow):
         top_layout.setContentsMargins(2, 2, 2, 2)
         top_layout.setSpacing(2)
 
+        top_layout.addLayout(self._make_cross_readout("ss"))     # see _make_cross_readout
         self.stressStrainPlotFrame.setParent(top_widget)
         top_layout.addWidget(self.stressStrainPlotFrame)
 
@@ -6313,6 +6398,7 @@ class UTMApplication(QMainWindow):
             if start is not None:
                 start.setEnabled(not running)
         for w in (self.stopCameraButton, self.tareDICButton,
+                  getattr(self, "tareDICAliasButton", None),
                   getattr(self, "stopCameraButtonLP", None), getattr(self, "tareDICButtonLP", None)):
             if w is not None:
                 w.setEnabled(running)

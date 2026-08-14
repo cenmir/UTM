@@ -14,6 +14,7 @@ asymmetry that IS real — a second stills view costs ~1.9 GB/min against ~0.3 f
 as a number next to each tick rather than enforced by hiding the option.
 """
 import os
+import shutil
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QCheckBox,
@@ -128,11 +129,32 @@ class CaptureSetupDialog(QDialog):
         if avi_gb:
             parts.append(f"video {avi_gb:.2f}")
         detail = "  +  ".join(parts) if parts else "nothing armed"
+        # Quoted for a FULL HOUR as well as a minute. The long-running protocols — creep,
+        # relaxation, cyclic — run for an hour or more, and at these rates that is the number that
+        # decides whether the run fits on the disk at all. A 3-minute fracture pull never was the
+        # binding case.
+        hour = total * 60.0
+        free_gb = 0.0
+        try:
+            d = self.folder.text() or os.path.expanduser("~")
+            drive = os.path.splitdrive(os.path.abspath(d))[0] + os.sep
+            free_gb = shutil.disk_usage(drive).free / 1e9
+        except Exception:
+            pass
+        over = free_gb and hour > free_gb
         self.total.setText(
-            f"<b style='color:{col}; font-size:15px'>~{total:.2f} GB per minute of test</b>"
-            f"<br><span style='color:#888'>{detail}"
-            + (f" &nbsp;·&nbsp; a 2-minute fracture pull ≈ <b>{total*2:.1f} GB</b>"
-               if total else "") + "</span>")
+            f"<b style='color:{col}; font-size:15px'>~{total:.2f} GB per minute</b>"
+            + (f" &nbsp;&nbsp;<b style='color:{'#c0392b' if over else col}; font-size:15px'>"
+               f"~{hour:,.0f} GB per hour</b>" if total else "")
+            + f"<br><span style='color:#888'>{detail}"
+            + (f" &nbsp;·&nbsp; 3-minute fracture pull ≈ <b>{total*3:.1f} GB</b>"
+               f" &nbsp;·&nbsp; 15-minute run ≈ <b>{total*15:.0f} GB</b>" if total else "")
+            + (f"<br><span style='color:{'#c0392b' if over else '#888'}'>"
+               f"{'⚠ ' if over else ''}{free_gb:,.0f} GB free on this drive"
+               f"{' — an hour at this setting would not fit' if over else ''}"
+               f"{f' (about {free_gb/total/60:.1f} hours of recording)' if not over and total else ''}"
+               "</span>" if free_gb else "")
+            + "</span>")
 
         d = self.folder.text()
         if d and "onedrive" in d.lower():
