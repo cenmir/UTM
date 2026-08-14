@@ -349,10 +349,6 @@ class UTMApplication(QMainWindow):
         top_layout.setContentsMargins(4, 0, 4, 4)
         top_layout.setSpacing(2)
 
-        # Cross-readout: this tab plots FORCE, so it carries the two numbers it does not draw.
-        # A Qt strip above the canvas, never a matplotlib artist — anything added to the figure
-        # would also appear in the PNG/PDF the report saves.
-        top_layout.addLayout(self._make_cross_readout("load"))
         self.loadPlotFrame.setParent(top_widget)
         top_layout.addWidget(self.loadPlotFrame)
 
@@ -362,6 +358,7 @@ class UTMApplication(QMainWindow):
             group.setParent(top_widget)
             group.setFixedHeight(190)
             controls_row.addWidget(group)
+        self._add_cross_readout("load")      # stress + DIC strain, inside the Load Data box
         top_layout.addLayout(controls_row)
 
         self.dataCroppingGroup.setParent(top_widget)
@@ -4917,34 +4914,48 @@ class UTMApplication(QMainWindow):
     # detector, which is exactly how S24's epsilon_f came out at 17.5 % instead of 7.4 %.
     DIC_RATE_WARN_HZ = 6.0
 
-    def _make_cross_readout(self, which):
-        """A strip of the live numbers the plot on THIS tab does not draw.
+    def _add_cross_readout(self, which):
+        """Add the live numbers THIS tab's plot does not draw, into the data box already on it.
 
         Stress/Strain plots stress against strain and never shows force; Load Plot shows force and
         never shows stress or strain. Whichever tab you are watching, the missing quantity was the
         one you had to switch tabs to read — during a pull, which is exactly when you cannot.
 
-        These are Qt labels above the canvas, deliberately NOT matplotlib text: anything drawn into
-        the figure would be baked into every PNG and PDF the report saves.
+        They live INSIDE the existing Stress/Strain Data and Load Data boxes rather than in a strip
+        of their own: those boxes already exist, already hold live numbers, and already have the
+        horizontal room. A separate strip spent ~24 px of vertical space per tab to say the same
+        thing, and vertical space is the scarce axis on this page.
+
+        Qt labels, deliberately NOT matplotlib text — anything drawn into the figure would be baked
+        into every PNG and PDF the report saves.
         """
-        row = QHBoxLayout()
-        row.setContentsMargins(6, 1, 6, 1)
-        row.setSpacing(8)
-        row.addWidget(QLabel("LIVE"))
-        row.itemAt(0).widget().setStyleSheet("color:#8a8f98; font-size:10px; font-weight:bold;")
-        fields = (("Force", "xrForce", "#1f6fb4", " N"),) if which == "ss" else \
-                 (("Stress", "xrStress", "#7048e8", " MPa"), ("Strain (DIC)", "xrStrain", "#0066cc", " %"))
-        for caption, attr, colour, _unit in fields:
-            row.addSpacing(6)
-            cap = QLabel(f"{caption}:")
+        from PyQt6.QtWidgets import QFormLayout
+        if which == "ss":
+            group, fields = self.stressDataGroup, (("Force:", "xrForce", "#1f6fb4"),)
+        else:
+            group = self.loadDataGroup
+            fields = (("Stress:", "xrStress", "#7048e8"),
+                      ("Strain (DIC):", "xrStrain", "#0066cc"))
+
+        lay = group.layout()
+        if lay is None:
+            # Load Data is positioned by absolute geometry from the .ui — rows at y = 100 and 130
+            # in a box fixed at 190 px, so there is room for ONE more row and two are needed. Give
+            # it a real QFormLayout and migrate the existing pairs in, so it sizes itself from here.
+            rows = sorted((c for c in group.findChildren(QLabel) if c.parentWidget() is group),
+                          key=lambda c: (c.y(), c.x()))
+            lay = QFormLayout(group)
+            lay.setContentsMargins(8, 4, 8, 4)
+            lay.setSpacing(4)
+            for i in range(0, len(rows) - 1, 2):
+                lay.addRow(rows[i], rows[i + 1])
+        for caption, attr, colour in fields:
+            cap = QLabel(caption)
             cap.setStyleSheet("color:#8a8f98;")
-            row.addWidget(cap)
-            lbl = QLabel("—")
-            lbl.setStyleSheet(f"font-weight: bold; color: {colour}; font-size: 15px;")
-            setattr(self, attr, lbl)
-            row.addWidget(lbl)
-        row.addStretch()
-        return row
+            val = QLabel("—")                     # value carries the UNIT, so it reads "1,234.5 N"
+            val.setStyleSheet(f"font-weight: bold; color: {colour};")
+            setattr(self, attr, val)
+            lay.addRow(cap, val)
 
     def _update_cross_readout(self):
         """Refresh the cross-tab numbers. Called from the live load hook, so it costs one
@@ -5862,7 +5873,6 @@ class UTMApplication(QMainWindow):
         top_layout.setContentsMargins(2, 2, 2, 2)
         top_layout.setSpacing(2)
 
-        top_layout.addLayout(self._make_cross_readout("ss"))     # see _make_cross_readout
         self.stressStrainPlotFrame.setParent(top_widget)
         top_layout.addWidget(self.stressStrainPlotFrame)
 
@@ -5877,6 +5887,7 @@ class UTMApplication(QMainWindow):
             # A maximum below a widget's own sizeHint does not compress it gracefully, it truncates.
             group.setMaximumHeight(146)   # natural 141 after the wider group-box title margins
             controls_row.addWidget(group)
+        self._add_cross_readout("ss")        # force, inside the Stress/Strain Data box
         top_layout.addLayout(controls_row)
 
         # Replace absolute positioning in Plot Controls with a compact grid layout
