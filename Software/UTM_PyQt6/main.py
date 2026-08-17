@@ -1053,6 +1053,8 @@ class UTMApplication(QMainWindow):
         self.camera_manager.dic_strain_updated.connect(self.update_dic_strain_label)
         self.camera_manager.error_occurred.connect(self.on_camera_error)
         # --- Live DIC health badge (Phase C) ---
+        self.camera_manager.notice.connect(
+            lambda m: self.append_to_console(f"[Camera] {m}"))
         self.camera_manager.blobs_detected.connect(self._on_dic_blobs)
         self.camera_manager.error_occurred.connect(self._on_dic_error_count)
         self._dic_blob_count = 0

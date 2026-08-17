@@ -36,6 +36,11 @@ class CameraManager(QObject):
     blobs_detected = pyqtSignal(list)
     dic_strain_updated = pyqtSignal(float)
     error_occurred = pyqtSignal(str)
+    # Something worth telling the operator that is NOT a failure. error_occurred prints under
+    # "[Camera Error]" and coalesces on identical text, so routing a resolved condition through it
+    # both mislabels it and defeats the coalescing (these messages carry coordinates, so no two
+    # match). Kept separate for that reason.
+    notice = pyqtSignal(str)
     connection_changed = pyqtSignal(bool)
 
     # Camera configuration. This ROI is the pre-preset fallback and must stay in step with the
@@ -255,6 +260,63 @@ class CameraManager(QObject):
         else:
             print(f"[DIC] found {n} blobs")
 
+    def _choose_marker_pair(self, valid, shape):
+        """Pick the two real markers out of N qualifying blobs. Returns them sorted by Y.
+
+        Two criteria, in order of how much they can be trusted:
+
+        1. Once Px₀ is frozen the marker separation is KNOWN, so the pair whose separation is
+           closest to it wins. Under load that separation grows, but only by a few percent — far
+           less than the gap to any pairing that involves a grip — so it stays decisive all the way
+           to fracture.
+        2. Before Px₀ is set there is no separation to compare against, so fall back on geometry:
+           the markers are sprayed on the specimen's centre-line, while the interlopers (grips,
+           fixture edges, background) sit at the lateral extremes. Take the two blobs nearest the
+           centre-line, breaking ties on area.
+
+        Neither criterion is silent — the rejected blobs are reported, throttled, so a recurring
+        interloper can be dealt with physically (or with `mask_x`) instead of merely tolerated.
+        """
+        import time as _time
+
+        if self.initial_distance:
+            best = None
+            for i in range(len(valid)):
+                for j in range(i + 1, len(valid)):
+                    err = abs(abs(valid[j][1] - valid[i][1]) - self.initial_distance)
+                    if best is None or err < best[0]:
+                        best = (err, valid[i], valid[j])
+            # If NO pairing is near Px₀, the markers themselves are missing and everything in frame
+            # is an interloper. Returning the two most central of them would hand the strain maths a
+            # confident, wrong number; hand back the raw list instead so the caller reports the
+            # dropout. Caught by the check suite, which fed it a frame of grips and no markers and
+            # got two grips back as if they were the pair.
+            if best is None or best[0] > 0.25 * self.initial_distance:
+                return valid
+            chosen = [best[1], best[2]]
+            why = f"separation closest to Px₀ (off by {best[0]:.0f} px)"
+        else:
+            # No Px₀ yet, so there is no separation to test against. Geometry instead: the markers
+            # are sprayed on the specimen centre-line, the interlopers sit at the lateral extremes.
+            mid_x = shape[1] / 2.0
+            ranked = sorted(valid, key=lambda b: abs(b[0] - mid_x))
+            chosen = ranked[:2]
+            why = "nearest the specimen centre-line (Px₀ not set yet)"
+
+        rejected = [b for b in valid if b not in chosen]
+        now = _time.monotonic()
+        if rejected and now - getattr(self, "_pair_last_t", 0.0) > 5.0:
+            self._pair_last_t = now
+            mid_x = shape[1] / 2.0
+            where = ", ".join(
+                f"({b[0]:.0f},{b[1]:.0f}) {abs(b[0] - mid_x) / mid_x * 100:.0f}% off-centre"
+                for b in rejected)
+            self.notice.emit(
+                f"{len(valid)} blobs qualified — kept the pair {why}; ignored {where}. "
+                "A blob that keeps appearing near the frame edge is usually a grip or fixture: "
+                "mask it (SPECIMEN_PRESETS mask_x) or move it out of the ROI.")
+        return sorted(chosen, key=lambda b: b[1])
+
     def detect_blobs(self, frame) -> list:
         try:
             # Apply mask for black specimen to exclude background wall
@@ -286,6 +348,15 @@ class CameraManager(QObject):
 
             # Sort by Y so blob 1 is always top, blob 2 always bottom
             valid.sort(key=lambda b: b[1])
+
+            if len(valid) > 2:
+                # More than 2 does NOT mean the markers were missed — it means something else in
+                # frame passed the filters too. On the black specimen that is the white grips: the
+                # recalibrated ROI is wide enough to include them, they are as bright as the spray
+                # dots, and Otsu's threshold shifts a little frame to frame, so they drift in and
+                # out of qualifying. Discarding those frames threw away good strain data and read
+                # as a dropout in the health badge.
+                valid = self._choose_marker_pair(valid, frame.shape)
 
             if len(valid) == 2:
                 self.blobs_detected.emit(valid)
