@@ -873,15 +873,72 @@ class UTMApplication(QMainWindow):
         self.openDataButton.clicked.connect(self.on_open_data)
 
         # One-click per-specimen PDF report (uses the shared analysis library utm_analysis)
-        from PyQt6.QtWidgets import QPushButton
+        #
+        # The "save the CSV first" rule was only ever conveyed in two weak places: a tooltip that
+        # said "last-saved test CSV" without saying to go and save it, and the unsaved-data dialog,
+        # which by definition only appears AFTER the operator has already pressed the button. Both
+        # are recoveries, not instructions. The tooltip now leads with the rule, and a "?" beside
+        # the button spells the whole workflow out — matching modeHelpButton, which is how every
+        # other explain-this affordance in this app already looks.
+        from PyQt6.QtWidgets import QHBoxLayout, QPushButton, QToolButton
         self.generateReportButton = QPushButton("Generate report")
         self.generateReportButton.setToolTip(
-            "Build a one-page PDF report (+ individual vector graphs) from the current / last-saved\n"
-            "test CSV, using the UI settings (specimen mode, preload, speed, area, gauge).\n"
-            "Saves into the specimen folder, beside the CSV, and opens the PDF.")
+            "SAVE THE TEST DATA FIRST — the report is built from the saved CSV, not from\n"
+            "what is on screen. If the run is unsaved you will be offered the save dialog.\n\n"
+            "Builds a one-page PDF (+ the individual graphs) using the UI settings (specimen\n"
+            "mode, preload, speed, area, gauge), asks where to put it — defaulting to the\n"
+            "specimen folder beside the CSV — and opens the PDF.")
         self.generateReportButton.clicked.connect(self.on_generate_report)
+        self.reportHelpButton = QToolButton()
+        self.reportHelpButton.setText("?")
+        self.reportHelpButton.setFixedSize(24, 24)
+        self.reportHelpButton.setToolTip("How saving and reporting fit together")
+        self.reportHelpButton.clicked.connect(self.on_report_help)
         if hasattr(self, "dataButtonsLayout"):
-            self.dataButtonsLayout.addWidget(self.generateReportButton)
+            row = QHBoxLayout()
+            row.addWidget(self.generateReportButton, 1)
+            row.addWidget(self.reportHelpButton, 0)
+            # Its OWN row, not a third seat in dataButtonsLayout. That row is a QHBoxLayout holding
+            # Open Data and Save Data inside a ~308 px panel; a third button already squeezed
+            # "Generate report" (sizeHint 202 px) down to about 92, and adding the "?" took it to
+            # 62 — the label was being truncated to fit. On its own line it gets the full width.
+            parent = self.dataButtonsLayout.parentWidget()
+            outer = parent.layout() if parent is not None else None
+            idx = -1
+            if outer is not None:
+                idx = next((i for i in range(outer.count())
+                            if outer.itemAt(i).layout() is self.dataButtonsLayout), -1)
+            if idx >= 0:
+                outer.insertLayout(idx + 1, row)          # directly under Open / Save Data
+            else:
+                self.dataButtonsLayout.addLayout(row)     # fallback: keep the old placement
+
+    def on_report_help(self):
+        """Spell out the save -> report order in plain language.
+
+        Deliberately not a restatement of the tooltip: it names the ORDER, says why the order
+        exists (the analysis reads the file, not the live buffer), and shows what a finished
+        specimen folder looks like — which is the thing that makes the rule stick.
+        """
+        from PyQt6.QtWidgets import QMessageBox
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Save, then report")
+        box.setText("Save the test data BEFORE you generate the report.")
+        box.setInformativeText(
+            "The report is built from the saved CSV file, not from what is on screen — so there "
+            "has to be a file first.\n\n"
+            "1.  Run the test.\n"
+            "2.  Save data  →  choose the specimen folder. The CSV is written.\n"
+            "3.  Generate report  →  it asks where to put it, already pointing at that same "
+            "folder. Press Enter.\n\n"
+            "You get 10 files: the one-page PDF summary and the four graphs, each as PDF and PNG. "
+            "The PDF opens by itself.\n\n"
+            "If you press Generate report before saving, it stops and offers to save first — it "
+            "will not quietly report on your previous test.\n\n"
+            "Shortcut: turn on “On save: generate the report” and step 3 happens automatically "
+            "every time you save.")
+        box.exec()
 
     def init_state(self):
         """Initialize application state variables"""
