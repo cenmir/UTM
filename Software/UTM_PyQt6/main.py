@@ -877,7 +877,8 @@ class UTMApplication(QMainWindow):
         self.generateReportButton = QPushButton("Generate report")
         self.generateReportButton.setToolTip(
             "Build a one-page PDF report (+ individual vector graphs) from the current / last-saved\n"
-            "test CSV, using the UI settings (specimen mode, preload, speed, area, gauge).")
+            "test CSV, using the UI settings (specimen mode, preload, speed, area, gauge).\n"
+            "Saves into the specimen folder, beside the CSV, and opens the PDF.")
         self.generateReportButton.clicked.connect(self.on_generate_report)
         if hasattr(self, "dataButtonsLayout"):
             self.dataButtonsLayout.addWidget(self.generateReportButton)
@@ -4079,8 +4080,17 @@ class UTMApplication(QMainWindow):
 
     def on_generate_report(self):
         """Build a one-page PDF report (+ individual vector graphs) from a test CSV, using the current
-        UI settings. Reports on the last saved/opened CSV; if none, prompts for a file. Output PDFs
-        are vector (editable) and land next to the CSV."""
+        UI settings, save it BESIDE THE CSV, and open it.
+
+        Reports on the last saved/opened CSV; if none, prompts for a file. Output PDFs are vector
+        (editable).
+
+        The output folder is the CSV's own folder, passed explicitly. build_report() otherwise
+        defaults to a central Software/UTM_PyQt6/reports/ — fine for the CLI, wrong from the app:
+        the report would open in a viewer and then be nowhere near the test data, the plots and the
+        capture it describes, so it read as "it only opens it, it doesn't save it". Keeping a
+        specimen folder self-contained is the whole point of having one.
+        """
         import os
         from PyQt6.QtWidgets import QFileDialog, QMessageBox
         csv_path = getattr(self, "_last_saved_csv", None)
@@ -4106,23 +4116,59 @@ class UTMApplication(QMainWindow):
             "offset": self.force_offset,
             "comment": comment or None,
         }
+        out_dir = os.path.dirname(os.path.abspath(csv_path))
         try:
             from utm_report import build_report
-            paths = build_report(csv_path, settings=settings)
+            paths = build_report(csv_path, settings=settings, out_dir=out_dir)
         except Exception as e:
             QMessageBox.critical(self, "Report error", f"Failed to generate report:\n{e}")
             self.append_to_console(f"Report error: {e}")
             return
         pdf = paths[0]
-        self.append_to_console(f"Report written: {pdf}")
+        self.append_to_console(f"Report saved beside the test data: {pdf}")
+        self.append_to_console(f"   {len(paths)} files written into {out_dir}")
         self.set_status(f"Report saved: {os.path.basename(pdf)}")
+
+        # Then open it. Failing to open is NOT failing to generate, so say which one happened —
+        # swallowing the error silently left the operator staring at a viewer that never appeared,
+        # with no hint that the file was on disk all along.
+        opened = self._open_externally(pdf)
+        if not opened:
+            self.append_to_console("   (could not launch a PDF viewer — the file is still saved)")
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Report generated")
+        box.setText(("Report saved and opened." if opened else "Report saved."))
+        box.setInformativeText(
+            f"{len(paths)} files (one-pager + individual graphs, each as PDF and PNG) written into "
+            f"the specimen folder:\n\n{out_dir}\n\n{os.path.basename(pdf)}"
+            + ("" if opened else "\n\nNo PDF viewer could be launched — open it from the folder."))
+        folder_btn = box.addButton("Open folder", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Ok)
+        box.setDefaultButton(QMessageBox.StandardButton.Ok)
+        box.exec()
+        if box.clickedButton() is folder_btn:
+            self._open_externally(out_dir)
+
+    def _open_externally(self, path):
+        """Hand a file or folder to the OS. True if something was launched.
+
+        os.startfile is Windows-only — which is where the rig is, but the analysis scripts get run
+        elsewhere — so fall back to Qt, which knows the platform-appropriate opener.
+        """
+        import os
         try:
-            os.startfile(pdf)                       # open the PDF for the user (Windows)
-        except Exception:
+            os.startfile(path)                      # noqa: S606 — Windows
+            return True
+        except (AttributeError, OSError):
             pass
-        QMessageBox.information(
-            self, "Report generated",
-            f"Report written (one-pager + individual graphs, each as PDF and PNG):\n\n{pdf}")
+        try:
+            from PyQt6.QtCore import QUrl
+            from PyQt6.QtGui import QDesktopServices
+            return bool(QDesktopServices.openUrl(QUrl.fromLocalFile(path)))
+        except Exception:
+            return False
 
     def _export_csv(self, file_path):
         """Export data to CSV file with metadata header"""
