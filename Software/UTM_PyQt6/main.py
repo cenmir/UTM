@@ -654,7 +654,8 @@ class UTMApplication(QMainWindow):
     #      the horizontal streaks across the curve. `utm_analysis` has always gated on lpx > 100;
     #      the same gate is applied here. A sample with no strain reading is not a data point.
     #   2. THE ANCHOR. Force is tared at the preload, so the plotted stress was short by the whole
-    #      tared-away load (470 N ≈ 5.9 MPa ≈ 15 % on the last 100 % specimen). Added back here.
+    #      tared-away load (300 N ≈ 3.8 MPa ≈ 8 % on S25/S26; it was 470 N ≈ 15 % on the V6
+    #      quintet, which is where this was first noticed). Added back here.
     #   3. UNITS. The report plots strain in %, the GUI plotted a bare fraction — a factor of 100
     #      between two axes that are supposed to show the same quantity.
     #   4. A PAIRING BUG in the downsampler (see _ss_thin).
@@ -2385,7 +2386,10 @@ class UTMApplication(QMainWindow):
         self.preloadTargetSpinBox.setRange(0, 2000)
         self.preloadTargetSpinBox.setDecimals(0)
         self.preloadTargetSpinBox.setSingleStep(10)
-        self.preloadTargetSpinBox.setValue(470)
+        # 300 N, matching what the rig has actually been run at since S22 (anchors 280-308 N on
+        # S24/S25/S26) and matching recipes/Default.json, which already said 300. The old 470 came
+        # from the V6 quintet and had drifted into being an outlier that every run overwrote by hand.
+        self.preloadTargetSpinBox.setValue(300)
         self.preloadTargetSpinBox.setSuffix(" N")
         self.preloadTargetSpinBox.setToolTip(
             "Target load. The gripper moves in tension until the load cell reaches this value, then stops.")

@@ -21,7 +21,7 @@ class TestRecipe:
     specimen_mode: str = "White"          # DIC preset: White (dark dots) / Black (light dots)
     area_mm2: float = 80.0
     gauge_mm: float = 80.0
-    preload_N: float = 470.0
+    preload_N: float = 300.0               # matches the GUI default and recipes/Default.json
     test_speed_mm_s: float = 0.1
     # "manual", or the EXACT advanced-test-mode dropdown label ("Cyclic", "Staircase",
     # "Relaxation", "Creep", "Staircase → FRACTURE", "Progressive cyclic → FRACTURE").
