@@ -6701,6 +6701,14 @@ class UTMApplication(QMainWindow):
             self.append_to_console("   ROI needs a camera restart: press Stop Camera, then Start "
                                    "Camera, for the new crop to take effect.")
 
+        # The speckle view thresholds with the DETECTOR's polarity, and the styles are built when
+        # the tick-boxes change — not at record time. So arming speckle on a white specimen and
+        # then switching to black left the recorder inverted, and the AVI would have come out a
+        # negative: the whole frame white except the markers. Rebuild them against the new preset.
+        # (PNG stills share the same style objects, so this covers both.)
+        if getattr(self, "_vidStyleActions", None):
+            self._sync_video_styles()
+
     def on_start_camera(self):
         # Apply the dropdown's preset (ROI + threshold) before connecting. The combo's
         # initial "White" value is set before its signal is connected, so on_specimen_mode_changed
