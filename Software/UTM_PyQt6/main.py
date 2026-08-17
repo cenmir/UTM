@@ -4194,10 +4194,18 @@ class UTMApplication(QMainWindow):
             elif clicked is not old_btn:
                 self.append_to_console("[Report] cancelled."); return
 
+        # Whatever the operator actually saved or opened — including a name they typed over the
+        # suggested one, and including a different folder. Only a file that has since MOVED or been
+        # renamed outside the app falls through to the picker, and then the picker starts in the
+        # folder it was last seen in, which is where the renamed copy almost always still is.
         csv_path = getattr(self, "_last_saved_csv", None)
         if not csv_path or not os.path.exists(csv_path):
+            start = os.path.dirname(csv_path) if csv_path else ""
+            if csv_path:
+                self.append_to_console(f"[Report] {os.path.basename(csv_path)} is no longer at that "
+                                       "path — renamed or moved? Pick the CSV to report on.")
             csv_path, _ = QFileDialog.getOpenFileName(
-                self, "Select test CSV for the report", "", "CSV Files (*.csv);;All Files (*)")
+                self, "Select test CSV for the report", start, "CSV Files (*.csv);;All Files (*)")
             if not csv_path:
                 return
         try:
@@ -4410,7 +4418,13 @@ class UTMApplication(QMainWindow):
 
         try:
             self._import_csv(file_path)
+            # An opened CSV is the file the app is now showing, so it is also the file a report
+            # should be built from. Without this, Open Data followed by Generate report silently
+            # reported on whatever was SAVED last — the same wrong-specimen trap as an unsaved run,
+            # reached from the other direction.
+            self._last_saved_csv = file_path
             self.append_to_console(f"Data loaded from: {file_path}")
+            self.append_to_console("   Generate report will now report on this file.")
         except Exception as e:
             QMessageBox.critical(self, "Import Error", f"Failed to load data:\n{str(e)}")
             self.append_to_console(f"Import error: {str(e)}")
