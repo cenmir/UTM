@@ -4031,7 +4031,10 @@ class UTMApplication(QMainWindow):
         # 3. the report
         if self.autoReportAct.isChecked():
             try:
-                self.on_generate_report()
+                # Automatic path, straight after a successful save: the data is saved by
+                # definition, and a modal folder picker here would stall an unattended run. It
+                # goes beside the CSV, which is what "On save: generate the report" promises.
+                self.on_generate_report(ask_location=False, prompt_unsaved=False)
                 done.append("report")
             except Exception as e:
                 self.append_to_console(f"[SF11] report failed: {e}")
@@ -4078,21 +4081,58 @@ class UTMApplication(QMainWindow):
             QMessageBox.critical(self, "Export Error", f"Failed to save data:\n{str(e)}")
             self.append_to_console(f"Export error: {str(e)}")
 
-    def on_generate_report(self):
-        """Build a one-page PDF report (+ individual vector graphs) from a test CSV, using the current
-        UI settings, save it BESIDE THE CSV, and open it.
+    def on_generate_report(self, _checked=False, *, ask_location=True, prompt_unsaved=True):
+        """Build a one-page PDF report (+ individual vector graphs) from a test CSV, using the
+        current UI settings, save it where the operator chooses, and open it.
 
-        Reports on the last saved/opened CSV; if none, prompts for a file. Output PDFs are vector
-        (editable).
+        A report can only be built from a SAVED CSV — the analysis reads the file, not the live
+        buffer. So an unsaved run is caught up front (`prompt_unsaved`): without that check the
+        button silently reported on whichever test was saved LAST, producing a complete and
+        entirely plausible report for the wrong specimen, filed into that specimen's folder.
 
-        The output folder is the CSV's own folder, passed explicitly. build_report() otherwise
-        defaults to a central Software/UTM_PyQt6/reports/ — fine for the CLI, wrong from the app:
-        the report would open in a viewer and then be nowhere near the test data, the plots and the
-        capture it describes, so it read as "it only opens it, it doesn't save it". Keeping a
-        specimen folder self-contained is the whole point of having one.
+        The output folder is then asked for (`ask_location`), defaulting to the CSV's own folder so
+        the ordinary case is one Enter and the report lands with the test data, the plots and the
+        capture it describes. build_report() otherwise defaults to a central
+        Software/UTM_PyQt6/reports/ — right for the CLI, wrong from the app.
+
+        `_checked` swallows the bool that QPushButton.clicked passes positionally. Both keyword
+        flags are turned OFF by the SF11 auto-report, which runs immediately after a save: the data
+        is saved by definition, and a modal folder picker in an automatic path would block it.
         """
         import os
         from PyQt6.QtWidgets import QFileDialog, QMessageBox
+
+        last = getattr(self, "_last_saved_csv", None)
+        if prompt_unsaved and getattr(self, "data_unsaved", False) and self.load_plot_times:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setWindowTitle("Save the test data first")
+            box.setText("The current run has not been saved.")
+            box.setInformativeText(
+                "A report is built from a saved CSV, not from the live buffer.\n\n"
+                + (f"Generating now would report on the PREVIOUS test\n"
+                   f"({os.path.basename(last)}), not this one."
+                   if last and os.path.exists(last) else
+                   "There is no saved test to report on yet."))
+            save_btn = box.addButton("Save data now", QMessageBox.ButtonRole.AcceptRole)
+            old_btn = (box.addButton("Report on the previous test",
+                                     QMessageBox.ButtonRole.DestructiveRole)
+                       if last and os.path.exists(last) else None)
+            box.addButton(QMessageBox.StandardButton.Cancel)
+            box.setDefaultButton(save_btn)
+            box.exec()
+            clicked = box.clickedButton()
+            if clicked is save_btn:
+                self.on_save_data()                     # opens the normal Save Test Data dialog
+                if getattr(self, "data_unsaved", False):
+                    self.append_to_console("[Report] save cancelled — no report generated.")
+                    return
+                # on_save_data may already have produced the report via SF11 auto-report.
+                if self.autoReportAct.isChecked():
+                    return
+            elif clicked is not old_btn:
+                self.append_to_console("[Report] cancelled."); return
+
         csv_path = getattr(self, "_last_saved_csv", None)
         if not csv_path or not os.path.exists(csv_path):
             csv_path, _ = QFileDialog.getOpenFileName(
@@ -4116,7 +4156,17 @@ class UTMApplication(QMainWindow):
             "offset": self.force_offset,
             "comment": comment or None,
         }
-        out_dir = os.path.dirname(os.path.abspath(csv_path))
+        # Default to the CSV's own folder — the specimen folder — so Enter is the right answer and
+        # the report keeps company with the data it describes. Anywhere else stays one click away.
+        spec_dir = os.path.dirname(os.path.abspath(csv_path))
+        out_dir = spec_dir
+        if ask_location:
+            chosen = QFileDialog.getExistingDirectory(
+                self, "Save the report in ...  (default: the specimen folder)", spec_dir,
+                QFileDialog.Option.ShowDirsOnly)
+            if not chosen:
+                self.append_to_console("[Report] cancelled — no folder chosen."); return
+            out_dir = chosen
         try:
             from utm_report import build_report
             paths = build_report(csv_path, settings=settings, out_dir=out_dir)
@@ -4125,7 +4175,9 @@ class UTMApplication(QMainWindow):
             self.append_to_console(f"Report error: {e}")
             return
         pdf = paths[0]
-        self.append_to_console(f"Report saved beside the test data: {pdf}")
+        where = ("beside the test data" if os.path.abspath(out_dir) == spec_dir
+                 else "OUTSIDE the specimen folder")
+        self.append_to_console(f"Report saved {where}: {pdf}")
         self.append_to_console(f"   {len(paths)} files written into {out_dir}")
         self.set_status(f"Report saved: {os.path.basename(pdf)}")
 
@@ -4142,7 +4194,8 @@ class UTMApplication(QMainWindow):
         box.setText(("Report saved and opened." if opened else "Report saved."))
         box.setInformativeText(
             f"{len(paths)} files (one-pager + individual graphs, each as PDF and PNG) written into "
-            f"the specimen folder:\n\n{out_dir}\n\n{os.path.basename(pdf)}"
+            + ("the specimen folder:" if os.path.abspath(out_dir) == spec_dir else ":")
+            + f"\n\n{out_dir}\n\n{os.path.basename(pdf)}"
             + ("" if opened else "\n\nNo PDF viewer could be launched — open it from the folder."))
         folder_btn = box.addButton("Open folder", QMessageBox.ButtonRole.ActionRole)
         box.addButton(QMessageBox.StandardButton.Ok)
