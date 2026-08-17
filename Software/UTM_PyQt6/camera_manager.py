@@ -38,8 +38,11 @@ class CameraManager(QObject):
     error_occurred = pyqtSignal(str)
     connection_changed = pyqtSignal(bool)
 
-    # Camera configuration
-    ROI = [0, 1072, 1700, 256]      # [OffsetX, OffsetY, Width, Height]
+    # Camera configuration. This ROI is the pre-preset fallback and must stay in step with the
+    # SPECIMEN_PRESETS entry for the default mode below — it was left on the stale
+    # [0, 1072, 1700, 256] crop, so a fresh launch (which starts in Black) sat on a ROI too small
+    # to hold both markers until a mode was re-selected.
+    ROI = [0, 988, 2348, 419]       # [OffsetX, OffsetY, Width, Height]
     FRAME_RATE = 35
     EXPOSURE_TIME = 50000
     GAMMA = 0.5
@@ -58,22 +61,31 @@ class CameraManager(QObject):
         },
         "Black": {
             "threshold": 0,  # ignored — Otsu auto-selects
-            "threshold_type": cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+            "threshold_type": cv2.THRESH_BINARY + cv2.THRESH_OTSU,  # BRIGHT dots on dark PLA
             "exposure": 50000,
-            "roi": [0, 1072, 1700, 256],
+            # SAME ROI as White: the specimen sits in the same place in the fixtures whatever
+            # colour it is, so the crop that frames it is a property of the RIG, not the material.
+            # This preset kept the pre-recalibration [0, 1072, 1700, 256], which is not a tuning
+            # difference — a pair 1665 px apart needs ~1815 px along the specimen, so 1700 cropped
+            # one marker off the SENSOR before detection ever ran (live badge: "DIC BAD 1/2,
+            # track 0 %"), and 256 px across left a 150 px marker only 53 px of lateral margin.
+            "roi": [0, 988, 2348, 419],
             "mask_x": None,
             "min_area": 2000,
             "max_area": 200000,
-            "min_circularity": 0.3,
+            # 0.5, matching White. It was 0.3 to be forgiving on a narrow crop; on the full ROI more
+            # background is in frame, so the looser test is now a liability rather than a help.
+            "min_circularity": 0.5,
         },
     }
 
-    # Active blob detection configuration (defaults to Black specimen)
+    # Active blob detection configuration (defaults to Black specimen — keep in step with
+    # SPECIMEN_PRESETS["Black"], which set_specimen_mode() overwrites these from)
     THRESHOLD = 0
     THRESHOLD_TYPE = cv2.THRESH_BINARY + cv2.THRESH_OTSU
     MIN_AREA = 2000
     MAX_AREA = 200000
-    MIN_CIRCULARITY = 0.3
+    MIN_CIRCULARITY = 0.5
 
     def __init__(self):
         super().__init__()

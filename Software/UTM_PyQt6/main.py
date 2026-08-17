@@ -6683,6 +6683,21 @@ class UTMApplication(QMainWindow):
                 combo.blockSignals(False)
         self.camera_manager.set_specimen_mode(mode)
         self.append_to_console(f"[Camera] Specimen mode: {mode}")
+        # set_specimen_mode() can only push EXPOSURE to a running camera — the ROI is a sensor-level
+        # crop applied in on_start_camera(), so switching mode mid-stream leaves the OLD crop in
+        # place. Silent before, which looks exactly like the preset not working.
+        #
+        # Tested the same way set_specimen_mode() tests it (camera present AND open), not just
+        # "camera is not None": a stopped camera can leave the object behind, and nagging about a
+        # restart that is not needed trains the operator to ignore the line.
+        cam = getattr(self.camera_manager, "camera", None)
+        try:
+            live = cam is not None and cam.IsOpen()
+        except Exception:
+            live = False
+        if live:
+            self.append_to_console("   ROI needs a camera restart: press Stop Camera, then Start "
+                                   "Camera, for the new crop to take effect.")
 
     def on_start_camera(self):
         # Apply the dropdown's preset (ROI + threshold) before connecting. The combo's
