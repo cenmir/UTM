@@ -2511,7 +2511,16 @@ class UTMApplication(QMainWindow):
     RETURN_SLOW_MM = 0.60           # taper inside this distance from zero
     RETURN_SLOW_SPEED_MM_S = 0.10
     RETURN_TOL_MM = 0.05            # "arrived"
-    RETURN_MAX_LOAD_N = 60.0        # refuse to start, and abort, above this
+    # SIGNED tension ceiling: refuse to start, and abort, above this. It is deliberately NOT abs().
+    # The force reading is tared at the preload, so a specimen carrying nothing at all reads
+    # -(tared_away) — typically -280 to -480 N after a fracture or a full release. Testing abs()
+    # blocked precisely the case this button exists for, while a genuinely gripped specimen (which
+    # reads POSITIVE tension) is what has to be refused.
+    RETURN_MAX_LOAD_N = 50.0
+    # ...but dropping abs() would also drop the only guard against driving into an obstruction,
+    # which shows up as load moving hard in EITHER direction. Watch the change from where the move
+    # started instead: that works wherever the tare happens to sit, which an absolute limit cannot.
+    RETURN_MAX_DELTA_N = 250.0
     RETURN_TIMEOUT_S = 240
 
     def _add_return_zero_button(self):
@@ -2525,8 +2534,10 @@ class UTMApplication(QMainWindow):
         self.returnZeroButton.setToolTip(
             "Drive the crosshead back to δ = 0 — the mounting position for the next specimen.\n"
             "Slows near the target and stops within 0.05 mm.\n"
-            f"Refuses to start, and aborts, above {self.RETURN_MAX_LOAD_N:.0f} N, so it cannot "
-            "drive against a specimen that is still gripped. Press again to cancel.")
+            f"Refuses to start, and aborts, above {self.RETURN_MAX_LOAD_N:.0f} N of TENSION, so it "
+            "cannot drive against a specimen that is still gripped. Negative (compressive) and "
+            "near-zero readings are fine — that is the normal post-fracture state.\n"
+            "Press again to cancel.")
         self.returnZeroButton.clicked.connect(self.on_return_to_zero)
         self.returnZeroButton.setEnabled(False)
         lay = self.positionGroup.layout()
@@ -2556,16 +2567,20 @@ class UTMApplication(QMainWindow):
         if abs(d) <= self.RETURN_TOL_MM:
             self.append_to_console(f"[Return] Already at δ = {d:+.3f} mm — nothing to do."); return
 
-        # A specimen still carrying load is the case this must not blunder into: driving toward
+        # A specimen still carrying TENSION is the case this must not blunder into: driving toward
         # zero would compress or snap it. Refuse, and say which button fixes it.
-        load = abs(self.current_load or 0.0)
+        #
+        # Signed, not abs(). A fractured or fully released specimen reads NEGATIVE — the preload
+        # was tared away, so nothing in the grips shows as -(tared_away) — and that is the state
+        # this button is normally pressed in.
+        load = self.current_load or 0.0
         if load > self.RETURN_MAX_LOAD_N:
             self.append_to_console(
-                f"[Return] Load is {load:.0f} N — release it first (Release fully), otherwise "
+                f"[Return] Tension is {load:+.0f} N — release it first (Release fully), otherwise "
                 "driving back to zero would push against a specimen that is still gripped.")
             QMessageBox.warning(self, "Return to zero",
-                                f"Load is {load:.0f} N.\n\nRelease the load first — returning to "
-                                "zero now would drive the crosshead against a loaded specimen.")
+                                f"Tension is {load:+.0f} N.\n\nRelease the load first — returning "
+                                "to zero now would drive the crosshead against a loaded specimen.")
             return
 
         msg = QMessageBox(self)
@@ -2575,7 +2590,9 @@ class UTMApplication(QMainWindow):
         msg.setInformativeText(
             f"It will move {abs(d):.2f} mm at {self.RETURN_SPEED_MM_S:.2f} mm/s, slowing near the "
             f"end, and stop within {self.RETURN_TOL_MM:.2f} mm.\n\n"
-            f"Aborts on its own if the load exceeds {self.RETURN_MAX_LOAD_N:.0f} N. "
+            f"Load now: {load:+.0f} N.\n"
+            f"Aborts on its own if tension exceeds {self.RETURN_MAX_LOAD_N:.0f} N, or if the load "
+            f"moves more than {self.RETURN_MAX_DELTA_N:.0f} N from here in either direction. "
             "Press Stop / E-Stop at any time.")
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg.setDefaultButton(QMessageBox.StandardButton.Yes)
@@ -2586,6 +2603,7 @@ class UTMApplication(QMainWindow):
         self._return_active = True
         self._return_start_t = time.monotonic()
         self._return_start_d = d
+        self._return_start_load = load          # baseline for the obstruction guard
         self._return_last_log = 0.0
         self._return_speed = None
         # Positive δ means the crosshead travelled in TENSION, so coming back is the release
@@ -2613,12 +2631,24 @@ class UTMApplication(QMainWindow):
         """Live loop: taper near zero, stop on arrival, and bail out on load / timeout."""
         import time
         d = self.motor_displacement_mm
-        load = abs(self.current_load or 0.0)
+        load = self.current_load or 0.0
 
+        # Two separate failures, and they need two separate tests. Tension climbing past the
+        # ceiling means a specimen is still gripped; a big swing EITHER way from where the move
+        # started means the crosshead has run into something. Only the first can be judged against
+        # a fixed number, because only the second is independent of where the tare sits.
         if load > self.RETURN_MAX_LOAD_N:
             if self.connected:
                 self.serial_manager.send_command("Stop")
-            self._stop_return(f"SAFETY — load reached {load:.0f} N; something is in the grips",
+            self._stop_return(f"SAFETY — tension reached {load:+.0f} N; something is in the grips",
+                              warn=True)
+            return
+        swing = load - getattr(self, "_return_start_load", load)
+        if abs(swing) > self.RETURN_MAX_DELTA_N:
+            if self.connected:
+                self.serial_manager.send_command("Stop")
+            self._stop_return(f"SAFETY — load moved {swing:+.0f} N since the move began "
+                              f"(now {load:+.0f} N); the crosshead is pushing against something",
                               warn=True)
             return
         if time.monotonic() - self._return_start_t > self.RETURN_TIMEOUT_S:
