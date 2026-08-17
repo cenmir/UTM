@@ -176,20 +176,46 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 >    with the strain readout (Δpx/Px₀ = ε); and the calipers grow OUTWARD rather than both one way.
 >    Blocked behind a lighting problem the operator is working on.
 >
-> 4. **Capture feature — VALIDATE ON THE RIG** (built 2026-08-13, `18551c4`…`670d630`). One pull with
->    PNG + AVI on: confirm the stress-strain curve is unaffected, the frame rate holds, the frames
->    and video land, `index.csv` lines up with the CSV, and the **adaptive speckle** view tracks the
->    real (uneven) lighting rather than a synthetic one. This is the MOT extensometer prerequisite.
+> 4. **✅ Capture feature — VALIDATED ON THE RIG 2026-08-17** (built 2026-08-13,
+>    `18551c4`…`670d630`). Three pulls to fracture with PNG + AVI on: S24 (VC1), S25 (VC2), S26
+>    (VC3). S25/S26 gave 3 127 stills and 3 × 3 127 AVI frames across raw/boost/speckle, **0
+>    dropped**, 19.9 fps, all four sinks in step, `run.json` → CSV correct, **100 % DIC coverage**,
+>    and both videos open ≈0.6 s before the crosshead moves and run 4.6 s past fracture. Replaying
+>    every frame through the app's own detector found 2 markers on 99.8 / 99.9 %. Deck p217–222.
+>    S24 logged only 27 % DIC coverage — frames all present and distinct, so the loss was in the
+>    load↔DIC matching step; it has not recurred and is not currently reproducible.
+>    ▸ Next: **S27/S28, 50 % infill, same protocol** — folders already created — to compare against
+>    the 100 % set and re-test the infill knock-down factor (50 % needs k ≈ 2.4, 100 % lands at
+>    k ≈ 1). This closes the MOT extensometer prerequisite.
 >
 > **⬜ Software, in the order I would take it:**
 > 5. **SF13** guided wizard.
 >
 > **⬜ Decisions that are the operator's, not mine:**
-> - **The E fit window.** 0.05–0.40 % lands on the TOE on both specimens checked: S16 reads
->   1.62–2.11 GPa there where the straightest part of its curve (0.6–1.2 %, R² ≥ 0.997) reads
->   2.57–2.62. Reported E is an under-estimate. Moving the window to ~0.25–0.60 % changes **every
->   published E** in the deck and registry — hence not done unilaterally. See
->   `documentation/E_modulus_explained.pptx` slide 5.
+> - **The E fit window — QUANTIFIED 2026-08-17, decision GATED ON S27/S28.** No longer an anecdote:
+>   `documentation/e_fit_data.py` now measures all three candidate rules on every 100 % run (n = 9),
+>   read-only, changing nothing in `analyze()`. Deck **p223–224** carries the evidence.
+>
+>   | rule for the window | mean E | CV | vs add:north TDS |
+>   |---|---|---|---|
+>   | ISO fixed 0.05–0.25 % | 2.44 GPa | 16.4 % | −15 % |
+>   | ours fixed 0.05–0.40 % (today) | 2.59 GPa | 12.5 % | −10 % |
+>   | **steepest straight run** | **2.98 GPa** | **9.0 %** | **+4 %** |
+>
+>   The steepest straight run wins on repeatability AND on agreement with the datasheet at the same
+>   time, which is the combination that rules out noise-chasing — a rule chasing noise would raise
+>   CV, not lower it. Note **ISO is the worst of the three here**, so "move to ISO for
+>   comparability" is a step backwards, not a safe default.
+>
+>   **Do NOT change it before S27/S28.** Those two 50 % video runs go through the CURRENT code so
+>   all five capture specimens are processed identically; the window gets settled once, afterwards,
+>   with the full set in hand. Changing `analyze()` recomputes E and σ_y for every historical test
+>   in the deck, the registry and memory. UTS and ε_f are unaffected either way.
+>
+>   Open when it is picked up: is the low-strain compliance residual seating, or genuine PLA
+>   non-linearity? The 50 % pair helps — a seating effect should not scale with infill. Also verify
+>   the ISO/ASTM clause numbers against the source standards before any of this is published.
+>   Prior art: `documentation/E_modulus_explained.pptx` slide 5 (the original S16 observation).
 > - **Motor torque ceiling** — driver Vref, or wire the TMC2160's SPI to the ESP32 so current and
 >   thermal status become a logged channel (§4).
 > - **Merge.** 36 commits sit on `snapshot/main-py-2026-08-12`, not on `main`.
