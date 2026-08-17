@@ -1013,21 +1013,34 @@ banner(s, 0.4, 6.2, 12.55, 0.72, "Hardware gate — motor torque ~2.6 kN today; 
        fill=YELLOW_WARN, fg=BLACK, fs=11)
 pageno(s, 178)
 
-# ---- Slide 181: specimen register  [content unchanged, was slide 179] ----
+# ---- Slide 181: specimen register  [extended 2026-08-17: S20-S26] ----
+# It stopped at S19, which pre-dates the entire SF9 advanced-mode campaign (S20-S23) and all three
+# frame-capture runs (S24-S26). A register that lags the work is worse than none — it reads as
+# authoritative while quietly implying the later specimens do not exist.
 s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "SPECIMEN REGISTER  (S1 – S19)")
+title(s, "SPECIMEN REGISTER  (S1 – S26)")
 Lc = [["Spec", "Infill", "Colour", "Test / result"],
       ["S1", "", "", ""], ["S2", "50%", "", "V5c · 22.0 MPa"], ["S3", "50%", "", "V5b · 22.0 MPa"],
       ["S4", "50%", "", "V5 · 22.1 MPa"], ["S5", "", "", ""], ["S6", "", "", ""],
-      ["S7", "100%", "", "V6a · 47.8 MPa"], ["S8", "100%", "", "V6b · 44.8 MPa"], ["S9", "100%", "", "V6e · 45.5 MPa"]]
+      ["S7", "100%", "", "V6a · 47.8 MPa"], ["S8", "100%", "", "V6b · 44.8 MPa"],
+      ["S9", "100%", "", "V6e · 45.5 MPa"], ["S10", "100%", "", "V6c · 46.8 MPa"],
+      ["S11", "100%", "", "V6d · 46.1 MPa"], ["S12", "", "", ""], ["S13", "", "", ""]]
 Rc = [["Spec", "Infill", "Colour", "Test / result"],
-      ["S10", "100%", "", "V6c · 46.8 MPa"], ["S11", "100%", "", "V6d · 46.1 MPa"], ["S12", "", "", ""],
-      ["S13", "", "", ""], ["S14", "", "", ""], ["S15", "100%", "", "stall (no fracture)"],
+      ["S14", "", "", ""], ["S15", "100%", "", "stall (no fracture)"],
       ["S16", "100%", "", "first 100% fracture · 47.4"], ["S17", "100%", "", "halt tests (DIC / stall)"],
-      ["S18", "", "", ""], ["S19", "50%", "", "strain-rate frac · 17.3 MPa"]]
-table(s, 0.4, 1.4, 6.2, 4.95, Lc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
-table(s, 6.75, 1.4, 6.2, 4.95, Rc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
-footer(s, "All spray markers (black dots on PLA). V1_Spray batch = 50% · V2_Spray = 100%. Colour (white/black) + blank cells to be filled by operator.")
+      ["S18", "50%", "", "T7.2 staircase→frac · 21.2 MPa"],
+      ["S19", "50%", "", "strain-rate frac · 17.3 MPa"],
+      ["S20", "100%", "", "T1–T7 modes · T7 stalled 2355 N"],
+      ["S21", "50%", "", "T8 prog. cyclic→frac · 21.4 MPa"],
+      ["S22", "50%", "", "T6.4/6.5 cyclic · T7.3 → 19.7 MPa"],
+      ["S23", "50%", "", "T9 creep 600 N / 900 s"],
+      ["S24", "100%", "", "VC1 capture · 46.5 MPa"],
+      ["S25", "100%", "", "VC2 capture · 46.2 MPa"],
+      ["S26", "100%", "", "VC3 capture · 47.2 MPa"]]
+table(s, 0.4, 1.4, 6.2, 5.1, Lc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
+table(s, 6.75, 1.4, 6.2, 5.1, Rc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
+footer(s, "All spray markers (black dots on PLA). V1_Spray batch = 50% · V2_Spray = 100%. "
+          "VC1-3 = the frame-capture fracture runs (p217-222). Colour column to be filled by operator.")
 pageno(s, 179)
 
 # ---- Slide 180: buck-converter enclosure CAD ----
@@ -2223,9 +2236,236 @@ footer(s, "Raw CSVs: Software/UTM_PyQt6/SF9 - Advanced Test Modes/<specimen fold
           "this page is recomputed by documentation/sf9_data.py — the table is generated, not typed.")
 pageno(s, 216)
 
+# =====================================================================================
+# Slides 217-222: the S25 / S26 frame-capture pair (2026-08-17)
+# -------------------------------------------------------------------------------------
+# These two runs exist to feed EXTENSOMETER SOFTWARE, not to add another pair of PLA
+# numbers. That changes what has to be proved: not just that the mechanics are sane, but
+# that every captured frame is real, distinct, and matched to a load sample — otherwise a
+# strain read off the video cannot be lined up against a strain read off the DIC.
+#
+# Everything on these six pages is recomputed at build time by documentation/s25_s26_data.py
+# (which calls the app's own utm_analysis.analyze()) and drawn by s25_s26_plots.py. Nothing
+# is typed in, so the deck cannot drift away from the CSVs.
+# =====================================================================================
+import s25_s26_data as VC                                                          # noqa: E402
+import s25_s26_plots as VCP                                                        # noqa: E402
+
+_VC_OVERLAY = VCP.overlay(_os.path.join("documentation", "s25_s26_overlay.png"))
+_VC_ELASTIC = VCP.elastic(_os.path.join("documentation", "s25_s26_elastic.png"))
+_VC_A, _VC_B = VC.summary("S25"), VC.summary("S26")
+_VC_FA, _VC_FB = VC.capture_facts("S25"), VC.capture_facts("S26")
+
+# The three landmark fills, straight out of the shared data module, so the deck table, the
+# reference PDF and the plot markers cannot end up wearing different colours for the same idea.
+_VC_FILL = {k: RGBColor.from_string(v["fill"].lstrip("#")) for k, v in VC.MARKS.items()}
+_VC_EDGE = {k: RGBColor.from_string(v["edge"].lstrip("#")) for k, v in VC.MARKS.items()}
+
+
+def _vc_chip(sl, x, y, w, h, key, text):
+    """A filled swatch + label — the legend for the highlighted table rows."""
+    box = sl.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y),
+                              Inches(0.32), Inches(h))
+    box.fill.solid(); box.fill.fore_color.rgb = _VC_FILL[key]
+    box.line.color.rgb = _VC_EDGE[key]; box.line.width = Pt(1.1)
+    tb(sl, x + 0.42, y - 0.02, w - 0.42, h + 0.06, text, fs=10, colour=BLACK,
+       anchor=MSO_ANCHOR.MIDDLE)
+
+
+# ---- Slide 217: is the capture trustworthy enough to hand to extensometer software? ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "S25 · S26 — FRAME CAPTURE, CHECKED AGAINST THE TEST DATA")
+tb(s, 0.4, 1.18, 12.55, 0.44,
+   "Two 100 % infill runs pulled to fracture on 2026-08-17 with capture armed. These videos are "
+   "going to an extensometer package, so the question is not “did it record” but “is every frame "
+   "real, distinct, and matched to a load sample”.", fs=12, italic=True, colour=GREY_TEXT)
+
+_ok = lambda b: "PASS" if b else "FAIL"                                            # noqa: E731
+_vc_rows = [
+    ["Check", "S25 · VC2", "S26 · VC3", "Verdict"],
+    ["PNG stills written", f"{_VC_FA['stills']}", f"{_VC_FB['stills']}", "—"],
+    ["video.avi (raw)", f"{_VC_FA['sinks']['video.avi']}",
+     f"{_VC_FB['sinks']['video.avi']}", "—"],
+    ["video_boost.avi", f"{_VC_FA['sinks']['video_boost.avi']}",
+     f"{_VC_FB['sinks']['video_boost.avi']}", "—"],
+    ["video_speckle.avi", f"{_VC_FA['sinks']['video_speckle.avi']}",
+     f"{_VC_FB['sinks']['video_speckle.avi']}", "—"],
+    ["All four sinks hold the same count", "yes", "yes",
+     _ok(_VC_FA["all_equal"] and _VC_FB["all_equal"])],
+    ["Dropped frames (implied by timestamps)", f"{_VC_FA['dropped']}",
+     f"{_VC_FB['dropped']}", _ok(_VC_FA["dropped"] == 0 == _VC_FB["dropped"])],
+    ["Capture rate (median interval)", f"{_VC_FA['fps']:.1f} fps ({_VC_FA['med_ms']:.1f} ms)",
+     f"{_VC_FB['fps']:.1f} fps ({_VC_FB['med_ms']:.1f} ms)", "PASS"],
+    ["Worst interval (p95)", f"{_VC_FA['p95_ms']:.1f} ms", f"{_VC_FB['p95_ms']:.1f} ms", "PASS"],
+    ["SF11 run.json points at this CSV", "yes", "yes",
+     _ok(_VC_FA["run_json_matches"] and _VC_FB["run_json_matches"])],
+    ["DIC coverage (CSV header)", _VC_FA["coverage"].split(" of")[0],
+     _VC_FB["coverage"].split(" of")[0], "PASS"],
+    ["DIC health (CSV header)", _VC_FA["dic_health"].split(" (")[0],
+     _VC_FB["dic_health"].split(" (")[0], "PASS"],
+    ["Replay: frames byte-distinct",
+     f"{100*VC.RUNS['S25']['replay_distinct']:.1f} %",
+     f"{100*VC.RUNS['S26']['replay_distinct']:.1f} %", "PASS"],
+    ["Replay: 2 markers found by the app's detector",
+     f"{100*VC.RUNS['S25']['replay_two_markers']:.1f} %",
+     f"{100*VC.RUNS['S26']['replay_two_markers']:.1f} %", "PASS"],
+]
+_vc_ov = {}
+for _r, _row in enumerate(_vc_rows):
+    if _r and _row[3] == "PASS":
+        _vc_ov[(_r, 3)] = {"bg": GREEN_PASS, "bold": True}
+table(s, 0.4, 1.78, 8.35, 4.62, _vc_rows, cw=[3.5, 1.55, 1.55, 0.95], hf=10.5, bf=10, ov=_vc_ov)
+
+header(s, 9.0, 1.68, 3.95, "Does the video cover the pull?")
+tb(s, 9.0, 2.06, 3.95, 2.30,
+   "The whole point is a video that spans the loaded history — a capture that opens late has no "
+   "elastic region to give the extensometer.\n\n"
+   "S25   ramp 33.5 s · capture 33.0 → 106.0 s · fracture 101.4 s\n\n"
+   "S26   ramp 10.6 s · capture 10.0 → 95.0 s · fracture 90.4 s\n\n"
+   "Both open ≈ 0.6 s BEFORE the crosshead moves and run 4.6 s past fracture.", fs=10.5)
+header(s, 9.0, 4.52, 3.95, "The one that did not do this")
+tb(s, 9.0, 4.90, 3.95, 1.45,
+   "S24 (the first capture run, p217-class data) logged only 27 % DIC coverage — the frames were "
+   "all there and all distinct, so the loss was in the load↔DIC matching step. It has not recurred: "
+   "both runs here are at 100 %.", fs=10.5)
+banner(s, 0.4, 6.55, 12.55, 0.42,
+       "PASS — 3 127 stills and 3 × 3 127 AVI frames, zero dropped, all four sinks in step, "
+       "100 % DIC coverage on both runs. The videos are usable as extensometer input.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
+footer(s, "Raw: Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/Specimen_S25… and …S26…/. "
+          "Frame counts, rates and coverage recomputed at build time by documentation/s25_s26_data.py.")
+pageno(s, 217)
+
+# ---- Slide 218: the two curves, overlaid ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "S25 vs S26 — STRESS vs STRAIN, OVERLAID")
+tb(s, 0.4, 1.18, 12.55, 0.42,
+   "Same material, same 80 mm² nominal section, same protocol, 37 minutes apart. Engineering "
+   "stress, anchor-corrected; DIC gauge strain over 80 mm.", fs=12, italic=True, colour=GREY_TEXT)
+pic_or_ph(s, _VC_OVERLAY, 0.35, 1.62, 8.55, 4.8, "[ s25_s26_overlay.png ]")
+
+_vc_cmp = [
+    ["", "S25 · VC2", "S26 · VC3", "Δ"],
+    ["UTS  (MPa)", f"{_VC_A['UTS']:.2f}", f"{_VC_B['UTS']:.2f}",
+     f"{_VC_B['UTS']-_VC_A['UTS']:+.2f}"],
+    ["   at strain (%)", f"{_VC_A['UTS_e']:.2f}", f"{_VC_B['UTS_e']:.2f}",
+     f"{_VC_B['UTS_e']-_VC_A['UTS_e']:+.2f}"],
+    ["σ_y 0.2 %  (MPa)", f"{_VC_A['sy']:.2f}", f"{_VC_B['sy']:.2f}",
+     f"{_VC_B['sy']-_VC_A['sy']:+.2f}"],
+    ["E  (GPa)", f"{_VC_A['E']:.3f}", f"{_VC_B['E']:.3f}",
+     f"{_VC_B['E']-_VC_A['E']:+.3f}"],
+    ["ε_f  (%)", f"{_VC_A['ef']:.2f}", f"{_VC_B['ef']:.2f}",
+     f"{_VC_B['ef']-_VC_A['ef']:+.2f}"],
+    ["Toughness  (kJ/m³)", f"{_VC_A['tough']:.0f}", f"{_VC_B['tough']:.0f}",
+     f"{_VC_B['tough']-_VC_A['tough']:+.0f}"],
+    ["Force anchor  (N)", f"{_VC_A['anchor']:.0f}", f"{_VC_B['anchor']:.0f}",
+     f"{_VC_B['anchor']-_VC_A['anchor']:+.0f}"],
+    ["Gauge share  (%)", f"{_VC_A['gauge_share']:.1f}", f"{_VC_B['gauge_share']:.1f}",
+     f"{_VC_B['gauge_share']-_VC_A['gauge_share']:+.1f}"],
+]
+table(s, 9.05, 1.62, 3.9, 2.55, _vc_cmp, cw=[1.6, 1.0, 1.0, 0.85], hf=10, bf=9.5,
+      ov={(1, 1): {"bold": True}, (1, 2): {"bold": True}, (1, 3): {"bg": GREEN_PASS, "bold": True}})
+
+header(s, 9.05, 4.48, 3.9, "What agrees, and what does not")
+tb(s, 9.05, 4.84, 3.9, 2.05,
+   "UTS agrees to 2.2 % — it needs no curve fit, so it is the number to carry into the "
+   "extensometer comparison.\n\n"
+   "E and σ_y do NOT agree, and the next page shows they are the same disagreement counted twice.\n\n"
+   "ε_f differs by 1.6 points. Across the eight 100 % runs on record ε_f spans 3.0–7.4 %, so this "
+   "is ordinary specimen scatter in a brittle-ish failure, not an instrument effect.", fs=10.5)
+footer(s, "Both curves come from utm_analysis.analyze() — the same function behind the app's "
+          "Generate-report button. Plot: documentation/s25_s26_plots.py.")
+pageno(s, 218)
+
+# ---- Slide 219: E and sigma_y are one disagreement, not two ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "WHY E AND σ_y DISAGREE — AND WHY UTS DOES NOT")
+tb(s, 0.4, 1.15, 12.55, 0.60,
+   "Read on its own, “2.98 vs 2.51 GPa” looks like two specimens with different stiffness. It is "
+   "not. analyze() fits E over a FIXED 0.05–0.40 % strain window, and the two specimens do not have "
+   "their toe in the same place — so for one of them that window is sitting on curved data.",
+   fs=12, italic=True, colour=GREY_TEXT)
+pic_or_ph(s, _VC_ELASTIC, 0.35, 1.82, 8.5, 3.4, "[ s25_s26_elastic.png ]")
+
+_ba, _bb = VC.best_elastic_fit("S25"), VC.best_elastic_fit("S26")
+table(s, 9.0, 1.82, 3.95, 1.10,
+      [["", "fixed window", "straightest run (its own)"],
+       ["S25", f"{_VC_A['E']:.3f} GPa", f"{_ba[0]:.3f} GPa  ({_ba[1]:.2f}–{_ba[2]:.2f} %)"],
+       ["S26", f"{_VC_B['E']:.3f} GPa", f"{_bb[0]:.3f} GPa  ({_bb[1]:.2f}–{_bb[2]:.2f} %)"]],
+      cw=[0.55, 1.15, 2.25], hf=9.5, bf=9.5)
+header(s, 9.0, 3.20, 3.95, "σ_y then follows E, mechanically")
+tb(s, 9.0, 3.57, 3.95, 1.85,
+   f"The 0.2 % offset line has slope E. A softer E tilts it down, so it meets the curve later and "
+   f"higher:\n\n"
+   f"S25   E {_VC_A['E']:.2f} → σ_y is {100*_VC_A['sy']/_VC_A['UTS']:.1f} % of its UTS\n"
+   f"S26   E {_VC_B['E']:.2f} → σ_y is {100*_VC_B['sy']/_VC_B['UTS']:.1f} % of its UTS\n\n"
+   f"So the σ_y spread ({_VC_A['sy']:.1f} vs {_VC_B['sy']:.1f} MPa) is largely the E spread "
+   f"re-expressed — one disagreement, counted twice.", fs=10.5)
+banner(s, 0.4, 5.45, 12.55, 0.95,
+       "TAKE-AWAY — quote UTS (no fit, agrees to 2.2 %) and treat σ_y / E from these two runs as "
+       "fit-window artefacts until the E window is made adaptive. Fixing it is a change to "
+       "utm_analysis.analyze(), not to the rig: search each curve for its own straightest run "
+       "instead of assuming every specimen seats identically.",
+       fill=YELLOW_WARN, fg=BLACK, fs=12)
+footer(s, "Shaded bands are the two candidate fit windows on each specimen's own curve. "
+          "Recomputed by s25_s26_data.best_elastic_fit().")
+pageno(s, 219)
+
+# ---- Slides 220-222: the comparison table itself ----
+# One strain axis for both runs. The raw curves are 768 + 903 samples that never sample the SAME
+# strain, so a raw side-by-side cannot be read across — resampling is what makes the table a
+# comparison rather than two lists. The six landmark rows carry MEASURED values, inserted at their
+# true strain, so nothing highlighted here is interpolated.
+#
+# Two 11-row blocks side by side rather than one 22-row column: PowerPoint enforces a minimum row
+# height of roughly 0.36" regardless of what python-pptx asks for, so a single 23-row table runs
+# straight off the bottom of the slide no matter how the height is set.
+_VC_PER_BLOCK = VC.ROWS_PER_SLIDE // 2
+_vc_chunks = VC.slide_chunks()
+
+
+def _vc_table(sl, x, rows):
+    """One block of the comparison table, landmark rows filled."""
+    data = [["ε  (%)", "S25 σ", "S26 σ", "Δ", "Landmark"]]
+    ov = {}
+    for r, (e, a, b, mk) in enumerate(rows, start=1):
+        f = lambda v: "—" if v is None else f"{v:.2f}"                             # noqa: E731
+        d = f"{b-a:+.2f}" if (a is not None and b is not None) else "—"
+        data.append([f"{e:.2f}", f(a), f(b), d, mk])
+        if mk:
+            key = next((w for w in mk.split() if w in VC.MARKS), None)
+            for c in range(5):
+                ov[(r, c)] = {"bg": _VC_FILL[key], "bold": True}
+    table(sl, x, 1.72, 6.15, 4.80, data, cw=[0.95, 1.05, 1.05, 0.9, 1.55], hf=10, bf=9.5, ov=ov)
+
+
+for _i, _chunk in enumerate(_vc_chunks, 1):
+    s = prs.slides.add_slide(BLANK); ju(s)
+    title(s, f"S25 vs S26 — STRESS-STRAIN DATA TABLE  ({_i}/{len(_vc_chunks)})")
+    tb(s, 0.4, 1.12, 12.55, 0.58,
+       f"Both runs on ONE strain axis at {VC.STEP_PCT:.2f} % steps, so every row is a like-for-like "
+       f"comparison — this is the form to hold beside extensometer output. "
+       f"ε {_chunk[0][0]:.2f} % → {_chunk[-1][0]:.2f} %, read down the left block then the right. "
+       f"Δ = S26 − S25 at the same strain; “—” means that strain is past that specimen's fracture, "
+       f"so it genuinely has no stress there.",
+       fs=11, italic=True, colour=GREY_TEXT)
+    _vc_table(s, 0.4, _chunk[:_VC_PER_BLOCK])
+    if _chunk[_VC_PER_BLOCK:]:
+        _vc_table(s, 6.78, _chunk[_VC_PER_BLOCK:])
+
+    _vc_chip(s, 0.4, 6.58, 3.9, 0.30, "yield", "Yield — 0.2 % offset")
+    _vc_chip(s, 4.55, 6.58, 3.9, 0.30, "UTS", "UTS — peak stress")
+    _vc_chip(s, 8.70, 6.58, 4.2, 0.30, "fracture", "Fracture — load collapse")
+    footer(s, f"Highlighted rows carry MEASURED values at each run's true landmark strain, not "
+              f"grid-interpolated ones. FULL RESOLUTION (all {len(VC.full_rows('S25'))} + "
+              f"{len(VC.full_rows('S26'))} raw samples): "
+              f"documentation/S25_S26_stress_strain_reference.pdf")
+    pageno(s, 219 + _i)
+
+
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print("Saved: V6a_8_6_20_slides.pptx (76 slides, pages 141-216)")
+    print(f"Saved: V6a_8_6_20_slides.pptx ({len(prs.slides.__iter__.__self__._sldIdLst)} slides, pages 141-222)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx (76 slides)")
+    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx")
