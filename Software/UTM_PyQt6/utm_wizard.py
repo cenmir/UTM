@@ -93,18 +93,21 @@ def steps(app):
          else "Preload tension — seat the specimen first"))
 
     # Px₀. Under the after-preload convention, freezing it unloaded is the mistake worth naming.
-    # Named "Tare DIC" first because that is the button now — one click, no dialog. It stays HERE,
-    # after the preload, and not up with the camera steps: under the after-preload convention this
-    # freeze defines the strain zero, and Prepare test (below) tares the FORCE, after which the
-    # reading is ~0 N and the load it was captured at is lost.
+    # Calibrate Px₀, NOT Tare DIC. Tare DIC clears the console and the live diagnostics and leaves
+    # the reference alone — the two are different operations. This step stays HERE, after the
+    # preload, because under the after-preload convention the freeze defines the strain zero, and
+    # Prepare test (below) tares the FORCE immediately after, at which point the load it was
+    # captured at is gone.
     px0_ok = px0 is not None
     if px0_ok and after_preload and (px0_load or 0.0) < PRELOAD_MIN_N:
-        out.append(["px0", "Tare DIC — freeze Px₀", NEXT,
-                    f"⚠ frozen at {px0_load or 0:.0f} N — the convention is AFTER preload; re-tare"])
+        out.append(["px0", "Calibrate Px₀ — freeze the strain reference", NEXT,
+                    f"⚠ frozen at {px0_load or 0:.0f} N — the convention is AFTER preload; "
+                    f"press Calibrate Px₀ again"])
     else:
-        add("px0", "Tare DIC — freeze Px₀", px0_ok,
-            f"{px0:.1f} px @ {px0_load or 0:.0f} N  (or Calibrate Px₀, which asks first)"
-            if px0_ok else "strain has no reference until this is set")
+        add("px0", "Calibrate Px₀ — freeze the strain reference", px0_ok,
+            f"{px0:.1f} px @ {px0_load or 0:.0f} N  (Prepare test re-freezes it too)"
+            if px0_ok else
+            "strain has no reference until this is set — Tare DIC does NOT set it")
 
     prepared = getattr(app, "_prepared_t", None) is not None
     add("prepare", "Prepare test (tares Px₀, position, force)", prepared,

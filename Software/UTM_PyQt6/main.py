@@ -6665,13 +6665,12 @@ class UTMApplication(QMainWindow):
 
     # One definition for both tabs. The Load Plot camera monitor is built BEFORE the Stress/Strain
     # camera group, so the LP button cannot read this off the other button.
-    TARE_ALIAS_TIP = ("Freeze Px₀ immediately — the same operation as Calibrate Px₀, but with no "
-                      "confirmation dialog.\n\n"
-                      "This is the one to use while setting up, when you re-tare repeatedly and a "
-                      "prompt each time is only in the way. Calibrate Px₀ keeps its dialog for the "
-                      "formal pre-test step, where confirming the specimen state is the point.\n\n"
-                      "Either way the console prints the load it was captured at and the CSV header "
-                      "records the convention, so the record is the same.")
+    TARE_ALIAS_TIP = ("Clear the DIC console and the live diagnostics — the health badge's "
+                      "history, the measured rate, and the strain queue.\n\n"
+                      "It does NOT move Px₀. Use it while setting up: after nudging the lighting "
+                      "or the ROI, clear the noise and watch the badge rebuild from scratch.\n\n"
+                      "Px₀ — the reference every strain in the test is measured against — is moved "
+                      "only by Calibrate Px₀ and by Prepare test.")
 
     MARGIN_EVERY_S = 2.0        # contrast-margin recompute interval — see _update_dic_health
 
@@ -6883,20 +6882,46 @@ class UTMApplication(QMainWindow):
         self.on_tare_dic(confirm=True)
 
     def on_tare_dic_now(self):
-        """The Tare DIC BUTTON. Freezes Px₀ straight away, no dialog.
+        """The Tare DIC BUTTON — clears the DIC console and the live diagnostics. NOT Px₀.
 
-        Split from on_calibrate_px0 rather than sharing it: taring is done repeatedly while setting
-        up — check the markers, nudge the lighting, re-tare — and a confirmation on every press is
-        pure friction there. The dialog stays on Calibrate Px₀, which is the formal pre-test step
-        where confirming the specimen state IS the point.
+        Px₀ has ONE owner: Calibrate Px₀ (and Prepare test, which is the formal pre-test step).
+        This button used to move it too, which made three controls able to redefine the denominator
+        of every strain in the test — and the one you would press casually, while nudging the
+        lighting, was among them. "Tare the readouts" and "redefine the strain zero" are different
+        operations that happened to share an implementation, so they are separated here.
 
-        Nothing is lost from the record either way: on_tare_dic prints the load it captured at and
-        the CSV header still states the convention.
-
-        A wrapper for the same reason as on_calibrate_px0 — `clicked` passes a bool positionally,
-        which would land in `confirm` and turn this back into the dialog path.
+        What it resets is everything ACCUMULATED: the console, the blob-count history behind the
+        health badge, and the strain queue used for load↔DIC matching. That is the useful part
+        while setting up — clear the noise from a fiddle and watch the badge rebuild — and none of
+        it touches the reference.
         """
-        self.on_tare_dic(confirm=False)
+        cm = self.camera_manager
+        px0 = getattr(cm, "initial_distance", None)
+        if hasattr(self, "cameraConsoleTextEdit"):
+            self.cameraConsoleTextEdit.clear()
+        self._dic_blob_history = []
+        self._dic_blob_count = 0
+        self._dic_blob_t = 0.0
+        try:
+            cm.dic_history.clear()
+        except Exception:
+            pass
+        for name in ("_rate_dic", "_rate_grab"):
+            try:
+                getattr(cm, name).clear()
+            except Exception:
+                pass
+        self.append_to_console("[DIC] readouts and console cleared — health badge and rate will "
+                               "rebuild over the next second.")
+        if px0:
+            self.append_to_console(
+                f"[DIC] Px₀ UNCHANGED at {px0:.1f} px"
+                + (f" (captured at {self._px0_load_N:.0f} N)"
+                   if getattr(self, "_px0_load_N", None) is not None else "")
+                + " — only Calibrate Px₀ and Prepare test move it.")
+        else:
+            self.append_to_console("[DIC] ⚠ Px₀ has never been set — press Calibrate Px₀ before "
+                                   "the pull or the run records no usable strain.")
 
     def _prep_checklist(self):
         """The pre-test steps, in the order the CURRENT strain-zero convention requires.
