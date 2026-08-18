@@ -169,7 +169,15 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 > **⬜ Rig time — these need a specimen and the machine; nothing else blocks them:**
 > 1. **T6.6, the damage curve.** Fresh 50 % specimen, 400→1100 N, 12 cycles, sine, 0.100 mm/s, ONE
 >    uninterrupted run, baseline E on cycle 2. ~40 min. The only route to D = 1 − Eᵢ/E₀.
-> 2. **Black-specimen DIC check.** Every specimen to date is white; the Black preset has never run.
+> 2. **✅ Black-specimen DIC check — CLEARED 2026-08-18 by S13.** Deck **p225–231**. The Black
+>    preset had never run on a real specimen; its ROI was still the pre-recalibration crop, too
+>    small in both directions to hold a 1665 px marker pair, so a marker was cropped off the sensor
+>    before detection ran (`f122259`). With that fixed: markers found on **99.9 %** of frames, noise
+>    **11.9 µε against 14.3 µε** for the white pair (17 % QUIETER, common 10 s window), and every
+>    mechanical property closer to the white mean than the two white runs are to each other
+>    (UTS 0.7 % vs 2.2 %, E 4.5 % vs 17.1 %, ε_f 3.8 % vs 31.6 %). Black is cleared for use.
+>    S12 was the first attempt and did not come out; its folder is kept for the record.
+>    ▸ n = 1. A second black specimen would turn this into a repeat, but nothing is blocked on it.
 > 3. **Live Px₀ overlay — VALIDATE ON THE RIG.** Built and render-checked 2026-08-13 (`db7ad37`)
 >    against a synthetic frame only. On a real specimen, confirm: the frozen cyan pair lands on the
 >    markers and does not drift; the green pair separates from it as load rises; the caption Δ agrees
@@ -184,12 +192,34 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 >    every frame through the app's own detector found 2 markers on 99.8 / 99.9 %. Deck p217–222.
 >    S24 logged only 27 % DIC coverage — frames all present and distinct, so the loss was in the
 >    load↔DIC matching step; it has not recurred and is not currently reproducible.
->    ▸ Next: **S27/S28, 50 % infill, same protocol** — folders already created — to compare against
->    the 100 % set and re-test the infill knock-down factor (50 % needs k ≈ 2.4, 100 % lands at
->    k ≈ 1). This closes the MOT extensometer prerequisite.
+>
+> 5. **⬜ ANALYSE S27 / S28 — the 50 % infill video pair. RUN 2026-08-17, data on disk, NOT YET
+>    ANALYSED.** `Specimen_S27_V1_Spray_Video4/` and `..._S28_..._Video5/`, both with their capture
+>    folders moved in. Peaks 1290–1293 N → UTS ≈ 19.9 MPa, E ≈ 1.22–1.26 GPa, ε_f ≈ 4.0–4.2 %.
+>    Wanted: capture integrity, the S27-vs-S28 comparison, and **50 % vs 100 % — the infill
+>    knock-down factor** (50 % has needed k ≈ 2.4 against literature, 100 % lands at k ≈ 1).
+>    This closes the MOT extensometer prerequisite. Deck + reference PDF to follow, same shape as
+>    p217–222.
+>
+> 6. **⬜ WHY DID DIC DELIVERY SLOW? — needs the live badge watched during a pull.** S13 came back
+>    at **47 % coverage** and S24 at **27 %**, on specimens of BOTH colours, so it is a pipeline
+>    issue and not a marker one. Ruled out offline: the camera (19.9 fps, 0 dropped, identical to a
+>    good run), the detector (2 markers on 99.9 % of frames) and detection cost (1.37 ms/frame ≈
+>    730 Hz ceiling). What remains is arithmetic — `DIC_STALE_THRESHOLD_MS = 100` and S13's readings
+>    arrived **147 ms** apart against 100 ms on the white runs, so half the load rows had nothing
+>    inside the matching window. The unknown is why delivery into `dic_history` slowed.
+>    ▸ **Cheap next step:** watch the DIC-Hz badge through a whole pull. It read 19.9 Hz at rest on
+>    that same specimen, so note what it reads when the ramp starts and when recording arms.
+>    ▸ Do NOT just raise the 100 ms window — that hides it by pairing load samples with staler
+>    strain. UTS is unaffected either way; ε_f is the number most at risk (664 ms worst-case gap).
 >
 > **⬜ Software, in the order I would take it:**
-> 5. **SF13** guided wizard.
+> 7. **SF13** guided wizard. The last unbuilt feature on the SF list.
+> 8. **Registry hygiene.** `registry.json` now carries duplicate rows from repeated saves of one
+>    run — S27 ×2, S28 ×3, S12 ×2 — which would double- and triple-weight those specimens in any
+>    average. S27/S28 also record `infill_pct = 100` when they are 50 % (the known infill-label
+>    defect writing 100 % after a restart; the force says 50 % plainly at ~1290 N). Both are trivial
+>    to fix and should be done as part of the S27/S28 analysis, not before it.
 >
 > **⬜ Decisions that are the operator's, not mine:**
 > - **The E fit window — QUANTIFIED 2026-08-17, decision GATED ON S27/S28.** No longer an anecdote:
@@ -207,10 +237,11 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 >   CV, not lower it. Note **ISO is the worst of the three here**, so "move to ISO for
 >   comparability" is a step backwards, not a safe default.
 >
->   **Do NOT change it before S27/S28.** Those two 50 % video runs go through the CURRENT code so
->   all five capture specimens are processed identically; the window gets settled once, afterwards,
->   with the full set in hand. Changing `analyze()` recomputes E and σ_y for every historical test
->   in the deck, the registry and memory. UTS and ε_f are unaffected either way.
+>   **GATE LIFTED 2026-08-17** — S27/S28 have now run on the current code, so all the capture
+>   specimens are processed identically and the decision is actionable. It should be taken as part
+>   of the S27/S28 analysis (item 5), because the 50 % pair is also the evidence for the open
+>   question below. Changing `analyze()` recomputes E and σ_y for every historical test in the deck,
+>   the registry and memory, so it is one decision made once. UTS and ε_f are unaffected either way.
 >
 >   Open when it is picked up: is the low-strain compliance residual seating, or genuine PLA
 >   non-linearity? The 50 % pair helps — a seating effect should not scale with infill. Also verify
@@ -218,8 +249,25 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 >   Prior art: `documentation/E_modulus_explained.pptx` slide 5 (the original S16 observation).
 > - **Motor torque ceiling** — driver Vref, or wire the TMC2160's SPI to the ESP32 so current and
 >   thermal status become a logged channel (§4).
-> - **Merge.** 36 commits sit on `snapshot/main-py-2026-08-12`, not on `main`.
->   `git checkout main && git merge --ff-only snapshot/main-py-2026-08-12`.
+>
+> **✅ Cleared 2026-08-17/18 — GUI and pipeline, all bench-verified offscreen:**
+> **Return to 0 mm** gated on SIGNED tension (50 N) instead of magnitude — `abs()` was blocking the
+> one state the button exists for, since a fractured specimen reads −(tared away); an obstruction
+> guard on the load CHANGE replaces the crash protection `abs()` was incidentally giving (`0ed4f79`)
+> · **Generate report** saves into the specimen folder beside the CSV, asks where with that as the
+> default, follows a filename you typed, follows an OPENED csv, and no longer nags to save after you
+> have saved — that prompt was gated on `data_unsaved`, which every incoming load sample sets
+> (`1c32a09`, `414f716`, `c870c28`, `478c194`) · **Tare DIC** is one click, no dialog; Calibrate Px₀
+> keeps its confirmation · **Prepare test tares Px₀ too**, FIRST, before the force tare, so the
+> header records the real preload rather than 0 N (`f945bb9`) · **Black preset ROI** (`f122259`) ·
+> **blob disambiguation** — a third qualifying blob no longer discards the frame, and a pairing
+> nowhere near Px₀ is reported as a dropout rather than invented (`3f614dc`) · **speckle video
+> polarity** rebuilt on specimen-mode change, which would otherwise have written a negative
+> (`ef1b74b`) · **preload default 470 → 300 N**, matching what the rig is actually run at
+> (`a339904`) · the central `reports/` folder deleted, nothing writes there any more.
+>
+> **Merge:** done — `snapshot/main-py-2026-08-12` is fully merged into `main` (0 commits behind) and
+> `main` is pushed to `github.com/AdithyaSivakumar-3/UTM`.
 >
 > **✅ Cleared 2026-08-13** — live Px₀ overlay · GUI responsiveness (~700 → ~285 ms/s) · Release
 > load split into "to preload" / "fully" · live stress-strain put on the report's basis (dropout
