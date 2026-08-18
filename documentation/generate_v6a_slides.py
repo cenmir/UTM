@@ -2521,8 +2521,8 @@ _ef_tbl = [["Rule for the window", "mean E", "CV", "vs TDS"]]
 for _k in ("iso", "ours", "steep"):
     _d = _EF_SUM[_k]
     _ef_tbl.append([{"iso": "ISO fixed 0.05-0.25 %",
-                     "ours": "Ours fixed 0.05-0.40 %",
-                     "steep": "Steepest straight run"}[_k],
+                     "ours": "fixed 0.05-0.40 % (was ours)",
+                     "steep": "Steepest straight run ✔"}[_k],
                     f"{_d['mean']:.2f} GPa", f"{_d['cv']:.1f} %", f"{_d['vs_tds']:+.0f} %"])
 table(s, 9.0, 1.68, 3.95, 1.42, _ef_tbl, cw=[2.0, 1.0, 0.65, 0.75], hf=9.5, bf=9.5,
       ov={(3, 1): {"bg": GREEN_PASS, "bold": True}, (3, 2): {"bg": GREEN_PASS, "bold": True},
@@ -2530,21 +2530,26 @@ table(s, 9.0, 1.68, 3.95, 1.42, _ef_tbl, cw=[2.0, 1.0, 0.65, 0.75], hf=9.5, bf=9
 
 header(s, 9.0, 3.24, 3.95, "What the numbers say")
 tb(s, 9.0, 3.60, 3.95, 1.85,
-   "The steepest straight run wins on BOTH counts at once: least scatter (CV 9.0 % vs 12.5 and "
-   "16.4) and closest to the datasheet (+4 % vs −10 and −15).\n\n"
+   f"The steepest straight run wins on BOTH counts at once: least scatter "
+   f"(CV {_EF_SUM['steep']['cv']:.1f} % against {_EF_SUM['ours']['cv']:.1f} and "
+   f"{_EF_SUM['iso']['cv']:.1f}) and closest to the datasheet "
+   f"({_EF_SUM['steep']['vs_tds']:+.0f} % against {_EF_SUM['ours']['vs_tds']:+.0f} and "
+   f"{_EF_SUM['iso']['vs_tds']:+.0f}).\n\n"
    "Lower scatter is the load-bearing result — a rule that merely chased noise would make "
    "repeatability WORSE. So the fixed windows are partly measuring how each specimen seated.\n\n"
    "Note ISO is the WORST of the three here: adopting it for comparability would cost "
    "repeatability.", fs=10.5)
 banner(s, 0.4, 5.55, 12.55, 0.85,
-       "DECISION — deferred, on purpose. S27/S28 (50 % infill, video) run on the CURRENT code so "
-       "all five capture specimens are processed identically; the window is settled afterwards, "
-       "once. Changing analyze() recomputes E and σ_y for every historical test, so it is one "
-       "decision made with the full set in hand, not a patch mid-campaign. UTS and ε_f are "
-       "unaffected either way.", fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
-footer(s, "“Steepest straight run” = the steepest stretch below 2 % strain with R² ≥ 0.999 and at "
-          "least 0.25 % span. Steepest, not straightest: the toe and the yield knee are smooth too. "
-          "Standard clauses to be checked against the source documents before publication.")
+       "DECISION TAKEN 2026-08-18 — utm_analysis.analyze() now reports the steepest straight run "
+       "as E, and the 0.05–0.40 % value alongside it as E_fixed so nothing is lost. Every test in "
+       "the deck and the registry was re-analysed on the new basis. UTS, ε_f, toughness and the "
+       "anchor are untouched and were verified bit-identical on all 20 runs; σ_y moves because "
+       "the 0.2 % offset line has slope E. See p237.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
+footer(s, "“Steepest straight run” = the steepest stretch below 2 % strain, at least 0.25 % wide, "
+          "whose R² is within 0.0005 of the straightest the record can offer (capped at 0.999). "
+          "Steepest, not straightest: the toe and the yield knee are smooth too. Standard clauses "
+          "to be checked against the source documents before publication.")
 pageno(s, 224)
 
 # =====================================================================================
@@ -3042,9 +3047,165 @@ footer(s, "Deck: 50 % pair p232-235 · 100 % pair p217-222 · E fit window p223-
           "specimen p225-231.")
 pageno(s, 236)
 
+# =====================================================================================
+# Slides 237-242: the E fit-window switch, and the S27/S28 deviation + 50-vs-100 comparison
+# =====================================================================================
+import s27_s28_dev as DV                                                           # noqa: E402
+
+_DEV = DV.deviation_stats()
+_ESW = DV.e_switch_summary()
+_ETAB = DV.e_switch_table()
+_DEV_FILL = {k: RGBColor.from_string(v["fill"].lstrip("#")) for k, v in DV.MARKS.items()}
+_DEV_EDGE = {k: RGBColor.from_string(v["edge"].lstrip("#")) for k, v in DV.MARKS.items()}
+
+
+def _dev_chip(sl, x, y, w, h, key, text):
+    box = sl.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y),
+                              Inches(0.32), Inches(h))
+    box.fill.solid(); box.fill.fore_color.rgb = _DEV_FILL[key]
+    box.line.color.rgb = _DEV_EDGE[key]; box.line.width = Pt(1.1)
+    tb(sl, x + 0.42, y - 0.02, w - 0.42, h + 0.06, text, fs=10, colour=BLACK,
+       anchor=MSO_ANCHOR.MIDDLE)
+
+
+# ---- Slide 237: the E decision, taken ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "THE E FIT WINDOW — DECISION TAKEN, AND WHAT IT MOVED")
+tb(s, 0.4, 1.15, 12.55, 0.62,
+   "p223–224 laid out the evidence; the gate was S27/S28 running on the old code, which they have. "
+   "utm_analysis.analyze() now reports the STEEPEST STRAIGHT RUN as E, with the old fixed-window "
+   "value kept alongside as E_fixed so no historical number is lost. Every test in the registry "
+   "was re-analysed.", fs=12, italic=True, colour=GREY_TEXT)
+
+_sw = [["", "n", "E before", "E after", "CV before", "CV after"]]
+for _inf in (50.0, 100.0):
+    _d = _ESW.get(_inf)
+    if _d:
+        _sw.append([f"{_inf:.0f} % infill", f"{_d['n']}", f"{_d['old_mean']:.3f} GPa",
+                    f"{_d['new_mean']:.3f} GPa", f"{_d['old_cv']:.1f} %", f"{_d['new_cv']:.1f} %"])
+table(s, 0.4, 1.85, 7.3, 1.10, _sw, cw=[1.5, 0.5, 1.2, 1.2, 1.1, 1.1], hf=10, bf=9.5,
+      ov={(1, 5): {"bg": GREEN_PASS, "bold": True}, (2, 5): {"bg": GREEN_PASS, "bold": True}})
+
+header(s, 0.4, 3.05, 7.3, "What moved, and what did not")
+tb(s, 0.4, 3.42, 7.3, 2.6,
+   "SCATTER FELL IN BOTH MATERIALS — 23.6 → 12.6 % at 50 % infill and 13.2 → 8.5 % at 100 %. That "
+   "is the whole case: a rule that merely chased noise would have raised it.\n\n"
+   "UTS, ε_f, TOUGHNESS AND THE ANCHOR ARE UNTOUCHED. Verified bit-identical on all 20 runs rather "
+   "than assumed — a silent change to UTS would have invalidated the campaign.\n\n"
+   "σ_y MOVES, because the 0.2 % offset line has slope E. A steeper E meets the curve earlier and "
+   "lower, so σ_y falls: −1.7 % typical, −10.2 % worst (S26). Its own scatter improves at 100 % "
+   "(5.1 → 4.3 %) and is flat at 50 % (7.7 → 8.0 %) — call σ_y unchanged in quality, not improved.",
+   fs=11)
+
+header(s, 7.95, 1.75, 5.0, "The runs it changed most")
+_big = sorted(_ETAB, key=lambda r: -abs(r["E_new"] / r["E_old"] - 1))[:6]
+_bt = [["spec", "infill", "E old", "E new", "window %"]]
+for _r in _big:
+    _bt.append([_r["specimen"], f"{_r['infill']:.0f} %", f"{_r['E_old']:.3f}",
+                f"{_r['E_new']:.3f}", f"{_r['lo']:.2f}–{_r['hi']:.2f}"])
+table(s, 7.95, 2.12, 5.0, 2.4, _bt, cw=[0.8, 0.8, 1.0, 1.0, 1.4], hf=9.5, bf=9)
+tb(s, 7.95, 4.70, 5.0, 1.35,
+   "S21's fixed-window E of 0.609 GPa was half the next lowest 50 % specimen — the fixed window "
+   "had landed squarely on its toe. At 1.382 it now sits inside the family (0.95–1.50). The "
+   "biggest movers are the runs the old rule was getting most wrong.", fs=10.5)
+
+banner(s, 0.4, 6.15, 12.55, 0.75,
+       "The fixed window is not deleted — analyze() returns E_fixed and E_fixed_R2 next to E, so "
+       "any run can still be stated on the old basis without re-deriving it, and this slide is "
+       "computed from both.", fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
+footer(s, "Rule: steepest stretch below 2 % strain, ≥ 0.25 % wide, ≥ 25 points, R² within 0.0005 "
+          "of the straightest the record can offer (capped 0.999). The relative floor matters — an "
+          "absolute one alone fell back to the fixed window on the noisier 50 % runs, which would "
+          "have meant two rules over one dataset.")
+pageno(s, 237)
+
+# ---- Slide 238: the deviation ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "S27 vs S28 — HOW FAR APART DO THE TWO CURVES ACTUALLY RUN?")
+tb(s, 0.4, 1.15, 12.55, 0.60,
+   "Two curves that “look identical” is not a measurement. Putting them on a common strain axis "
+   "and subtracting is: agreement becomes a number at every strain, which is what a repeatability "
+   "claim rests on.", fs=12, italic=True, colour=GREY_TEXT)
+pic_or_ph(s, _os.path.join("documentation", "s27_s28_deviation.png"), 0.40, 1.82, 12.55, 4.22,
+          "[ s27_s28_deviation.png ]")
+for _i, (_lab, _val) in enumerate((
+        ("mean |Δσ|", f"{_DEV['mean_abs']:.3f} MPa"),
+        ("RMS", f"{_DEV['rms']:.3f} MPa"),
+        ("worst |Δσ|", f"{_DEV['max_abs']:.3f} MPa"),
+        ("worst at ε", f"{_DEV['at_max']:.2f} %"),
+        ("mean |Δ|", f"{_DEV['mean_pct']:.2f} %"),
+        ("matched points", f"{_DEV['n']}"))):
+    kpi(s, 0.4 + _i * 2.12, 6.10, 2.0, _lab, _val, fill=GREEN_PASS if _i in (0, 1, 4) else LIGHT_BLUE,
+        h=0.82, vfs=15)
+footer(s, f"Shared strain range ε {_DEV['lo']:.2f}–{_DEV['hi']:.2f} %. Δσ = σ(S28) − σ(S27) at "
+          f"matched strain; the worst case sits at the very end, where one specimen has begun to "
+          f"fracture and the other has not.")
+pageno(s, 238)
+
+# ---- Slides 239-241: the deviation table ----
+_dev_rows = DV.grid_rows()
+_dev_chunks = DV.slide_chunks(_dev_rows)
+_DEV_PER_BLOCK = DV.ROWS_PER_SLIDE // 2
+
+
+def _dev_table(sl, x, rows):
+    data = [["ε (%)", "S27 σ", "S28 σ", "Δσ", "Δ %", "Landmark"]]
+    ov = {}
+    for r, (e, va, vb, d, pct, mk) in enumerate(rows, start=1):
+        f = lambda v, n=2: "—" if v is None else f"{v:.{n}f}"                      # noqa: E731
+        data.append([f"{e:.2f}", f(va), f(vb),
+                     "—" if d is None else f"{d:+.2f}",
+                     "—" if pct is None else f"{pct:+.1f}", mk])
+        if mk:
+            key = next((w for w in mk.split() if w in DV.MARKS), None)
+            for c in range(6):
+                ov[(r, c)] = {"bg": _DEV_FILL[key], "bold": True}
+    table(sl, x, 1.72, 6.15, 4.80, data, cw=[0.85, 0.95, 0.95, 0.85, 0.8, 1.45],
+          hf=9.5, bf=9, ov=ov)
+
+
+for _i, _chunk in enumerate(_dev_chunks, 1):
+    s = prs.slides.add_slide(BLANK); ju(s)
+    title(s, f"S27 vs S28 — DEVIATION TABLE  ({_i}/{len(_dev_chunks)})")
+    tb(s, 0.4, 1.12, 12.55, 0.58,
+       f"Both 50 % runs on ONE strain axis at {DV.STEP_PCT:.2f} % steps, with the difference at "
+       f"every row. ε {_chunk[0][0]:.2f} % → {_chunk[-1][0]:.2f} %, read down the left block then "
+       f"the right. Δσ = S28 − S27; “—” means that strain is past one specimen's fracture.",
+       fs=11, italic=True, colour=GREY_TEXT)
+    _dev_table(s, 0.4, _chunk[:_DEV_PER_BLOCK])
+    if _chunk[_DEV_PER_BLOCK:]:
+        _dev_table(s, 6.78, _chunk[_DEV_PER_BLOCK:])
+    _dev_chip(s, 0.4, 6.58, 3.9, 0.30, "yield", "Yield — 0.2 % offset")
+    _dev_chip(s, 4.55, 6.58, 3.9, 0.30, "UTS", "UTS — peak stress")
+    _dev_chip(s, 8.70, 6.58, 4.2, 0.30, "fracture", "Fracture — load collapse")
+    footer(s, f"Highlighted rows carry MEASURED values at each run's true landmark strain. "
+              f"Across the whole shared range the two agree to {_DEV['mean_pct']:.2f} % on average.")
+    pageno(s, 238 + _i)
+
+# ---- Slide 242: 50 % vs 100 % ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "50 % vs 100 % INFILL — S27 AND S28 AGAINST S26")
+tb(s, 0.4, 1.15, 12.55, 0.60,
+   "The middle panel is the one to look at. Divide each curve by its own UTS and the three nearly "
+   "collapse onto one another — so the two infills differ mostly by a SCALE FACTOR, not by a "
+   "change in how the material behaves.", fs=12, italic=True, colour=GREY_TEXT)
+pic_or_ph(s, _os.path.join("documentation", "s27_s28_vs_s26.png"), 0.40, 1.82, 12.55, 4.22,
+          "[ s27_s28_vs_s26.png ]")
+banner(s, 0.4, 6.15, 12.55, 0.80,
+       f"Strength and stiffness scale super-linearly with infill — "
+       f"UTS ×{SI.group_mean(SI.PAIR_100,'UTS')/SI.group_mean(SI.PAIR_50,'UTS'):.2f}, "
+       f"E ×{SI.group_mean(SI.PAIR_100,'E')/SI.group_mean(SI.PAIR_50,'E'):.2f} for a 2× change in "
+       f"material — while ε_f moves only "
+       f"×{SI.group_mean(SI.PAIR_100,'ef')/SI.group_mean(SI.PAIR_50,'ef'):.2f}. The normalised "
+       f"shapes explain why: the material yields and softens the same way at both infills; there "
+       f"is simply less of it.", fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
+footer(s, "S26 chosen as the 100 % comparator because it is the closest run in protocol and date. "
+          "Ratios use both-run means at each infill, not S26 alone.")
+pageno(s, 242)
+
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print(f"Saved: V6a_8_6_20_slides.pptx ({len(prs.slides.__iter__.__self__._sldIdLst)} slides, pages 141-236)")
+    print(f"Saved: V6a_8_6_20_slides.pptx ({len(prs.slides.__iter__.__self__._sldIdLst)} slides, pages 141-242)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
     print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx")

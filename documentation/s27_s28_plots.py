@@ -144,7 +144,117 @@ def knockdown(path=None, *, figsize=(12.8, 4.4)):
     return _save(fig, path) if path else fig
 
 
-FIGURES = {"s27_s28_pair.png": pair, "infill_knockdown.png": knockdown}
+def deviation(path=None, *, figsize=(12.8, 4.3)):
+    """Subtract the two 50 % curves. Agreement becomes a number per strain, not an impression."""
+    import s27_s28_dev as DV
+    rows = [r for r in DV.grid_rows() if r[3] is not None]
+    e = np.array([r[0] for r in rows])
+    d = np.array([r[3] for r in rows])
+    p = np.array([r[4] for r in rows])
+    st = DV.deviation_stats()
+
+    fig, axes = plt.subplots(1, 3, figsize=figsize,
+                             gridspec_kw=dict(width_ratios=[1.3, 1.3, 0.9]))
+    fig.subplots_adjust(wspace=0.30, left=0.055, right=0.985, top=0.83, bottom=0.15)
+
+    ax = axes[0]
+    ax.axhline(0, color=MUTED, lw=1.0, zorder=3)
+    ax.plot(e, d, lw=1.9, color="#6A3D9A", zorder=5)
+    ax.fill_between(e, 0, d, color="#6A3D9A", alpha=0.18, zorder=4)
+    for k in (1, -1):
+        ax.axhline(k * st["rms"], color=GREEN, ls="--", lw=1.2, zorder=4)
+    ax.text(0.1, st["rms"] * 1.35, f"±1 RMS = {st['rms']:.2f} MPa", fontsize=8.5, color=GREEN)
+    ax.set_title("σ(S28) − σ(S27) at matched strain", fontsize=10.5, color=INK)
+    ax.set_xlabel("DIC gauge strain ε (%)", fontsize=9.5, color=INK)
+    ax.set_ylabel("Δσ (MPa)", fontsize=9.5, color=INK)
+    _frame(ax)
+
+    ax = axes[1]
+    ax.axhline(0, color=MUTED, lw=1.0, zorder=3)
+    ax.plot(e, p, lw=1.9, color="#1F6FB4", zorder=5)
+    ax.axhline(st["mean_pct"], color=AMBER, ls="--", lw=1.2)
+    ax.axhline(-st["mean_pct"], color=AMBER, ls="--", lw=1.2)
+    ax.text(0.1, st["mean_pct"] * 1.25, f"mean |Δ| = {st['mean_pct']:.2f} %",
+            fontsize=8.5, color=AMBER)
+    ax.set_title("...as a percentage of S27", fontsize=10.5, color=INK)
+    ax.set_xlabel("DIC gauge strain ε (%)", fontsize=9.5, color=INK)
+    ax.set_ylabel("Δσ / σ  (%)", fontsize=9.5, color=INK)
+    _frame(ax)
+
+    ax = axes[2]
+    ax.hist(d, bins=16, color="#6A3D9A", alpha=0.75, zorder=5, orientation="horizontal")
+    ax.axhline(0, color=MUTED, lw=1.0, zorder=6)
+    ax.set_title("distribution of Δσ", fontsize=10.5, color=INK)
+    ax.set_xlabel("count", fontsize=9.5, color=INK)
+    ax.set_ylabel("Δσ (MPa)", fontsize=9.5, color=INK)
+    _frame(ax)
+
+    fig.suptitle(f"S27 vs S28 — deviation over the shared strain range "
+                 f"({st['lo']:.2f}–{st['hi']:.2f} %, {st['n']} matched points)",
+                 fontsize=12, color=INK, y=0.965)
+    return _save(fig, path) if path else fig
+
+
+def vs_s26(path=None, *, figsize=(12.8, 4.3)):
+    """The 50 % pair against S26 — one 100 % run, so the two materials sit on one axis."""
+    fig, axes = plt.subplots(1, 3, figsize=figsize,
+                             gridspec_kw=dict(width_ratios=[1.35, 1.0, 1.0]))
+    fig.subplots_adjust(wspace=0.30, left=0.055, right=0.985, top=0.83, bottom=0.15)
+
+    ax = axes[0]
+    for tag in ("S27", "S28", "S26"):
+        x, y = S.curve(tag)
+        s = S.summary(tag)
+        ax.plot(x, y, lw=2.0 if tag != "S26" else 2.4, color=s["colour"], zorder=5,
+                label=f"{s['label']} · {s['infill']:.0f} %   {s['UTS']:.2f} MPa")
+    ax.set_title("Both 50 % runs against S26 (100 %)", fontsize=10.5, color=INK)
+    ax.set_xlabel("DIC gauge strain ε (%)", fontsize=9.5, color=INK)
+    ax.set_ylabel("Engineering stress σ (MPa)", fontsize=9.5, color=INK)
+    ax.set_xlim(0, None)
+    ax.set_ylim(0, None)
+    _frame(ax)
+    ax.legend(loc="center right", fontsize=8.5, frameon=True, edgecolor=GRID)
+
+    ax = axes[1]
+    # Normalised: divide each curve by its own UTS. If the two infills differ only in scale, the
+    # shapes collapse onto one another; where they do not, the DIFFERENCE is a shape difference.
+    for tag in ("S27", "S28", "S26"):
+        x, y = S.curve(tag)
+        s = S.summary(tag)
+        ax.plot(x, y / s["UTS"], lw=2.0, color=s["colour"], zorder=5,
+                label=f"{tag} · {s['infill']:.0f} %")
+    ax.set_title("Each curve ÷ its own UTS — is it only a scale factor?",
+                 fontsize=10.5, color=INK)
+    ax.set_xlabel("ε (%)", fontsize=9.5, color=INK)
+    ax.set_ylabel("σ / UTS", fontsize=9.5, color=INK)
+    ax.set_xlim(0, 4.5)
+    ax.set_ylim(0, 1.15)
+    _frame(ax)
+    ax.legend(loc="lower right", fontsize=8.5, frameon=True, edgecolor=GRID)
+
+    ax = axes[2]
+    keys = [("UTS", "UTS"), ("σ_y", "sy"), ("E", "E"), ("ε_f", "ef")]
+    x = np.arange(len(keys))
+    vals = [S.group_mean(S.PAIR_100, k) / S.group_mean(S.PAIR_50, k) for _, k in keys]
+    ax.bar(x, vals, 0.5, color=AMBER, zorder=5)
+    ax.axhline(1.0, color=MUTED, lw=1.0)
+    ax.axhline(2.0, color=RED, ls="--", lw=1.4)
+    ax.text(3.45, 2.05, "2×", fontsize=9, color=RED, ha="right")
+    for xi, v in enumerate(vals):
+        ax.text(xi, v + 0.06, f"{v:.2f}×", ha="center", fontsize=9, color=INK)
+    ax.set_xticks(x)
+    ax.set_xticklabels([n for n, _ in keys], fontsize=9.5)
+    ax.set_ylabel("100 % ÷ 50 %", fontsize=9.5, color=INK)
+    ax.set_ylim(0, 3.0)
+    ax.set_title("100 % ÷ 50 %, property by property", fontsize=10.5, color=INK)
+    _frame(ax)
+
+    fig.suptitle("50 % vs 100 % infill — S27 and S28 against S26", fontsize=12, color=INK, y=0.965)
+    return _save(fig, path) if path else fig
+
+
+FIGURES = {"s27_s28_pair.png": pair, "infill_knockdown.png": knockdown,
+           "s27_s28_deviation.png": deviation, "s27_s28_vs_s26.png": vs_s26}
 
 if __name__ == "__main__":
     for name, fn in FIGURES.items():

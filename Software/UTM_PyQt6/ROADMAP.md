@@ -221,32 +221,36 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 >    defect writing 100 % after a restart; the force says 50 % plainly at ~1290 N). Both are trivial
 >    to fix and should be done as part of the S27/S28 analysis, not before it.
 >
+> **✅ The E fit window — DECIDED AND IMPLEMENTED 2026-08-18.** `utm_analysis.analyze()` now
+>   reports the **steepest straight run** as `E`, keeping the old fixed-window value beside it as
+>   `E_fixed` so no historical number is lost. Registry re-scanned; deck **p223–224** (evidence) and
+>   **p237** (what it moved) regenerate from the data. Measured over every run on record:
+>
+>   | rule for the window | mean E (100 %) | CV 100 % | CV 50 % | vs add:north TDS |
+>   |---|---|---|---|---|
+>   | ISO fixed 0.05–0.25 % | 2.56 GPa | 17.5 % | — | −10.9 % |
+>   | fixed 0.05–0.40 % (the old rule) | 2.67 GPa | 13.2 % | 23.6 % | −7.0 % |
+>   | **steepest straight run** | **3.02 GPa** | **8.5 %** | **12.6 %** | **+5.1 %** |
+>
+>   Scatter fell in BOTH materials, which is the case: a rule chasing noise would have raised it.
+>   **UTS, ε_f, toughness and the anchor were verified bit-identical on all 20 runs** — a silent
+>   change to UTS would have invalidated the campaign. σ_y moves (the 0.2 % offset line has slope E)
+>   by −1.7 % typically and −10.2 % worst; its own scatter improves at 100 % (5.1 → 4.3 %) and is
+>   flat at 50 % (7.7 → 8.0 %), so σ_y is unchanged in quality rather than improved.
+>
+>   Two implementation notes worth keeping: the R² floor is **relative** (within 0.0005 of the
+>   straightest the record can offer, capped at 0.999) because an absolute floor alone fell back to
+>   the fixed window on the noisier 50 % runs — two rules over one dataset is worse than either;
+>   and the window search uses **prefix sums** for O(1) fits, because the naive version took ~5 s
+>   per test behind the Generate-report button.
+>
+>   Still open, and NOT settled by this: whether the low-strain compliance is residual seating or
+>   genuine PLA non-linearity. The 50 % pair was expected to help — a seating effect should not
+>   scale with infill — but n = 2 per group cannot carry it. Also verify the ISO/ASTM clause numbers
+>   against the source standards before publication. Prior art:
+>   `documentation/E_modulus_explained.pptx` slide 5 (the original S16 observation).
+>
 > **⬜ Decisions that are the operator's, not mine:**
-> - **The E fit window — QUANTIFIED 2026-08-17, decision GATED ON S27/S28.** No longer an anecdote:
->   `documentation/e_fit_data.py` now measures all three candidate rules on every 100 % run (n = 9),
->   read-only, changing nothing in `analyze()`. Deck **p223–224** carries the evidence.
->
->   | rule for the window | mean E | CV | vs add:north TDS |
->   |---|---|---|---|
->   | ISO fixed 0.05–0.25 % | 2.44 GPa | 16.4 % | −15 % |
->   | ours fixed 0.05–0.40 % (today) | 2.59 GPa | 12.5 % | −10 % |
->   | **steepest straight run** | **2.98 GPa** | **9.0 %** | **+4 %** |
->
->   The steepest straight run wins on repeatability AND on agreement with the datasheet at the same
->   time, which is the combination that rules out noise-chasing — a rule chasing noise would raise
->   CV, not lower it. Note **ISO is the worst of the three here**, so "move to ISO for
->   comparability" is a step backwards, not a safe default.
->
->   **GATE LIFTED 2026-08-17** — S27/S28 have now run on the current code, so all the capture
->   specimens are processed identically and the decision is actionable. It should be taken as part
->   of the S27/S28 analysis (item 5), because the 50 % pair is also the evidence for the open
->   question below. Changing `analyze()` recomputes E and σ_y for every historical test in the deck,
->   the registry and memory, so it is one decision made once. UTS and ε_f are unaffected either way.
->
->   Open when it is picked up: is the low-strain compliance residual seating, or genuine PLA
->   non-linearity? The 50 % pair helps — a seating effect should not scale with infill. Also verify
->   the ISO/ASTM clause numbers against the source standards before any of this is published.
->   Prior art: `documentation/E_modulus_explained.pptx` slide 5 (the original S16 observation).
 > - **Motor torque ceiling** — driver Vref, or wire the TMC2160's SPI to the ESP32 so current and
 >   thermal status become a logged channel (§4).
 >

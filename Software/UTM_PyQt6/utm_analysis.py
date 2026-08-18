@@ -136,6 +136,95 @@ def find_fracture(data, mv_i):
     return min([fr_load] + ([fr_glitch] if fr_glitch is not None else []))
 
 
+def _fit_window(test, lo, hi):
+    """(strains, stresses) for the samples inside a strain window — the argument pair linfit wants."""
+    win = [d for d in test if lo <= d["ecz"] <= hi]
+    return [d["ecz"] for d in win], [d["sig"] for d in win]
+
+
+# The search that defines E. Bounds chosen so it cannot wander somewhere that is not the modulus:
+E_SEARCH_MAX = 0.02          # never look above 2 % strain — past that is plastic on this material
+E_SEARCH_MIN_SPAN = 0.0025   # a window narrower than 0.25 % strain fits noise, not a slope
+E_SEARCH_R2 = 0.999          # "straight" has to mean straight before "steepest" is allowed to pick
+E_SEARCH_MIN_PTS = 25
+# ...but an ABSOLUTE floor alone splits the dataset in two. The older 50 % runs are noisier and no
+# window on them reaches 0.999, so they would fall back to the fixed window while the clean runs
+# got the new rule — two rules over one dataset, which is worse than either rule applied
+# consistently. The floor is therefore relative as well: accept anything within this margin of the
+# straightest window the record can actually offer, so "as straight as this record allows" means
+# the same thing on a clean run and a noisy one.
+E_SEARCH_R2_MARGIN = 0.0005
+
+
+def _steepest_straight_run(test):
+    """The steepest genuinely-straight stretch below E_SEARCH_MAX. (slope, intercept, R2, lo, hi).
+
+    Every candidate window is fitted in O(1) from prefix sums rather than by re-summing its points.
+    That matters: this runs behind the app's Generate-report button, and the naive version took
+    about 5 s per test — long enough to feel like a hang. Same arithmetic, ~50x faster.
+
+    Returns None only when the record is too short to search at all, which the caller handles by
+    falling back to the fixed window rather than inventing a modulus.
+    """
+    pts = [d for d in test if d["ecz"] <= E_SEARCH_MAX]
+    n = len(pts)
+    if n < E_SEARCH_MIN_PTS * 2:
+        return None
+    xs = [d["ecz"] for d in pts]
+    ys = [d["sig"] for d in pts]
+    cx = [0.0] * (n + 1); cy = [0.0] * (n + 1)
+    cxx = [0.0] * (n + 1); cxy = [0.0] * (n + 1); cyy = [0.0] * (n + 1)
+    for i, (xi, yi) in enumerate(zip(xs, ys)):
+        cx[i + 1] = cx[i] + xi
+        cy[i + 1] = cy[i] + yi
+        cxx[i + 1] = cxx[i] + xi * xi
+        cxy[i + 1] = cxy[i] + xi * yi
+        cyy[i + 1] = cyy[i] + yi * yi
+
+    def _fit(i, j):
+        """OLS over pts[i:j] from the prefix sums. (slope, intercept, R2) or None."""
+        m = j - i
+        sx = cx[j] - cx[i]; sy = cy[j] - cy[i]
+        sxx = cxx[j] - cxx[i]; sxy = cxy[j] - cxy[i]; syy = cyy[j] - cyy[i]
+        den = m * sxx - sx * sx
+        if den <= 0:
+            return None
+        slope = (m * sxy - sx * sy) / den
+        ic = (sy - slope * sx) / m
+        ss_tot = syy - sy * sy / m
+        if ss_tot <= 0:
+            return None
+        ss_res = syy - ic * sy - slope * sxy        # the OLS identity, no second pass needed
+        return slope, ic, 1.0 - ss_res / ss_tot
+
+    def _scan(accept):
+        best = None
+        for i in range(n - E_SEARCH_MIN_PTS):
+            if xs[i] > E_SEARCH_MAX - E_SEARCH_MIN_SPAN:
+                break
+            for j in range(i + E_SEARCH_MIN_PTS, n + 1):
+                if xs[j - 1] - xs[i] < E_SEARCH_MIN_SPAN:
+                    continue
+                f = _fit(i, j)
+                if f is None:
+                    continue
+                cand = accept(f, i, j, best)
+                if cand is not None:
+                    best = cand
+        return best
+
+    # Pass 1: how straight can this record get at all?
+    top = _scan(lambda f, i, j, b: (f[2],) if (b is None or f[2] > b[0]) else None)
+    if top is None:
+        return None
+    floor = min(E_SEARCH_R2, top[0] - E_SEARCH_R2_MARGIN)
+    # Pass 2: among windows that straight, the steepest one.
+    best = _scan(lambda f, i, j, b:
+                 (f[0], f[1], f[2], xs[i], xs[j - 1]) if (f[2] >= floor and (b is None or f[0] > b[0]))
+                 else None)
+    return best
+
+
 def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
     """Full tensile analysis of one test. `source` is a CSV path OR an already-read list
     of sample dicts. Returns a dict of engineering properties:
@@ -199,8 +288,28 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
         test.pop()
         dropped += 1
     last = test[-1]
-    win = [d for d in test if 0.0005 <= d["ecz"] <= 0.004]
-    E, c1, r1 = linfit([d["ecz"] for d in win], [d["sig"] for d in win])
+    # ---- Young's modulus -------------------------------------------------------------------
+    # The fixed 0.05-0.40 % window is kept and reported, but it is no longer what E means.
+    #
+    # It assumes every specimen's curve is straight in the same place, and ours are not: the local
+    # slope rises through the first half-percent before yielding takes it down, and how far it has
+    # risen by 0.40 % differs specimen to specimen. Measured over every 100 % infill run on record
+    # (n = 11, documentation/e_fit_data.py) the fixed window scatters 13.2 % and sits 7 % under the
+    # material datasheet, while the STEEPEST GENUINELY-STRAIGHT stretch scatters 8.5 % and lands
+    # +5 %. Winning on repeatability and on datasheet agreement at the same time is what rules out
+    # noise-chasing — a rule chasing noise would raise scatter, not lower it.
+    #
+    # Steepest, not straightest: maximising R2 alone also rewards the compliant toe and the early
+    # yield knee, both of which are smooth and neither of which is the modulus. Require the fit to
+    # be straight FIRST, then take the steepest survivor.
+    E_fixed, c1_fixed, r1_fixed = linfit(*_fit_window(test, 0.0005, 0.004))
+    steep = _steepest_straight_run(test)
+    if steep is None:                      # too few points to search — fall back, and say so
+        E, c1, r1, e_lo, e_hi = E_fixed, c1_fixed, r1_fixed, 0.0005, 0.004
+        E_method = "fixed 0.05-0.40 % (fallback: no straight run found)"
+    else:
+        E, c1, r1, e_lo, e_hi = steep
+        E_method = f"steepest straight run {e_lo*100:.2f}-{e_hi*100:.2f} %"
     sy = next(d for d in test if E * (d["ecz"] - 0.002) + c1 >= d["sig"])
     gauge_stretch = last["ecz"] * gauge
     tough = 0.0; prev = None
@@ -212,6 +321,10 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
 
     return {
         "anchor": anchor, "E": E / 1000, "E_R2": r1, "sy": sy["sig"],
+        # The fixed-window value is kept so every historical number stays recoverable from the
+        # same call, and so a run can be re-stated on the old basis without re-deriving it.
+        "E_fixed": E_fixed / 1000, "E_fixed_R2": r1_fixed,
+        "E_lo": e_lo * 100, "E_hi": e_hi * 100, "E_method": E_method,
         "uts": uts["sig"], "uts_F": uts["Ftrue"], "ef": last["ecz"],
         "sigf": last["sig"], "soft": (uts["sig"] - last["sig"]) / uts["sig"] * 100,
         "tough": tough * 1000, "travel": last["travel"],
