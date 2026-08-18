@@ -2835,9 +2835,216 @@ footer(s, "One blemish worth recording: S13's AVI sinks came out 1539 / 1540 / 1
           "writers stopped one frame apart. Harmless here, but the other runs matched exactly.")
 pageno(s, 231)
 
+# =====================================================================================
+# Slides 232-236: S27 / S28, the 50 % infill video pair, and the infill knock-down factor
+# -------------------------------------------------------------------------------------
+# These two close the MOT extensometer prerequisite: five specimens now exist with a
+# frame-by-frame video and a matching load/DIC record, across BOTH infills.
+#
+# The scientific point is the knock-down factor k = datasheet / measured. The 100 % runs
+# land near k = 1, so the rig and the analysis are not the reason our numbers sit below
+# literature. The 50 % runs need k ≈ 2.9, and that is the specimens being half air —
+# which is what separates "our measurement is low" from "our material is".
+#
+# Numbers by documentation/s27_s28_data.py, figures by s27_s28_plots.py, both at build
+# time from the CSVs and the registry.
+# =====================================================================================
+import s27_s28_data as SI                                                          # noqa: E402
+import s27_s28_plots as SIP                                                        # noqa: E402
+
+for _n, _fn in SIP.FIGURES.items():
+    _fn(_os.path.join("documentation", _n))
+_S27, _S28 = SI.summary("S27"), SI.summary("S28")
+_C27, _C28 = SI.capture_facts("S27"), SI.capture_facts("S28")
+_M50 = {k: SI.group_mean(SI.PAIR_50, k) for k in ("UTS", "sy", "E", "ef", "tough")}
+_M100 = {k: SI.group_mean(SI.PAIR_100, k) for k in ("UTS", "sy", "E", "ef", "tough")}
+
+# ---- Slide 232: the pair, and the capture behind it ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "S27 · S28 — THE 50 % INFILL VIDEO PAIR")
+tb(s, 0.4, 1.15, 12.55, 0.62,
+   "Two 50 % infill specimens pulled to fracture on 2026-08-17 with capture armed, 14 minutes "
+   "apart. With these, FIVE specimens now have a frame-by-frame video and a matching load/DIC "
+   "record — three at 100 % infill, two at 50 % — which is what the extensometer comparison "
+   "needs on both sides.", fs=12, italic=True, colour=GREY_TEXT)
+
+for _i, (_lab, _val, _fill) in enumerate((
+        ("UTS  S27 / S28", f"{_S27['UTS']:.2f} / {_S28['UTS']:.2f}", GREEN_PASS),
+        ("pair agrees to", f"{SI.group_spread(SI.PAIR_50, 'UTS'):.1f} %", GREEN_PASS),
+        ("E  (GPa)", f"{_S27['E']:.3f} / {_S28['E']:.3f}", LIGHT_BLUE),
+        ("ε_f  (%)", f"{_S27['ef']:.2f} / {_S28['ef']:.2f}", LIGHT_BLUE),
+        ("frames captured", f"{_C27['stills']} / {_C28['stills']}", LIGHT_BLUE),
+        ("dropped", f"{_C27['dropped'] + _C28['dropped']}", GREEN_PASS))):
+    kpi(s, 0.4 + _i * 2.12, 1.90, 2.0, _lab, _val, fill=_fill)
+
+header(s, 0.4, 3.10, 6.1, "Capture integrity")
+_cap = [["Check", "S27 · VC4", "S28 · VC5", ""],
+        ["PNG stills", f"{_C27['stills']}", f"{_C28['stills']}", "—"],
+        ["AVI sinks (raw/boost/speckle)",
+         " / ".join(str(v) for v in _C27["sinks"].values()),
+         " / ".join(str(v) for v in _C28["sinks"].values()), "—"],
+        ["All sinks equal", "yes", "yes", "PASS"],
+        ["Dropped frames", f"{_C27['dropped']}", f"{_C28['dropped']}", "PASS"],
+        ["Rate", f"{_C27['fps']:.1f} fps", f"{_C28['fps']:.1f} fps", "PASS"],
+        ["DIC coverage", f"{_S27['coverage']:.0f} %", f"{_S28['coverage']:.0f} %", "PASS"]]
+table(s, 0.4, 3.47, 6.1, 2.35, _cap, cw=[2.4, 1.3, 1.3, 0.7], hf=9.5, bf=9,
+      ov={(_r, 3): {"bg": GREEN_PASS, "bold": True} for _r in range(3, 7)})
+
+header(s, 6.85, 3.10, 6.1, "Which CSV is canonical")
+tb(s, 6.85, 3.47, 6.1, 2.35,
+   "Both folders hold several CSVs — S27 has two, S28 three. They are not separate tests: the "
+   "plot buffer keeps growing while the rig idles, so each later save is the SAME run with a "
+   "longer tail. analyze() trims to the test window and returns identical numbers from any of "
+   "them.\n\n"
+   "The capture link is not identical, though. run.json names ONE csv, and that is the one taken "
+   "as canonical here — S27 → …155639.csv, S28 → …161046.csv. The descriptively-named saves are "
+   "earlier snapshots of the same data.\n\n"
+   "The duplicates were also auto-registered, so the registry carried the same specimen two and "
+   "three times; that is cleaned up as part of this analysis.", fs=10.5)
+banner(s, 0.4, 6.05, 12.55, 0.80,
+       f"PASS — {_C27['stills'] + _C28['stills']} stills and 3 × that in AVI frames across both "
+       f"runs, zero dropped, all sinks in step, DIC coverage {_S27['coverage']:.0f} % and "
+       f"{_S28['coverage']:.0f} %. Both videos are usable as extensometer input.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
+footer(s, "Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/Specimen_S27_V1_Spray_Video4/ and "
+          "…_S28_…_Video5/. Frame counts and rates recomputed at build time.")
+pageno(s, 232)
+
+# ---- Slide 233: the pair head to head ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "S27 vs S28 — HOW REPEATABLE IS A 50 % SPECIMEN?")
+tb(s, 0.4, 1.15, 12.55, 0.60,
+   "The left panel is two curves, not one — they overlay almost exactly. The right panel puts "
+   "that beside the 100 % pair measured under the identical protocol, which is the only fair way "
+   "to say whether 0.4 % is good.", fs=12, italic=True, colour=GREY_TEXT)
+pic_or_ph(s, _os.path.join("documentation", "s27_s28_pair.png"), 0.40, 1.85, 12.55, 4.07,
+          "[ s27_s28_pair.png ]")
+banner(s, 0.4, 6.05, 12.55, 0.85,
+       f"The 50 % pair agrees to {SI.group_spread(SI.PAIR_50, 'UTS'):.1f} % on UTS and "
+       f"{SI.group_spread(SI.PAIR_50, 'E'):.1f} % on E, against "
+       f"{SI.group_spread(SI.PAIR_100, 'UTS'):.1f} % and "
+       f"{SI.group_spread(SI.PAIR_100, 'E'):.1f} % for the 100 % pair — better on all four "
+       f"properties. With n = 2 in each group this is an observation about these four specimens, "
+       f"not a demonstrated property of infill; p236 explains what does follow from it.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
+footer(s, "Circles mark UTS. Right panel: |S27 − S28| and |S25 − S26|, each as a percentage of "
+          "its own pair mean.")
+pageno(s, 233)
+
+# ---- Slide 234: the knock-down factor ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "THE INFILL KNOCK-DOWN FACTOR — 50 % vs 100 %")
+tb(s, 0.4, 1.15, 12.55, 0.62,
+   f"k = datasheet ÷ measured. It answers the question that has followed this campaign since V5: "
+   f"when our PLA reads below literature, is that the RIG or the SPECIMEN? A 100 % specimen is "
+   f"close to solid material, so if the rig were the problem it would read low there too.",
+   fs=12, italic=True, colour=GREY_TEXT)
+pic_or_ph(s, _os.path.join("documentation", "infill_knockdown.png"), 0.40, 1.85, 12.55, 4.31,
+          "[ infill_knockdown.png ]")
+banner(s, 0.4, 6.25, 12.55, 0.80,
+       f"100 % infill lands at k = {SI.knockdown(SI.PAIR_100, 'UTS'):.2f} on UTS and "
+       f"{SI.knockdown(SI.PAIR_100, 'E'):.2f} on E — essentially solid material. 50 % needs "
+       f"k = {SI.knockdown(SI.PAIR_50, 'UTS'):.2f}. The rig is not the reason the 50 % numbers "
+       f"are low; the specimens are half air.", fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
+footer(s, f"Reference: {SI.TDS_NAME} — {SI.TDS['UTS']:.0f} MPa, {SI.TDS['E']:.2f} GPa. "
+          f"Earlier campaign figures quoted k ≈ 2.4 for 50 % against Chacón (2017); the difference "
+          f"is which reference, not which specimens.")
+pageno(s, 234)
+
+# ---- Slide 235: the numbers ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "50 % vs 100 % — THE NUMBERS, AND EVERY RUN ON RECORD")
+tb(s, 0.4, 1.15, 12.55, 0.42,
+   "Left: the four capture runs. Right: every fracture test in the registry at each infill, as "
+   "context for whether this pair is typical.", fs=12, italic=True, colour=GREY_TEXT)
+
+_rows = [["", "S27 · 50 %", "S28 · 50 %", "50 % mean", "100 % mean", "ratio"]]
+for _lab, _k, _f in (("UTS  (MPa)", "UTS", "{:.2f}"), ("σ_y 0.2 %  (MPa)", "sy", "{:.2f}"),
+                     ("E  (GPa)", "E", "{:.3f}"), ("ε_f  (%)", "ef", "{:.2f}"),
+                     ("Toughness  (kJ/m³)", "tough", "{:.0f}")):
+    _rows.append([_lab, _f.format(_S27[_k]), _f.format(_S28[_k]), _f.format(_M50[_k]),
+                  _f.format(_M100[_k]), f"{_M100[_k]/_M50[_k]:.2f}×"])
+_rows.append(["knock-down k (vs TDS)", "—", "—",
+              f"{SI.knockdown(SI.PAIR_50, 'UTS'):.2f}",
+              f"{SI.knockdown(SI.PAIR_100, 'UTS'):.2f}", "—"])
+table(s, 0.4, 1.68, 7.2, 2.55, _rows, cw=[2.0, 1.2, 1.2, 1.2, 1.2, 0.9], hf=9.5, bf=9.5,
+      ov={(1, 5): {"bg": GREEN_PASS, "bold": True}, (6, 4): {"bg": GREEN_PASS, "bold": True}})
+
+_r50, _r100 = SI.registry_infill(50.0), SI.registry_infill(100.0)
+import numpy as _np                                                                # noqa: E402
+_reg = [["infill", "runs", "UTS mean ± sd", "this pair", "verdict"],
+        ["50 %", f"{len(_r50)}",
+         f"{_np.mean([r['UTS'] for r in _r50]):.2f} ± {_np.std([r['UTS'] for r in _r50], ddof=1):.2f}",
+         f"{_M50['UTS']:.2f}", "slightly low"],
+        ["100 %", f"{len(_r100)}",
+         f"{_np.mean([r['UTS'] for r in _r100]):.2f} ± {_np.std([r['UTS'] for r in _r100], ddof=1):.2f}",
+         f"{_M100['UTS']:.2f}", "typical"]]
+table(s, 7.85, 1.68, 5.1, 1.0, _reg, cw=[0.8, 0.6, 1.6, 0.9, 1.1], hf=9.5, bf=9.5)
+
+header(s, 7.85, 2.95, 5.1, "Is this pair typical?")
+tb(s, 7.85, 3.32, 5.1, 2.5,
+   f"At 100 % the answer is yes — {_M100['UTS']:.2f} against a registry mean of "
+   f"{_np.mean([r['UTS'] for r in _r100]):.2f} over {len(_r100)} runs.\n\n"
+   f"At 50 % this pair reads a little LOW: {_M50['UTS']:.2f} against "
+   f"{_np.mean([r['UTS'] for r in _r50]):.2f} over {len(_r50)} runs, about one standard "
+   f"deviation below. The earlier 50 % specimens (V5, V5b, V5c) came in around 22 MPa.\n\n"
+   f"Not enough to reject the pair — a 1 σ excursion in a group of nine is unremarkable — but "
+   f"worth carrying into any k quoted from these two alone.", fs=10.5)
+banner(s, 0.4, 4.45, 7.2, 1.35,
+       f"Doubling infill multiplies UTS by {_M100['UTS']/_M50['UTS']:.2f}× and E by "
+       f"{_M100['E']/_M50['E']:.2f}× — both MORE than the 2× that 'twice the material' would give. "
+       f"ε_f barely moves ({_M100['ef']/_M50['ef']:.2f}×). Strength and stiffness scale "
+       f"super-linearly with infill; ductility does not scale with it at all.",
+       fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
+footer(s, "Registry rows read live and de-duplicated; infill classified by PEAK FORCE rather than "
+          "the header label, which is known to write 100 % after an app restart.")
+pageno(s, 235)
+
+# ---- Slide 236: what it closes, and what it feeds ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "WHAT S27 / S28 CLOSE — AND WHAT THEY FEED")
+tb(s, 0.4, 1.15, 12.55, 0.42,
+   "Two things are settled by this pair, and one previously-open question gets its evidence.",
+   fs=12, italic=True, colour=GREY_TEXT)
+
+header(s, 0.4, 1.68, 6.1, "✅ Closed")
+tb(s, 0.4, 2.05, 6.1, 2.5,
+   "MOT EXTENSOMETER PREREQUISITE. Five specimens now carry a frame-by-frame video with a matching "
+   "load/DIC record — S24/S25/S26 at 100 %, S27/S28 at 50 % — so the extensometer package can be "
+   "compared against DIC on BOTH materials rather than one.\n\n"
+   "THE INFILL KNOCK-DOWN. 100 % lands at k ≈ 1, so the rig and the analysis are not why our 50 % "
+   "numbers sit below literature. That was the open question from the V5 campaign, and it is now "
+   "answered with both infills measured under one protocol in one week.", fs=11)
+
+header(s, 6.85, 1.68, 6.1, "▶ Feeds the E fit-window decision")
+tb(s, 6.85, 2.05, 6.1, 2.5,
+   f"The 50 % pair agrees on E to {SI.group_spread(SI.PAIR_50, 'E'):.1f} % where the 100 % pair "
+   f"disagrees by {SI.group_spread(SI.PAIR_100, 'E'):.1f} %. Looking at the local slope explains "
+   f"why: across 0.05–0.60 % strain it moves about 5 % on S28 but 42 % on S26. A fixed fit window "
+   f"is only as repeatable as the curve is straight inside it.\n\n"
+   f"That is the same mechanism p223 argues, now visible in a second material — which is the "
+   f"evidence the decision was waiting for. It does NOT settle whether the low-strain compliance "
+   f"is seating or real PLA non-linearity: with n = 2 per group these four specimens cannot carry "
+   f"that.", fs=11)
+
+banner(s, 0.4, 4.75, 12.55, 0.95,
+       "HOUSEKEEPING — the registry carried S27 twice and S28 three times, from repeated saves of "
+       "one run, which would have double- and triple-weighted them in any average. It also "
+       "recorded both as 100 % infill: the known label defect, contradicted by a 1290 N peak where "
+       "a 100 % specimen reaches 3400 N. Both corrected as part of this analysis.",
+       fill=YELLOW_WARN, fg=BLACK, fs=11.5)
+banner(s, 0.4, 5.90, 12.55, 0.75,
+       "STILL OPEN — why DIC delivery slowed on S24 and S13. Unrelated to infill: both 50 % runs "
+       "here came back at 98–100 % coverage. The grab loop is now instrumented, so the next low "
+       "run will name its own bottleneck in the CSV header.",
+       fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
+footer(s, "Deck: 50 % pair p232-235 · 100 % pair p217-222 · E fit window p223-224 · black "
+          "specimen p225-231.")
+pageno(s, 236)
+
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print(f"Saved: V6a_8_6_20_slides.pptx ({len(prs.slides.__iter__.__self__._sldIdLst)} slides, pages 141-231)")
+    print(f"Saved: V6a_8_6_20_slides.pptx ({len(prs.slides.__iter__.__self__._sldIdLst)} slides, pages 141-236)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
     print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx")
