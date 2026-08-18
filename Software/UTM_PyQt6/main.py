@@ -985,6 +985,9 @@ class UTMApplication(QMainWindow):
         self.DIC_STALE_THRESHOLD_MS = 100  # Max age (ms) before DIC reading is considered stale
         self.load_plot_needs_update = False  # Flag to trigger plot redraw
         self.data_unsaved = False  # Flag to track if data needs saving
+        # Sample count at the moment the report target was written. Only a DROP below this means
+        # the buffer was cleared and a newer run is on screen; growth is just the rig streaming.
+        self._saved_sample_n = None
 
         # Downsampling for display performance (plot every Nth point when > threshold)
         self.LOAD_PLOT_DOWNSAMPLE_THRESHOLD = 1000  # Start downsampling after this many points
@@ -1023,13 +1026,13 @@ class UTMApplication(QMainWindow):
         self.startCameraButton.clicked.connect(self.on_start_camera)
         self.stopCameraButton.clicked.connect(self.on_stop_camera)
         self.tareDICButton.clicked.connect(self.on_calibrate_px0)
-        self.tareDICAliasButton.clicked.connect(self.on_calibrate_px0)
+        self.tareDICAliasButton.clicked.connect(self.on_tare_dic_now)
         self.specimenModeCombo.currentTextChanged.connect(self.on_specimen_mode_changed)
         # Load Plot tab's duplicate controls drive the same handlers (state kept in sync)
         self.startCameraButtonLP.clicked.connect(self.on_start_camera)
         self.stopCameraButtonLP.clicked.connect(self.on_stop_camera)
         self.tareDICButtonLP.clicked.connect(self.on_calibrate_px0)
-        self.tareDICAliasButtonLP.clicked.connect(self.on_calibrate_px0)
+        self.tareDICAliasButtonLP.clicked.connect(self.on_tare_dic_now)
         self.specimenModeComboLP.currentTextChanged.connect(self.on_specimen_mode_changed)
 
         # Added camera state variables 
@@ -4097,7 +4100,7 @@ class UTMApplication(QMainWindow):
                 # Automatic path, straight after a successful save: the data is saved by
                 # definition, and a modal folder picker here would stall an unattended run. It
                 # goes beside the CSV, which is what "On save: generate the report" promises.
-                self.on_generate_report(ask_location=False, prompt_unsaved=False)
+                self.on_generate_report(ask_location=False)
                 done.append("report")
             except Exception as e:
                 self.append_to_console(f"[SF11] report failed: {e}")
@@ -4136,6 +4139,7 @@ class UTMApplication(QMainWindow):
         try:
             self._export_csv(file_path)
             self._last_saved_csv = file_path
+            self._saved_sample_n = len(self.load_plot_times)
             self.data_unsaved = False
             self._update_plot_title()
             self.append_to_console(f"Data saved to: {file_path}")
@@ -4144,57 +4148,33 @@ class UTMApplication(QMainWindow):
             QMessageBox.critical(self, "Export Error", f"Failed to save data:\n{str(e)}")
             self.append_to_console(f"Export error: {str(e)}")
 
-    def on_generate_report(self, _checked=False, *, ask_location=True, prompt_unsaved=True):
+    def on_generate_report(self, _checked=False, *, ask_location=True):
         """Build a one-page PDF report (+ individual vector graphs) from a test CSV, using the
         current UI settings, save it where the operator chooses, and open it.
 
-        A report can only be built from a SAVED CSV — the analysis reads the file, not the live
-        buffer. So an unsaved run is caught up front (`prompt_unsaved`): without that check the
-        button silently reported on whichever test was saved LAST, producing a complete and
-        entirely plausible report for the wrong specimen, filed into that specimen's folder.
+        Reports on the last saved or opened CSV. It does NOT stop to ask whether that file is the
+        one you want — an earlier version did, gated on `data_unsaved`, and that flag was the wrong
+        signal: EVERY incoming load sample sets it (on_load_cell_data), and the rig streams at
+        ~11 Hz, so it flipped back to True within about 90 ms of saving. The prompt therefore fired
+        on essentially every report, including immediately after a save, which is exactly the
+        behaviour that trains an operator to click through warnings without reading them.
 
-        The output folder is then asked for (`ask_location`), defaulting to the CSV's own folder so
-        the ordinary case is one Enter and the report lands with the test data, the plots and the
+        The wrong-specimen risk it was guarding is now handled by VISIBILITY instead: the file being
+        reported on is named in the console and in the confirmation, and if the buffer has been
+        cleared since that file was written — the one real sign a newer, unsaved test exists — that
+        is called out too. Loud, but never blocking.
+
+        The output folder is asked for (`ask_location`), defaulting to the CSV's own folder so the
+        ordinary case is one Enter and the report lands with the test data, the plots and the
         capture it describes. build_report() otherwise defaults to a central
         Software/UTM_PyQt6/reports/ — right for the CLI, wrong from the app.
 
-        `_checked` swallows the bool that QPushButton.clicked passes positionally. Both keyword
-        flags are turned OFF by the SF11 auto-report, which runs immediately after a save: the data
-        is saved by definition, and a modal folder picker in an automatic path would block it.
+        `_checked` swallows the bool that QPushButton.clicked passes positionally. `ask_location` is
+        turned off by the SF11 auto-report, where a modal folder picker would block an unattended
+        run.
         """
         import os
         from PyQt6.QtWidgets import QFileDialog, QMessageBox
-
-        last = getattr(self, "_last_saved_csv", None)
-        if prompt_unsaved and getattr(self, "data_unsaved", False) and self.load_plot_times:
-            box = QMessageBox(self)
-            box.setIcon(QMessageBox.Icon.Warning)
-            box.setWindowTitle("Save the test data first")
-            box.setText("The current run has not been saved.")
-            box.setInformativeText(
-                "A report is built from a saved CSV, not from the live buffer.\n\n"
-                + (f"Generating now would report on the PREVIOUS test\n"
-                   f"({os.path.basename(last)}), not this one."
-                   if last and os.path.exists(last) else
-                   "There is no saved test to report on yet."))
-            save_btn = box.addButton("Save data now", QMessageBox.ButtonRole.AcceptRole)
-            old_btn = (box.addButton("Report on the previous test",
-                                     QMessageBox.ButtonRole.DestructiveRole)
-                       if last and os.path.exists(last) else None)
-            box.addButton(QMessageBox.StandardButton.Cancel)
-            box.setDefaultButton(save_btn)
-            box.exec()
-            clicked = box.clickedButton()
-            if clicked is save_btn:
-                self.on_save_data()                     # opens the normal Save Test Data dialog
-                if getattr(self, "data_unsaved", False):
-                    self.append_to_console("[Report] save cancelled — no report generated.")
-                    return
-                # on_save_data may already have produced the report via SF11 auto-report.
-                if self.autoReportAct.isChecked():
-                    return
-            elif clicked is not old_btn:
-                self.append_to_console("[Report] cancelled."); return
 
         # Whatever the operator actually saved or opened — including a name they typed over the
         # suggested one, and including a different folder. Only a file that has since MOVED or been
@@ -4210,6 +4190,19 @@ class UTMApplication(QMainWindow):
                 self, "Select test CSV for the report", start, "CSV Files (*.csv);;All Files (*)")
             if not csv_path:
                 return
+        self.append_to_console(f"[Report] building from {os.path.basename(csv_path)}")
+
+        # The one signal that genuinely means "this file is not what you are looking at": the plot
+        # buffer holds FEWER samples than when that file was written, so it was cleared and a newer
+        # run has started. Growth is not evidence — the rig keeps streaming after a save, so the
+        # buffer always grows.
+        stale = (self._saved_sample_n is not None
+                 and len(self.load_plot_times) < self._saved_sample_n)
+        if stale:
+            self.append_to_console(
+                "   NOTE: the plot buffer was cleared after that file was saved, so a NEWER run is "
+                "on screen. This report describes the SAVED file, not what you are looking at — "
+                "save the current run first if that is the one you want.")
         try:
             speed_mm_s = self.get_speed_rpm() * self.MM_PER_S_PER_RPM
         except Exception:
@@ -4425,6 +4418,7 @@ class UTMApplication(QMainWindow):
             # reported on whatever was SAVED last — the same wrong-specimen trap as an unsaved run,
             # reached from the other direction.
             self._last_saved_csv = file_path
+            self._saved_sample_n = len(self.load_plot_times)
             self.append_to_console(f"Data loaded from: {file_path}")
             self.append_to_console("   Generate report will now report on this file.")
         except Exception as e:
@@ -6018,10 +6012,9 @@ class UTMApplication(QMainWindow):
         # class already fixed once when Prepare test was re-taring it. So this is an alias: same
         # handler, same confirmation, no second path to the same state.
         self.tareDICAliasButton = QPushButton("Tare DIC")
-        self.tareDICAliasButton.setToolTip(
-            "The same operation as Calibrate Px₀ — freezes the pixel reference that DIC strain is "
-            "measured against.\nKept under its older name because that is what it is called in the "
-            "protocol sheets.")
+        # The class constant, not a copy: the Load Plot tab's Tare DIC already used it, so an
+        # inline duplicate here meant editing the text updated one button and not the other.
+        self.tareDICAliasButton.setToolTip(self.TARE_ALIAS_TIP)
         self.tareDICAliasButton.setEnabled(False)
         self.tareDICButton = QPushButton("Calibrate Px₀")
         self.tareDICButton.setToolTip(
@@ -6544,9 +6537,13 @@ class UTMApplication(QMainWindow):
 
     # One definition for both tabs. The Load Plot camera monitor is built BEFORE the Stress/Strain
     # camera group, so the LP button cannot read this off the other button.
-    TARE_ALIAS_TIP = ("The same operation as Calibrate Px₀ — freezes the pixel reference that DIC "
-                      "strain is measured against.\nKept under its older name because that is what "
-                      "it is called in the protocol sheets.")
+    TARE_ALIAS_TIP = ("Freeze Px₀ immediately — the same operation as Calibrate Px₀, but with no "
+                      "confirmation dialog.\n\n"
+                      "This is the one to use while setting up, when you re-tare repeatedly and a "
+                      "prompt each time is only in the way. Calibrate Px₀ keeps its dialog for the "
+                      "formal pre-test step, where confirming the specimen state is the point.\n\n"
+                      "Either way the console prints the load it was captured at and the CSV header "
+                      "records the convention, so the record is the same.")
 
     MARGIN_EVERY_S = 2.0        # contrast-margin recompute interval — see _update_dic_health
 
@@ -6756,6 +6753,22 @@ class UTMApplication(QMainWindow):
         first positional argument: as a slot it would arrive in `confirm` as False and silently
         skip the dialog."""
         self.on_tare_dic(confirm=True)
+
+    def on_tare_dic_now(self):
+        """The Tare DIC BUTTON. Freezes Px₀ straight away, no dialog.
+
+        Split from on_calibrate_px0 rather than sharing it: taring is done repeatedly while setting
+        up — check the markers, nudge the lighting, re-tare — and a confirmation on every press is
+        pure friction there. The dialog stays on Calibrate Px₀, which is the formal pre-test step
+        where confirming the specimen state IS the point.
+
+        Nothing is lost from the record either way: on_tare_dic prints the load it captured at and
+        the CSV header still states the convention.
+
+        A wrapper for the same reason as on_calibrate_px0 — `clicked` passes a bool positionally,
+        which would land in `confirm` and turn this back into the dialog path.
+        """
+        self.on_tare_dic(confirm=False)
 
     def _prep_checklist(self):
         """The pre-test steps, in the order the CURRENT strain-zero convention requires.
