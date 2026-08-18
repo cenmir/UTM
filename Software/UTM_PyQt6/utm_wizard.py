@@ -68,9 +68,20 @@ def steps(app):
     add("camera", "Start camera, DIC tracking 2/2", live and nb == 2,
         f"{nb}/2 markers" if live else "camera off — no strain will be recorded")
 
+    # Force and position are what a test IS; velocity is a convenience channel, so it is reported
+    # but not required. A run with the load-cell stream off records nothing worth analysing.
+    streams = {n: bool(getattr(app, n + "Switch", None) and getattr(app, n + "Switch").isChecked())
+               for n in ("loadCell", "position", "velocity")}
+    essential = streams["loadCell"] and streams["position"]
+    on = [n for n, v in streams.items() if v]
+    add("streams", "Enable data streams", essential,
+        ("on: " + ", ".join(on)) if essential else
+        "load cell + position must be streaming or the run records nothing")
+
     mode = app.specimenModeCombo.currentText() if hasattr(app, "specimenModeCombo") else "?"
-    out.append(["mode", f"Specimen mode: {mode}", INFO,
-                "pick this BEFORE arming capture — the speckle video follows it"])
+    out.append(["mode", "Choose specimen mode", INFO,
+                f"currently {mode} — pick this BEFORE arming capture, the speckle video "
+                f"follows it. White = dark dots on light PLA, Black = the reverse."])
 
     # Preload. After Prepare test the reading is tared to ~0, so the durable evidence that a
     # preload was applied is the load Px₀ was captured at, not the live reading.
@@ -82,14 +93,18 @@ def steps(app):
          else "Preload tension — seat the specimen first"))
 
     # Px₀. Under the after-preload convention, freezing it unloaded is the mistake worth naming.
+    # Named "Tare DIC" first because that is the button now — one click, no dialog. It stays HERE,
+    # after the preload, and not up with the camera steps: under the after-preload convention this
+    # freeze defines the strain zero, and Prepare test (below) tares the FORCE, after which the
+    # reading is ~0 N and the load it was captured at is lost.
     px0_ok = px0 is not None
     if px0_ok and after_preload and (px0_load or 0.0) < PRELOAD_MIN_N:
-        out.append(["px0", "Freeze Px₀ (Tare DIC / Calibrate Px₀)", NEXT,
+        out.append(["px0", "Tare DIC — freeze Px₀", NEXT,
                     f"⚠ frozen at {px0_load or 0:.0f} N — the convention is AFTER preload; re-tare"])
     else:
-        add("px0", "Freeze Px₀ (Tare DIC / Calibrate Px₀)", px0_ok,
-            f"{px0:.1f} px @ {px0_load or 0:.0f} N" if px0_ok else
-            "strain has no reference until this is set")
+        add("px0", "Tare DIC — freeze Px₀", px0_ok,
+            f"{px0:.1f} px @ {px0_load or 0:.0f} N  (or Calibrate Px₀, which asks first)"
+            if px0_ok else "strain has no reference until this is set")
 
     prepared = getattr(app, "_prepared_t", None) is not None
     add("prepare", "Prepare test (tares Px₀, position, force)", prepared,
@@ -101,10 +116,13 @@ def steps(app):
         armed = bool(getattr(cap, "png_enabled", False) or getattr(cap, "video_enabled", False)
                      or getattr(cap, "recording", False))
     out.append(["capture", "Arm frame capture", INFO,
-                "armed" if armed else "optional — only if this run needs a video"])
+                "armed" if armed else
+                "optional — Settings ▸ Capture settings, only if this run needs a video"])
 
     ran = n_samples > 0 and moved > 0.05
-    add("run", "Run the test", ran, f"{n_samples} samples" if ran else "Fracture test / manual pull")
+    add("run", "Run the test", ran, f"{n_samples} samples" if ran else
+        "Fracture test, a manual pull, or an advanced test mode "
+        "(cyclic · staircase · relaxation · creep · →fracture)")
 
     add("save", "Save data", bool(saved), f"{saved.split(chr(92))[-1]}" if saved else
         "save into the specimen folder — the report follows it there")
