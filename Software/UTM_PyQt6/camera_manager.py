@@ -119,6 +119,18 @@ class CameraManager(QObject):
         # Queue of recent DIC readings: (pc_timestamp_datetime, cauchy, true_strain)
         # Keeps last ~500 frames for time-matching with load cell
         self.dic_history = deque(maxlen=500)
+        # Per-stage cost of the grab loop, in ms, over the last ~140 frames.
+        #
+        # This exists because two runs (S24 27 %, S13 47 %) came back with half their load samples
+        # carrying no strain, and the cause could not be found offline: the camera grabbed at
+        # 19.9 fps with zero dropped frames, the detector found both markers on 99.9 % of frames,
+        # and detection benchmarks at 1.4 ms. The loop has no sleep and StartGrabbing uses
+        # LatestImageOnly, so the driver DISCARDS whatever the loop cannot keep up with — which
+        # means the loop's own speed IS the DIC delivery rate, and the only way to find the slow
+        # stage is to time each one on the rig. Five perf_counter calls per frame, ~50 ns each.
+        self._stage_ms = {k: deque(maxlen=140) for k in
+                          ("wait", "rotate", "sink", "detect", "strain", "emit", "total")}
+        self._slow_last_t = 0.0
         # Rolling timestamps for the MEASURED grab / DIC rates (see camera_params). ~4 s at 35 fps,
         # long enough to be steady and short enough to react when the pipeline stalls.
         self._rate_grab = deque(maxlen=140)
@@ -212,17 +224,26 @@ class CameraManager(QObject):
         except Exception as e:
             self.error_occurred.emit(str(e))
 
+    # Warn when the loop falls below this. The camera runs at ~20 fps and the load cell at ~11 Hz,
+    # so anything under ~12 Hz means load samples start going out without a strain reading.
+    SLOW_LOOP_HZ = 12.0
+    SLOW_WARN_EVERY_S = 10.0
+
     def capture_frame(self) -> np.ndarray:
+        t = time.perf_counter
         try:
+            _t0 = t()
             grab_result = self.camera.RetrieveResult(
                 5000, pylon.TimeoutHandling_ThrowException
             )
+            _t1 = t()                                   # wait: idle if the loop is ahead of the camera
             if grab_result.GrabSucceeded():
                 img = grab_result.Array
                 img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
                 grab_result.Release()
                 self.latest_frame = img  # add this
                 self._rate_grab.append(time.monotonic())
+                _t2 = t()
                 # Run blob detection on every frame
                 sink = self.frame_sink
                 if sink is not None:
@@ -231,16 +252,59 @@ class CameraManager(QObject):
                     except Exception as e:
                         self.frame_sink = None      # a broken sink must not kill the grab loop
                         self.error_occurred.emit(f"Frame capture stopped: {e}")
+                _t3 = t()
                 centroids = self.detect_blobs(img)
+                _t4 = t()
                 if len(centroids) == 2:
                     self.calculate_dic_strain(centroids)
+                _t5 = t()
                 self._trace_blobs(centroids)
                 self.frame_ready.emit(img, centroids)
+                _t6 = t()
+                self._record_stages(_t0, _t1, _t2, _t3, _t4, _t5, _t6)
                 return img
             grab_result.Release()
         except Exception as e:
             self.error_occurred.emit(str(e))
         return None
+
+    def _record_stages(self, t0, t1, t2, t3, t4, t5, t6):
+        """Bank the per-stage cost, and say something if the loop has gone slow.
+
+        `wait` is time blocked in RetrieveResult. A HEALTHY loop spends most of its time there —
+        it means the loop is faster than the camera and is idling. A loop that is starving the DIC
+        shows the opposite: near-zero wait and the time piled into one of the other stages, which
+        is exactly the fingerprint needed to tell a slow detector from a slow sink from a GUI
+        queue that has backed up behind frame_ready.
+        """
+        s = self._stage_ms
+        s["wait"].append((t1 - t0) * 1e3)
+        s["rotate"].append((t2 - t1) * 1e3)
+        s["sink"].append((t3 - t2) * 1e3)
+        s["detect"].append((t4 - t3) * 1e3)
+        s["strain"].append((t5 - t4) * 1e3)
+        s["emit"].append((t6 - t5) * 1e3)
+        s["total"].append((t6 - t0) * 1e3)
+        if len(s["total"]) < s["total"].maxlen:
+            return
+        med = sorted(s["total"])[len(s["total"]) // 2]
+        hz = 1000.0 / med if med > 0 else 0.0
+        now = time.monotonic()
+        if hz >= self.SLOW_LOOP_HZ or now - self._slow_last_t < self.SLOW_WARN_EVERY_S:
+            return
+        self._slow_last_t = now
+        self.notice.emit(f"DIC loop is running at {hz:.1f} Hz — below the {self.SLOW_LOOP_HZ:.0f} Hz "
+                         f"needed to give every load sample a strain reading. {self.loop_breakdown()}")
+
+    def loop_breakdown(self):
+        """One line naming where the grab loop's time goes — median ms per stage."""
+        s = self._stage_ms
+        if not s["total"]:
+            return "no frames yet"
+        med = lambda k: sorted(s[k])[len(s[k]) // 2] if s[k] else 0.0   # noqa: E731
+        parts = " · ".join(f"{k} {med(k):.1f}" for k in
+                           ("wait", "rotate", "sink", "detect", "strain", "emit"))
+        return f"per frame (ms): {parts} · TOTAL {med('total'):.1f}"
 
     # stdout is not free, and this ran on EVERY grabbed frame — 35 lines/s of the same message.
     # Print on a CHANGE of marker count, then at most once a second while it stays there. A steady

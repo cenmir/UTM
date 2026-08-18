@@ -4369,6 +4369,17 @@ class UTMApplication(QMainWindow):
                         f"({_cov}/{_n})"
                         + ("   <-- LOW: most rows have no strain; treat ef and toughness with "
                            "caution" if _pct < 50 else "") + "\n")
+            # Where the grab loop's time actually went. Coverage on its own says a run went wrong
+            # but not why — S24 and S13 both came back low and the cause could not be recovered
+            # afterwards, because nothing recorded the loop's speed. This line makes the next low
+            # run diagnosable from its CSV alone: a healthy loop idles in `wait`, a starved one
+            # shows near-zero wait and the time piled into whichever stage is the bottleneck.
+            try:
+                _bd = self.camera_manager.loop_breakdown()
+            except Exception:
+                _bd = None
+            if _bd and _bd != "no frames yet":
+                f.write(f"# DIC Loop - {_bd}\n")
             f.write("#\n")
             f.write(f"# Max Load: {self.max_load:.2f} N\n")
             f.write(f"# Max Stress: {max_stress:.4f} MPa\n")
