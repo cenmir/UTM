@@ -214,7 +214,16 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 >    strain. UTS is unaffected either way; ε_f is the number most at risk (664 ms worst-case gap).
 >
 > **⬜ Software, in the order I would take it:**
-> 7. **SF13** guided wizard. The last unbuilt feature on the SF list.
+> 7. **✅ SF13 — guided wizard. BUILT 2026-08-18.** `Software/UTM_PyQt6/utm_wizard.py` +
+>    View ▸ Guided wizard (Ctrl+Shift+G). **Optional and OFF by default**, at the operator's
+>    request: it encodes a real procedure but somebody who knows it does not need a panel reciting
+>    it, and a checklist that cannot be dismissed is just a wider warning.
+>    It is a VIEW — `steps()` is a pure read of flags that already existed, so it cannot disagree
+>    with the app, and an AST check in the suite proves it reaches no control path at all. The one
+>    new piece of state is `_prepared_t`, stamped by Prepare test, which was the only step with no
+>    durable trace. Nine steps; the Px₀ row is the point of it — under the after-preload convention
+>    a Px₀ frozen unloaded shows a warning instead of a tick.
+>    ▸ Not yet seen on the rig; the panel is offscreen-verified only.
 > 8. **Registry hygiene.** `registry.json` now carries duplicate rows from repeated saves of one
 >    run — S27 ×2, S28 ×3, S12 ×2 — which would double- and triple-weight those specimens in any
 >    average. S27/S28 also record `infill_pct = 100` when they are 50 % (the known infill-label

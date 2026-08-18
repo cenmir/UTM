@@ -3843,6 +3843,9 @@ class UTMApplication(QMainWindow):
                     self.append_to_console(f"[Prepare] {label} tare failed: {e}")
 
         self.append_to_console(f"[Prepare] tared: {', '.join(done) if done else 'nothing'}")
+        # Stamped so the guided checklist can tell "prepared" from "not yet" — every other step it
+        # shows reads a flag that already existed; this was the one with no durable trace.
+        self._prepared_t = time.monotonic()
         if skipped:
             self.set_status("Prepared — position + force tared; ⚠ Px₀ NOT calibrated yet",
                             is_warning=True)
@@ -4978,6 +4981,104 @@ class UTMApplication(QMainWindow):
             group.addAction(act)
             appearance.addAction(act)
             self._themeActions[key] = act
+        menu.addSeparator()
+        self._build_wizard(menu)
+
+    # ---- SF13: the guided checklist ---------------------------------------------------------
+    #
+    # OFF BY DEFAULT, and it stays off until somebody asks for it. The procedure this encodes is
+    # real and has caught people out, but an operator who knows it does not need a panel reciting
+    # it, and a checklist that cannot be dismissed is just a wider warning. So: one menu item, the
+    # preference remembered, and nothing about the app's behaviour changes when it is closed.
+    #
+    # It is a VIEW. It reads flags that already exist (utm_wizard.steps) and cannot start anything,
+    # so it can never disagree with the app or hold a test up.
+    WIZARD_TICK_MS = 700
+
+    def _build_wizard(self, menu):
+        from PyQt6.QtGui import QAction
+        self.wizardAct = QAction("&Guided wizard", self, checkable=True)
+        self.wizardAct.setShortcut("Ctrl+Shift+G")
+        self.wizardAct.setToolTip("A step-by-step checklist for setting up a test. Optional — "
+                                  "it changes nothing, and closing it changes nothing.")
+        self.wizardAct.toggled.connect(self._toggle_wizard)
+        menu.addAction(self.wizardAct)
+        self._wizard_dock = None
+        if self._recall_bool("ui/wizard_open", False):
+            self.wizardAct.setChecked(True)
+
+    def _toggle_wizard(self, on):
+        self._remember("ui/wizard_open", bool(on))
+        if not on:
+            if self._wizard_dock is not None:
+                self._wizard_dock.hide()
+            return
+        if self._wizard_dock is None:
+            self._make_wizard_dock()
+        self._wizard_dock.show()
+        self._refresh_wizard()
+
+    def _make_wizard_dock(self):
+        from PyQt6.QtCore import Qt, QTimer
+        from PyQt6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel, QScrollArea
+        dock = QDockWidget("Guided wizard", self)
+        dock.setObjectName("wizardDock")
+        dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea
+                             | Qt.DockWidgetArea.RightDockWidgetArea)
+        inner = QWidget()
+        lay = QVBoxLayout(inner)
+        lay.setContentsMargins(10, 8, 10, 8)
+        lay.setSpacing(6)
+        self._wizHeader = QLabel()
+        self._wizHeader.setStyleSheet("font-weight:600;")
+        lay.addWidget(self._wizHeader)
+        self._wizRows = []
+        for _ in range(12):                       # fixed pool — steps() never returns more
+            lab = QLabel()
+            lab.setWordWrap(True)
+            lab.setTextFormat(Qt.TextFormat.RichText)
+            lay.addWidget(lab)
+            self._wizRows.append(lab)
+        lay.addStretch(1)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(inner)
+        dock.setWidget(scroll)
+        dock.setMinimumWidth(290)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+        # Closing the panel by its X must clear the menu tick, or the two disagree.
+        dock.visibilityChanged.connect(
+            lambda vis: self.wizardAct.setChecked(vis) if not vis else None)
+        self._wizard_dock = dock
+        self._wizTimer = QTimer(self)
+        self._wizTimer.timeout.connect(self._refresh_wizard)
+        self._wizTimer.start(self.WIZARD_TICK_MS)
+
+    def _refresh_wizard(self):
+        """Repaint the checklist. Cheap, and skipped entirely while the dock is hidden."""
+        if self._wizard_dock is None or not self._wizard_dock.isVisible():
+            return
+        import utm_wizard as WZ
+        try:
+            rows = WZ.steps(self)
+            done, total = WZ.summary(self)
+        except Exception as e:                     # a view must never take the app down
+            self._wizHeader.setText(f"wizard unavailable: {type(e).__name__}")
+            return
+        self._wizHeader.setText(f"Setup: {done} of {total} done")
+        marks = {WZ.DONE: ("✔", "#2F9E44"), WZ.NEXT: ("▶", "#D29922"),
+                 WZ.TODO: ("○", "#888888"), WZ.INFO: ("·", "#7FA8D0")}
+        for i, lab in enumerate(self._wizRows):
+            if i >= len(rows):
+                lab.setText("")
+                continue
+            _key, text, state, detail = rows[i]
+            glyph, colour = marks.get(state, ("○", "#888888"))
+            weight = "600" if state == WZ.NEXT else "400"
+            lab.setText(f"<span style='color:{colour};font-weight:600'>{glyph}</span> "
+                        f"<span style='font-weight:{weight}'>{text}</span>"
+                        + (f"<br/><span style='color:#888888;font-size:9pt'>&nbsp;&nbsp;&nbsp;"
+                           f"{detail}</span>" if detail else ""))
 
     # ===== Frame capture / video recording (Settings menu) ======================================
     #
