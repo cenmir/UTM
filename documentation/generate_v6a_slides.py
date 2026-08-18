@@ -2547,9 +2547,297 @@ footer(s, "“Steepest straight run” = the steepest stretch below 2 % strain w
           "Standard clauses to be checked against the source documents before publication.")
 pageno(s, 224)
 
+# =====================================================================================
+# Slides 225-231: S13, the first BLACK specimen taken to fracture
+# -------------------------------------------------------------------------------------
+# Every specimen before this one was white PLA with black spray dots. S13 inverts that —
+# black PLA, white dots — which is the opposite threshold polarity through the whole DIC
+# chain. The question is whether the measurement still works, so the material is held
+# fixed: S13 is 100 % infill and the comparators are S25 and S26, which are the same.
+# S28 is 50 % infill and is deliberately NOT used here; it would confound a marker
+# question with a material one.
+#
+# All numbers recomputed at build time by documentation/s13_data.py; figures by
+# s13_plots.py. Nothing on these pages is typed in.
+# =====================================================================================
+import s13_data as SB                                                              # noqa: E402
+import s13_plots as SBP                                                            # noqa: E402
+
+for _n, _fn in SBP.FIGURES.items():
+    _fn(_os.path.join("documentation", _n))
+_S13, _S25, _S26 = (SB.summary(t) for t in ("S13", "S25", "S26"))
+_CAP13 = SB.capture_facts("S13")
+
+
+def _pct(v):
+    return f"{v:+.1f} %"
+
+
+# ---- Slide 225: why a black specimen, and what came back ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "S13 — THE FIRST BLACK SPECIMEN PULLED TO FRACTURE")
+tb(s, 0.4, 1.15, 12.55, 0.62,
+   "Every specimen up to here was white PLA with BLACK spray dots. S13 inverts that — black PLA "
+   "with WHITE dots — which flips the threshold polarity through the entire DIC chain: the blob "
+   "detector, the live overlay and the speckle video all have to look for the opposite thing. "
+   "The Black preset had never been run on a real specimen before this.", fs=12, italic=True,
+   colour=GREY_TEXT)
+
+for _i, (_lab, _val, _fill) in enumerate((
+        ("UTS", f"{_S13['UTS']:.2f} MPa", GREEN_PASS),
+        ("σ_y (0.2 %)", f"{_S13['sy']:.2f} MPa", LIGHT_BLUE),
+        ("E", f"{_S13['E']:.3f} GPa", LIGHT_BLUE),
+        ("ε_f", f"{_S13['ef']:.2f} %", LIGHT_BLUE),
+        ("DIC noise", f"{_S13['rms']:.1f} µε", GREEN_PASS),
+        ("DIC coverage", f"{_S13['coverage']:.0f} %", YELLOW_WARN))):
+    kpi(s, 0.4 + _i * 2.12, 1.85, 2.0, _lab, _val, fill=_fill)
+
+header(s, 0.4, 3.05, 6.1, "What had to be proved")
+tb(s, 0.4, 3.42, 6.1, 2.35,
+   "1.  The detector finds the markers at all — opposite polarity, Otsu instead of a fixed cut.\n\n"
+   "2.  The strain it produces is no noisier than on a white specimen.\n\n"
+   "3.  The mechanical numbers are unchanged — marker colour is a property of the MEASUREMENT, "
+   "and force comes from the load cell, so it must not move UTS at all.\n\n"
+   "4.  The capture pipeline records the right thing: the speckle view has to invert with the "
+   "preset or the video comes out a negative.", fs=11)
+
+header(s, 6.85, 3.05, 6.1, "What came back")
+_v13 = [["Check", "Result", ""],
+        ["Markers found (2/2)", f"{_S13['two_blob']:.1f} % of frames", "PASS"],
+        ["DIC noise vs white mean",
+         f"{_S13['rms']:.1f} vs {(_S25['rms']+_S26['rms'])/2:.1f} µε", "PASS"],
+        ["UTS vs white mean", _pct(100*(_S13['UTS']/SB.white_mean('UTS')-1)), "PASS"],
+        ["Camera rate", f"{_CAP13['fps']:.1f} fps · {_CAP13['dropped']} dropped", "PASS"],
+        ["PNG stills written", f"{_CAP13['stills']}", "PASS"],
+        ["DIC coverage", f"{_S13['coverage']:.0f} % of load rows", "LOW"]]
+table(s, 6.85, 3.42, 6.1, 2.35, _v13, cw=[2.6, 2.2, 0.9], hf=10, bf=9.5,
+      ov={(_r, 2): {"bg": GREEN_PASS, "bold": True} for _r in range(1, 6)}
+      | {(6, 2): {"bg": YELLOW_WARN, "bold": True}})
+banner(s, 0.4, 6.0, 12.55, 0.85,
+       "HEADLINE — black markers work, and work slightly BETTER than white on the one thing that "
+       "could have gone wrong (noise). The 47 % coverage is real but is NOT a marker-colour "
+       "effect; p230 separates the two.", fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
+footer(s, "S13 · 100 % infill · black PLA, white spray dots · 2026-08-18 · "
+          "Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/Specimen_S13_V2_Spray_Video7/")
+pageno(s, 225)
+
+# ---- Slide 226: the run on its own ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "S13 ALONE — THE RUN AS IT HAPPENED")
+tb(s, 0.4, 1.15, 12.55, 0.42,
+   "Four views of the same 123 s. Read them together: the load cell and the DIC are independent "
+   "instruments, and only one of them had a bad day.", fs=12, italic=True, colour=GREY_TEXT)
+pic_or_ph(s, _os.path.join("documentation", "s13_solo.png"), 0.35, 1.62, 8.6, 4.83,
+          "[ s13_solo.png ]")
+
+header(s, 9.1, 1.55, 3.85, "Reading the four panels")
+tb(s, 9.1, 1.92, 3.85, 4.55,
+   "TOP LEFT — a textbook curve. Yield, a rounded peak, then a long softening tail to fracture "
+   "at 5.15 %. Nothing about it says the specimen was a different colour.\n\n"
+   "TOP RIGHT — the load cell. Clean ramp, sharp collapse at 90 s. This channel never touches "
+   "the DIC, so UTS is safe whatever the strain column does.\n\n"
+   "BOTTOM LEFT — DIC strain against crosshead strain. The DIC reads LOWER throughout, as it "
+   "should: the crosshead includes machine and grip compliance, the DIC sees only the gauge. "
+   "The vertical jump at 90 s is the markers flying apart at fracture, not a measurement.\n\n"
+   "BOTTOM RIGHT — the noise floor, specimen stationary. ±11.9 µε against a fracture strain of "
+   "51 500 µε: 0.02 % of full scale.", fs=10.5)
+footer(s, "Generated by documentation/s13_plots.py from the test CSV. Strain is DIC gauge strain "
+          "over 80 mm; stress is engineering stress on 80 mm², anchor-corrected.")
+pageno(s, 226)
+
+# ---- Slide 227: head to head with S26 ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "S13 (BLACK) vs S26 (WHITE) — HEAD TO HEAD")
+tb(s, 0.4, 1.15, 12.55, 0.60,
+   "Same material (100 % infill), same protocol, same rig, 24 hours apart. If marker colour "
+   "mattered to the mechanics, it would show here. The right-hand panel is the important one: it "
+   "sets the black-vs-white difference against how much the two WHITE runs already disagree with "
+   "each other.", fs=12, italic=True, colour=GREY_TEXT)
+pic_or_ph(s, _os.path.join("documentation", "s13_vs_s26.png"), 0.40, 1.80, 12.55, 4.07,
+          "[ s13_vs_s26.png ]")
+banner(s, 0.4, 6.05, 12.55, 0.80,
+       f"On every property, black-vs-white is SMALLER than white-vs-white: "
+       f"UTS {abs(100*(_S13['UTS']/SB.white_mean('UTS')-1)):.1f} % against "
+       f"{SB.white_spread('UTS'):.1f} %, E {abs(100*(_S13['E']/SB.white_mean('E')-1)):.1f} % "
+       f"against {SB.white_spread('E'):.1f} %, ε_f "
+       f"{abs(100*(_S13['ef']/SB.white_mean('ef')-1)):.1f} % against "
+       f"{SB.white_spread('ef'):.1f} %. The marker colour is not detectable above specimen "
+       f"scatter.", fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
+footer(s, "Circles mark UTS. Right panel: |black − white mean| against |S25 − S26|, both as a "
+          "percentage of the white mean.")
+pageno(s, 227)
+
+# ---- Slide 228: the numbers ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "BLACK vs WHITE — THE NUMBERS, 100 % INFILL ONLY")
+tb(s, 0.4, 1.15, 12.55, 0.60,
+   "S28 is deliberately absent: it is 50 % infill, so putting it in this table would mix a "
+   "marker-colour question with a material one. The only honest white comparators for S13 are "
+   "S25 and S26.", fs=12, italic=True, colour=GREY_TEXT)
+
+_rows = [["", "S13 · BLACK", "S25 · white", "S26 · white", "white mean",
+          "black vs mean", "white vs white"]]
+for _lab, _k, _f in (("UTS  (MPa)", "UTS", "{:.2f}"), ("σ_y 0.2 %  (MPa)", "sy", "{:.2f}"),
+                     ("E  (GPa)", "E", "{:.3f}"), ("ε_f  (%)", "ef", "{:.2f}"),
+                     ("Toughness  (kJ/m³)", "tough", "{:.0f}"),
+                     ("Force anchor  (N)", "anchor", "{:.0f}")):
+    _rows.append([_lab, _f.format(_S13[_k]), _f.format(_S25[_k]), _f.format(_S26[_k]),
+                  _f.format(SB.white_mean(_k)),
+                  _pct(100*(_S13[_k]/SB.white_mean(_k)-1)),
+                  f"{SB.white_spread(_k):.1f} %"])
+_rows.append(["DIC noise, 10 s  (µε)", f"{_S13['rms']:.1f}", f"{_S25['rms']:.1f}",
+              f"{_S26['rms']:.1f}", f"{(_S25['rms']+_S26['rms'])/2:.1f}",
+              _pct(100*(_S13['rms']/((_S25['rms']+_S26['rms'])/2)-1)), "—"])
+_rows.append(["Markers found (%)", f"{_S13['two_blob']:.1f}", f"{_S25['two_blob']:.1f}",
+              f"{_S26['two_blob']:.1f}", "—", "—", "—"])
+_rows.append(["DIC coverage (%)", f"{_S13['coverage']:.0f}", f"{_S25['coverage']:.0f}",
+              f"{_S26['coverage']:.0f}", "—", "—", "—"])
+_ov = {(1, 5): {"bg": GREEN_PASS, "bold": True}, (7, 5): {"bg": GREEN_PASS, "bold": True},
+       (9, 1): {"bg": YELLOW_WARN, "bold": True}}
+for _r in range(1, 7):
+    _ov[(_r, 6)] = {"bg": LIGHT_GREY}
+table(s, 0.4, 1.85, 12.55, 4.05, _rows, cw=[2.5, 1.6, 1.6, 1.6, 1.5, 1.7, 1.7], hf=10, bf=9.5,
+      ov=_ov)
+
+header(s, 0.4, 6.05, 12.55, "How to read the last two columns")
+tb(s, 0.4, 6.42, 12.55, 0.75,
+   "“black vs mean” is S13 against the average of the two white runs. “white vs white” is how far "
+   "apart those two white runs are FROM EACH OTHER — the honest yardstick, because it is pure "
+   "specimen-to-specimen scatter with no variable changed at all. Black beats that yardstick on "
+   "every mechanical property, so the marker colour cannot be resolved above it.", fs=11)
+footer(s, "Recomputed at build time by documentation/s13_data.py via utm_analysis.analyze(). "
+          "Noise measured over a COMMON 10 s window — see p229 for why that matters.")
+pageno(s, 228)
+
+# ---- Slide 229: noise ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "DIC NOISE — THE BLACK SPECIMEN IS THE QUIETEST")
+tb(s, 0.4, 1.15, 12.55, 0.60,
+   "The one place marker colour COULD legitimately hurt is precision: centroid noise scales with "
+   "edge contrast, and white dots on black PLA are a different contrast problem to black dots on "
+   "white. Measured on the pre-ramp hold, where the specimen is not moving and every non-zero "
+   "reading is instrument noise by definition.", fs=12, italic=True, colour=GREY_TEXT)
+pic_or_ph(s, _os.path.join("documentation", "s13_noise.png"), 0.35, 1.85, 8.5, 3.43,
+          "[ s13_noise.png ]")
+
+_nz = [["", "marker", "RMS", "peak-peak"]]
+for _t, _d in (("S13", _S13), ("S25", _S25), ("S26", _S26)):
+    _nz.append([_t, _d["marker"], f"{_d['rms']:.1f} µε", f"{_d['pp']:.0f} µε"])
+table(s, 9.0, 1.82, 3.95, 1.42, _nz, cw=[0.8, 1.2, 1.1, 1.2], hf=9.5, bf=9.5,
+      ov={(1, 2): {"bg": GREEN_PASS, "bold": True}})
+
+header(s, 9.0, 3.40, 3.95, "Why the window is fixed at 10 s")
+tb(s, 9.0, 3.77, 3.95, 2.45,
+   "The DIC noise floor on this rig GROWS with observation time — already on record as ±12 µε "
+   "over 40 s against ±26 µε over 900 s.\n\n"
+   "So a short hold flatters itself. S13's hold was the shortest of the three, and comparing it "
+   "raw would have handed it an unearned win.\n\n"
+   "Every run is therefore cut to the LAST 10 s, the shortest available. The right-hand panel "
+   "shows what that choice was worth.", fs=10.5)
+banner(s, 0.4, 5.55, 12.55, 0.80,
+       f"S13 {_S13['rms']:.1f} µε against {(_S25['rms']+_S26['rms'])/2:.1f} µε for the white pair "
+       f"— {abs(100*(_S13['rms']/((_S25['rms']+_S26['rms'])/2)-1)):.0f} % QUIETER. Against a "
+       f"fracture strain of {_S13['ef']*1e4:.0f} µε this is 0.02 % of full scale either way, so "
+       f"the practical answer is that marker colour does not matter for precision.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
+footer(s, "Noise = standard deviation of DIC gauge strain with the specimen stationary and the "
+          "crosshead stopped. Drift over the window: S13 1.6, S25 0.7, S26 1.0 µε/s.")
+pageno(s, 229)
+
+# ---- Slide 230: the coverage problem ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "S13's 47 % DIC COVERAGE — WHAT IT IS, AND WHAT IT IS NOT")
+tb(s, 0.4, 1.15, 12.55, 0.42,
+   "Less than half the load samples came back with a strain value. Three explanations were "
+   "tested; the data killed two of them outright.", fs=12, italic=True, colour=GREY_TEXT)
+pic_or_ph(s, _os.path.join("documentation", "s13_coverage.png"), 0.35, 1.62, 8.5, 3.43,
+          "[ s13_coverage.png ]")
+
+_susp = [["Suspect", "Evidence", ""],
+         ["Camera slowed down",
+          f"{_CAP13['fps']:.1f} fps, {_CAP13['dropped']} dropped — identical to S25", "NO"],
+         ["Black markers harder to see",
+          f"detector found 2 markers on {_S13['two_blob']:.1f} % of frames", "NO"],
+         ["Otsu + bigger ROI too slow", "benchmarked 1.37 ms/frame ≈ 730 Hz ceiling", "NO"],
+         ["Readings arriving too far apart",
+          f"median gap {_S13['gap_median']:.0f} ms vs a {SB.STALE_MS} ms match window", "YES"]]
+table(s, 9.0, 1.60, 3.95, 1.95, _susp, cw=[1.9, 3.0, 0.7], hf=9.5, bf=9,
+      ov={(1, 2): {"bg": RED_FAIL, "bold": True}, (2, 2): {"bg": RED_FAIL, "bold": True},
+          (3, 2): {"bg": RED_FAIL, "bold": True}, (4, 2): {"bg": YELLOW_WARN, "bold": True}})
+
+header(s, 9.0, 3.70, 3.95, "The mechanism")
+tb(s, 9.0, 4.07, 3.95, 2.15,
+   f"main.py sets DIC_STALE_THRESHOLD_MS = {SB.STALE_MS}: a load sample only receives a strain "
+   f"value if a DIC reading exists within {SB.STALE_MS} ms of it.\n\n"
+   f"S13's readings arrived {_S13['gap_median']:.0f} ms apart; S25's and S26's arrived "
+   f"{_S25['gap_median']:.0f} ms apart. At {_S13['gap_median']:.0f} ms roughly half the load rows "
+   f"have nothing inside the window — and 47 % is what came out.", fs=10.5)
+banner(s, 0.4, 5.35, 12.55, 1.05,
+       "STILL OPEN — WHY the readings slowed. The camera grabbed at 19.9 fps with zero dropped "
+       "frames and the detector succeeded on every frame it saw, so the loss is between detection "
+       "and the matching queue. That needs the live DIC-Hz badge watched during a pull, not more "
+       "analysis of this CSV. It has now happened twice (S24 at 27 %, S13 at 47 %) on specimens of "
+       "BOTH colours, so it is a pipeline issue, not a marker one. Raising the 100 ms window would "
+       "hide it by pairing load samples with staler strain — not a fix.",
+       fill=YELLOW_WARN, fg=BLACK, fs=11)
+footer(s, "Left: distribution of the gap between consecutive DIC readings, against the matching "
+          "window. Right: markers FOUND vs load rows that received a value.")
+pageno(s, 230)
+
+# ---- Slide 231: what it cost, and the verdict ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "WHAT THE MISSING COVERAGE COST — AND THE VERDICT")
+tb(s, 0.4, 1.15, 12.55, 0.42,
+   "Half the strain rows missing sounds fatal. It is not, and it is worth being precise about "
+   "which numbers it can and cannot touch.", fs=12, italic=True, colour=GREY_TEXT)
+
+_cost = [["", "loaded readings", "in the E fit window", "gap median", "worst gap"]]
+for _t in ("S13", "S25", "S26"):
+    _e = SB.e_window_points(_t)
+    _cost.append([f"{_t} · {SB.summary(_t)['marker']}", f"{_e['loaded']}", f"{_e['in_window']}",
+                  f"{_e['gap_median']:.0f} ms", f"{_e['gap_max']:.0f} ms"])
+table(s, 0.4, 1.72, 7.9, 1.42, _cost, cw=[1.7, 1.6, 1.8, 1.3, 1.2], hf=10, bf=9.5,
+      ov={(1, 2): {"bg": YELLOW_WARN}})
+
+header(s, 8.6, 1.62, 4.35, "Which numbers are affected")
+_aff = [["Quantity", "Source", "Affected?"],
+        ["UTS", "load cell only", "NO"],
+        ["Force / time curve", "load cell only", "NO"],
+        ["Force anchor", "load cell only", "NO"],
+        ["E, σ_y", "strain column", "slightly"],
+        ["ε_f", "strain column", "watch it"]]
+table(s, 8.6, 2.00, 4.35, 1.72, _aff, cw=[1.6, 1.6, 1.2], hf=9.5, bf=9,
+      ov={(1, 2): {"bg": GREEN_PASS, "bold": True}, (2, 2): {"bg": GREEN_PASS, "bold": True},
+          (3, 2): {"bg": GREEN_PASS, "bold": True}, (4, 2): {"bg": YELLOW_WARN},
+          (5, 2): {"bg": YELLOW_WARN}})
+
+header(s, 0.4, 3.30, 7.9, "Why E survived")
+tb(s, 0.4, 3.67, 7.9, 1.35,
+   f"E is fitted over 0.05–0.40 % strain, and S13 still put {SB.e_window_points('S13')['in_window']} "
+   f"readings inside that window. Fewer than S25's {SB.e_window_points('S25')['in_window']}, but a "
+   f"straight-line fit does not need many — which is why S13's E lands at {_S13['E']:.3f} GPa, "
+   f"between S25's {_S25['E']:.3f} and S26's {_S26['E']:.3f}.\n"
+   "ε_f is the one to treat with care: it depends on catching the LAST valid reading before "
+   "fracture, and a 664 ms worst-case gap is a real risk of missing it.", fs=11)
+
+header(s, 8.6, 3.90, 4.35, "Open / next")
+tb(s, 8.6, 4.27, 4.35, 2.0,
+   "•  Watch the live DIC-Hz badge through the next pull — 19.9 at rest, what during the ramp?\n"
+   "•  A second black specimen would turn n = 1 into a repeat.\n"
+   "•  Black is now cleared for use; nothing about it needs changing.", fs=10.5)
+
+banner(s, 0.4, 5.35, 7.9, 1.05,
+       "VERDICT — the Black preset is validated. Markers found on 99.9 % of frames, noise BELOW "
+       "the white pair, and every mechanical property closer to the white mean than the two white "
+       "runs are to each other. The roadmap's black-specimen DIC check is answered.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
+footer(s, "One blemish worth recording: S13's AVI sinks came out 1539 / 1540 / 1540 frames — the "
+          "writers stopped one frame apart. Harmless here, but the other runs matched exactly.")
+pageno(s, 231)
+
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print(f"Saved: V6a_8_6_20_slides.pptx ({len(prs.slides.__iter__.__self__._sldIdLst)} slides, pages 141-224)")
+    print(f"Saved: V6a_8_6_20_slides.pptx ({len(prs.slides.__iter__.__self__._sldIdLst)} slides, pages 141-231)")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
     print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx")
