@@ -68,3 +68,8 @@ Software/UTM_PyQt6/*.jpg
 
 # DIC frame capture / video recording output (huge: ~1.9 GB per minute of PNGs)
 Software/UTM_PyQt6/captures/
+
+# Session pack for the MOT extensometer visit. Documents are copies (the originals are
+# tracked or generated); the operator drops multi-GB videos in here before travelling, which
+# must never reach git.
+Validation docs/

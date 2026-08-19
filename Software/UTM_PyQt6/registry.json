@@ -416,5 +416,22 @@
     "ef": 0.0515,
     "tough_kJm3": 2015,
     "anchor_N": 307
+  },
+  {
+    "csv": "Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/Specimen_S29_V3_PETG_Spray_Video8/UTM_Test_20260819_113054.csv",
+    "specimen": "S29",
+    "test": null,
+    "date": "2026-08-19 11:29:26",
+    "material": "PETG",
+    "infill_pct": 100.0,
+    "area_mm2": 80.0,
+    "gauge_mm": 80.0,
+    "comment": "PETG, 100 %% infill, black spray dots. NOT A VALID PROPERTY ROW - the run was aborted at PEAK load by a false fracture trigger (a mount edge was read as a marker for one frame; ec jumped 0.029 -> 0.109 and tripped the DIC-jump branch). The specimen never fractured: it reached 2930.9 N / 36.64 MPa, then sat with the crosshead frozen for 19 s relaxing 2909 -> 2726 N. UTS/sigma_y/eps_f/toughness/anchor are all fracture-derived and were meaningless here (anchor read -2791 N off the relaxation tail), so they are nulled rather than left to be averaged in. E was 1.598 GPa on the ramp, provisional and plausible for PETG. Tracking was 100 %% - this is a control failure, not a DIC one. Redo before quoting anything.",
+    "UTS_MPa": null,
+    "sy_MPa": null,
+    "E_GPa": null,
+    "ef": null,
+    "tough_kJm3": null,
+    "anchor_N": null
   }
 ]
