@@ -132,10 +132,25 @@ def banner(slide, x, y, w, h, text, *, fill=GREEN_PASS, fg=DARK_GREEN, fs=13):
     return box
 
 
-def pageno(slide, n):
+FIRST_PAGE = 141          # this deck continues an existing document; slide 1 here is page 141
+
+
+def pageno(slide):
+    """Stamp the page number. The argument is IGNORED — the number is the slide's real position.
+
+    It used to be hard-coded per call, 73 literals plus two `219 + _i` loops. That is fine right up
+    until a slide is inserted in the middle, at which point every number after it is silently wrong
+    and so is every "see p198" written into the prose. Deriving it from the slide's index in `prs`
+    makes insertion free: the deck renumbers itself and cannot disagree with itself.
+
+    The stale literals were stripped rather than left in place: an argument that is silently
+    ignored is worse than no argument, because the next person reads it as the truth.
+    """
+    idx = prs.slides.index(slide)
     # Bottom-RIGHT. It used to sit at x=0.5, which is inside the footer's text box (x=0.6, w=12.1),
     # so any footer longer than a few words printed straight over the page number.
-    tb(slide, 12.45, 7.05, 0.6, 0.3, str(n), fs=10, colour=GREY_TEXT, align=PP_ALIGN.RIGHT)
+    tb(slide, 12.45, 7.05, 0.6, 0.3, str(FIRST_PAGE + idx), fs=10, colour=GREY_TEXT,
+       align=PP_ALIGN.RIGHT)
 
 
 def ju(slide):
@@ -164,7 +179,7 @@ ADDNORTH_PROD = "https://addnorth.com/product/PLA%20Economy/PLA%20Economy%20-%20
 def pic_slide(t, img, n, foot, *, x=1.67, y=1.55, w=10.0):
     s = prs.slides.add_slide(BLANK); ju(s); title(s, t)
     s.shapes.add_picture(img, Inches(x), Inches(y), width=Inches(w))
-    footer(s, foot); pageno(s, n); return s
+    footer(s, foot); pageno(s); return s
 
 
 # ===== SLIDE 1 — Overview + timeline =====
@@ -206,7 +221,7 @@ for i, (txt, bd, fg) in enumerate(steps):
         arrow(s, FX+FW/2, yy+FH, FX+FW/2, yy+gap, colour=bd)
 footer(s, "V6a (S7) = the PILOT (first) 100 % specimen, shown here in detail. It is the batch's strength / modulus "
           "EDGE point — representative n = 5 result on pp. 157–160; the V5 comparison uses V6d (≈ mean).")
-pageno(s, 141)
+pageno(s)
 
 # ===== SLIDE 2 — Predicted results =====
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -228,7 +243,7 @@ banner(s, 0.5, 5.2, 12.3, 1.4,
        "infill at the same nominal area should reach literature directly with k ≈ 1. Confirmed below.",
        fill=LIGHT_BLUE, fg=DARK_GREEN, fs=13)
 footer(s, "Predictions set from the 50 % V5 baseline + Chacón (2017) ranges and the infill-knock-down argument.")
-pageno(s, 142)
+pageno(s)
 
 # ===== SLIDES 3-7 — single-specimen plots =====
 pic_slide("PHASE 8.6.20 V6a: LOAD vs TIME", "V6a_load_time.png", 143,
@@ -278,7 +293,7 @@ banner(s, 0.5, 6.1, 12.4, 0.65,
        fill=LIGHT_BLUE, fg=DARK_GREEN, fs=12)
 footer(s, "n = 5 mean vs Chacón (2017); per-specimen repeatability on p. 157, add:north datasheet on p. 156. "
           "Strength inside range (k ≈ 1); E ~13 % below the journal floor.")
-pageno(s, 148)
+pageno(s)
 
 # ===== SLIDE 9 — Recommendations =====
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -300,7 +315,7 @@ for i, t in enumerate(recs, 1):
     tb(s, 1.35, y-0.03, 11.4, 0.95, t, fs=13.5, colour=BLACK)
     y += 1.02
 footer(s, "Next bench step: V6b/V6c (100 % repeats). Campaign goals G1 (50 % repeatable), G2/G3 (100 %≈literature) met.")
-pageno(s, 149)
+pageno(s)
 
 # ===== SLIDES 10-13 — V6 (100% infill) vs V5 (50% infill) comparison — representative specimen V6d =====
 pic_slide("V6 (100 % INFILL) vs V5 (50 % INFILL): LOAD vs TIME", "V6a_v5_load_time.png", 150,
@@ -355,7 +370,7 @@ tb(s, 9.1, 1.75, 3.95, 4.5,
    fs=11.5, colour=BLACK)
 banner(s, 9.1, 6.05, 3.95, 0.85, "≈ 2.1× strength, k: 1.45 → 1.0\n(V6 = representative V6d)",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
-pageno(s, 154)
+pageno(s)
 
 # ===== SLIDE 15 — Single common offset factor for V6 (n=5 mean) =====
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -384,7 +399,7 @@ banner(s, 0.5, 6.3, 12.4, 0.62,
        "No single ALL-property k: E reads ~13 % low (needs k ≥ 1.15) while in-range σ_y caps k ≤ 1.11 → they "
        "pull opposite ways, but only by 0.04. Treat E separately.   (Contrast V5: a common k ≈ 2.4 existed.)",
        fill=YELLOW_WARN, fg=BLACK, fs=12)
-pageno(s, 155)
+pageno(s)
 
 # ===== SLIDE 16 — Validation: add:north PLA reference =====
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -422,7 +437,7 @@ banner(s, 0.4, 6.0, 12.7, 0.6,
        "(91 %, near spec). Predict printed strength ≈ spec ÷ 1.25.")
 footer(s, "† E-PLA reports one tensile strength (at break), PLA σ_y ≈ UTS → both vs 58 MPa. E-PLA = closest "
           "add:north PLA (no PLA Economy TDS); ISO 527 moulded vs printed 80 mm² bar; values = n = 5 mean.")
-pageno(s, 156)
+pageno(s)
 
 # ===== SLIDE 17 — V6 repeatability study (n=5) =====
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -456,7 +471,7 @@ flow(s, 7.0, 5.3, 6.0, 1.05,
 banner(s, 0.32, 6.5, 12.7, 0.45,
        "Strength REPEATABLE — UTS/σ_y/E all CV ≤ 4.4 % (n = 5; matched b–e batch < 2.1 %). "
        "Ductility ε_f scatters 33 % → report as a range.")
-pageno(s, 157)
+pageno(s)
 
 # ===== SLIDE 18 — Strength validation =====
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -481,7 +496,7 @@ tb(s, 7.2, 3.65, 5.9, 1.7,
 banner(s, 7.2, 5.55, 5.9, 1.0,
        "STRENGTH PASS — repeatable (CV 2.5 %), inside the journal range, and a sensible ~80–90 % of the "
        "manufacturer's rated solid material.", fill=GREEN_PASS, fg=DARK_GREEN, fs=12.5)
-pageno(s, 158)
+pageno(s)
 
 # ===== SLIDE 19 — Ductility =====
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -501,7 +516,7 @@ tb(s, 7.2, 3.0, 5.9, 2.3,
 banner(s, 7.2, 5.5, 5.9, 1.05,
        "Quote ductility as a RANGE (ε_f = 3–7 %), never a single number. Strength is the reproducible "
        "engineering value; ductility is specimen-dependent.", fill=YELLOW_WARN, fg=BLACK, fs=12.5)
-pageno(s, 159)
+pageno(s)
 
 # ===== SLIDE 20 — Validation summary vs references =====
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -531,7 +546,7 @@ banner(s, 0.4, 5.55, 8.0, 0.85,
 linkbox(s, 8.6, 6.1, 4.4, "add:north E-PLA TDS (ISO 527 / 178)", ADDNORTH_TDS)
 footer(s, "Writeup: 100 % PLA validated vs literature for strength (k≈1 vs Chacón); characterised at k≈1.2 vs "
           "add:north E-PLA datasheet; modulus meets datasheet, marginally below journal; ε_f = 3–7 % range.")
-pageno(s, 160)
+pageno(s)
 
 # ===== SLIDE 21 — Fractography: individually-placed, editable specimen photos =====
 def frac_tile(sl, path, x, y, w, at, cb, name, metric, band, tag):
@@ -589,7 +604,7 @@ for (nm, mt, pth, tag), x in zip(FR100, xb):
     frac_tile(s, pth, x, 4.52, W, AT, CB, nm, mt, C100, tag)
 footer(s, "Each specimen photo is an individually placed, croppable picture (…/8.6.20 - Tensile test to Failure/"
           "Specimen_S*/). Labels = measured UTS · ε_f. Reset crop in PowerPoint to see the full specimen.")
-pageno(s, 161)
+pageno(s)
 
 # ===== SLIDE 22 — Software feature: automatic preload =====
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -623,7 +638,7 @@ banner(s, 0.4, 6.25, 12.5, 0.72,
        fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
 footer(s, "Feature in Software/UTM_PyQt6/main.py — PRELOAD_SPEED_KNOTS · TARGET_FACTOR 1.03 · OVERSHOOT_CAP 1.25 · "
           "TIMEOUT 180 s. Used to set the ~470 N preload before every V5 / V6 pull.")
-pageno(s, 162)
+pageno(s)
 
 
 # =====================================================================================
@@ -661,7 +676,7 @@ banner(s, 0.4, 6.18, 12.55, 0.92,
        fill=LIGHT_BLUE, fg=BLACK, fs=11)
 footer(s, "All analysis logic is unit-tested / sim-validated offline; the app feature set is now snapshot-committed "
           "(main.py a3b187f) after the full rig-test campaign — see ROADMAP.md / TESTING_TODO.md.")
-pageno(s, 163)
+pageno(s)
 
 # ---- Slide 166: DONE — built & committed ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -693,7 +708,7 @@ tb(s, 6.75, 1.72, 6.2, 3.9,
    fs=12, colour=BLACK)
 footer(s, "Modules committed & regression-checked against the deck numbers; the UI feature set is now "
           "snapshot-committed (main.py a3b187f) after full rig validation.")
-pageno(s, 164)
+pageno(s)
 
 # ---- Slide 167: TO BE TESTED — rig / camera ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -724,7 +739,7 @@ banner(s, 0.4, 5.5, 12.55, 1.05,
        fill=GREEN_PASS, fg=BLACK, fs=11.5)
 footer(s, "Full step-by-step results: Software/UTM_PyQt6/TESTING_TODO.md; thresholds confirmed (fracture arm "
           "30% / collapse 50%, travel cap 30 mm, stall guard 0.05 mm / 6 s).")
-pageno(s, 165)
+pageno(s)
 
 # ---- Slide 168: PLANNED NEXT — measured Poisson (edge-width / MDF) + remaining automation ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -757,7 +772,7 @@ banner(s, 0.4, 6.5, 12.55, 0.72,
        "HARDWARE LIMIT — motor torque ceiling ~2.6 kN (variable; driver Vref / thermal / PSU) blocks 100% "
        "full-area fracture; use 50% / smaller specimens until resolved.   ORDER — wire remaining modes → "
        "edge-width Poisson → UX layer.", fill=YELLOW_WARN, fg=BLACK, fs=10.5)
-pageno(s, 166)
+pageno(s)
 
 # =====================================================================================
 # NEW FEATURE SLIDES (169-182) — SF 1-8 overview, proof slides IN FEATURE ORDER, then context
@@ -811,7 +826,7 @@ for _i, (_n, _t, _b, _st) in enumerate(_sf_cards):
          "SF%d  %s\n%s" % (_n, _t, _b), fill=_f, border=_fg, fs=10.5, bold=True, fg=_fg)
 footer(s, "Four safety layers on every driven test: load-collapse detector · stall guard · 10 kN / 30 mm "
           "backstop · dead-DIC freeze.  Canonical list: Software/UTM_PyQt6/ROADMAP.md §3c.")
-pageno(s, 167)
+pageno(s)
 
 # ---- Slide 170: SF 1 · DIC health HUD — modes  [content unchanged, was slide 176] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -831,7 +846,7 @@ table(s, 0.4, 2.8, 12.55, 2.65, modes, cw=[1.7, 1.4, 5.9, 3.55], hf=11, bf=10.5,
 banner(s, 0.4, 5.75, 12.55, 0.9,
        "Recorded per-frame in the CSV (DIC_Blobs column) — so you know DIC was reliable, and can PROVE it after the test.",
        fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
-pageno(s, 168)
+pageno(s)
 
 # ---- Slide 171: SF 1 · DIC-driven safety halt — proof (S17)  [content unchanged, was slide 177] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -847,7 +862,7 @@ tb(s, 7.9, 3.98, 5.05, 1.9,
    fs=11.5, colour=BLACK)
 banner(s, 0.4, 6.35, 12.55, 0.72, "S17 — covered a marker mid-test → DIC went BAD → motor auto-halted. No runaway on blind data.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
-pageno(s, 169)
+pageno(s)
 
 # ---- Slide 172: SF 2 · Prepare specimen  [NEW] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -868,7 +883,7 @@ tb(s, 0.4, 3.6, 12.55, 1.6,
 banner(s, 0.4, 5.55, 12.55, 0.9, "Rig-validated — position + force + DIC all zeroed, consoles + stress-strain plot cleared, from one press.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
 footer(s, "Feature in Software/UTM_PyQt6/main.py (Prepare specimen button). Validated 2026-07-28.")
-pageno(s, 170)
+pageno(s)
 
 # ---- Slide 173: SF 3 & 4 · Report + Settings  [content unchanged, was slide 178] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -885,7 +900,7 @@ tb(s, 6.95, 2.65, 6.0, 3.1,
    "•  Report reads the CSV header → KPIs + 4 plots + validation",
    fs=11.5, colour=BLACK)
 footer(s, "Report shown is the REAL S16 one-pager (auto-generated). Settings image = the live Motor-Control controls.")
-pageno(s, 171)
+pageno(s)
 
 # ---- Slide 174: SF 5 · auto-stop at fracture — proof  [content unchanged, was slide 170] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -901,7 +916,7 @@ tb(s, 8.0, 4.62, 4.95, 1.0, "Fires in ONE sample after the load collapses — no
    fs=11.5, italic=True, colour=GREY_TEXT)
 banner(s, 0.4, 6.35, 12.55, 0.72, "The rig detects its OWN fracture and halts — arm at 30% of peak, fire at 50% collapse.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
-pageno(s, 172)
+pageno(s)
 
 # ---- Slide 175: SF 6 · strain-rate fracture — results & why  [content unchanged, was slide 171] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -920,7 +935,7 @@ tb(s, 8.0, 4.38, 4.95, 1.9,
 banner(s, 0.4, 6.35, 12.55, 0.72,
        "Held 0.00051 /s (target 0.0005) while HALVING crosshead speed 0.10 → 0.05 mm/s — a fixed-speed pull cannot.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
-pageno(s, 173)
+pageno(s)
 
 # ---- Slide 176: SF 6 · strain-rate — report plots (S19, 50%)  [content unchanged, was slide 172] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -931,7 +946,7 @@ kpi(s, 0.4, 5.46, 3.9, "TARGET RATE", "0.0005 /s")
 kpi(s, 4.55, 5.46, 3.9, "MIN SPEED", "0.005 mm/s")
 kpi(s, 8.7, 5.46, 4.25, "MAX SPEED (cap)", "0.20 mm/s")
 footer(s, "S19 (50%) fractures ~1.4 kN — under the motor ceiling. The loop varied crosshead speed 0.005–0.20 mm/s to hold 0.0005 /s to fracture.")
-pageno(s, 174)
+pageno(s)
 
 # ---- Slide 177: SF 7 · safety guards & limits (stall guard)  [content unchanged, was slide 173] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -950,7 +965,7 @@ banner(s, 0.4, 5.5, 12.55, 1.0,
        "Any breach → Stop + E-Stop.",
        fill=YELLOW_WARN, fg=BLACK, fs=12)
 footer(s, "Layered so a driven test (preload · fracture · strain-rate) can't run away — protects the motor, the printed grips and the 3 t load cell.")
-pageno(s, 175)
+pageno(s)
 
 # ---- Slide 178: SF 8 · Release preload  [NEW] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -971,7 +986,7 @@ kpi(s, 10.06, 3.9, 2.9, "TIMEOUT", "180 s")
 banner(s, 0.4, 5.15, 12.55, 0.95, "Rig-validated — eases tension off the specimen + grips; live-SetSpeed only (no re-latch runaway); stops on target / rise-cap / timeout.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
 footer(s, "Feature in Software/UTM_PyQt6/main.py (Release preload button). Validated 2026-07-28.")
-pageno(s, 176)
+pageno(s)
 
 # ---- Slide 179: two fracture methods — when to use which  [content unchanged, was slide 174] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -987,7 +1002,7 @@ header(s, 0.4, 4.9, 12.55, "Suggestion")
 flow(s, 0.4, 5.37, 6.2, 1.0, "MAX pulling force or a quick UTS?\n→  DIRECT motor speed", fill=LIGHT_BLUE, border=FLOW_BLUE, fs=12.5, bold=True)
 flow(s, 6.75, 5.37, 6.2, 1.0, "Controlled material strain rate (comparable)?\n→  STRAIN-RATE fracture", fill=GREEN_PASS, border=DARK_GREEN, fs=12.5, bold=True, fg=DARK_GREEN)
 footer(s, "Both auto-stop on fracture (same detector) + stall guard. On THIS rig (torque ~2.6 kN today) use 50% / smaller specimens for strain-rate to reach break.")
-pageno(s, 177)
+pageno(s)
 
 # ---- Slide 180: innovation roadmap — workflow  [content unchanged, was slide 175] ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1011,7 +1026,7 @@ arrow(s, 8.77, 5.45, 8.98, 5.45, width=2)
 flow(s, 9.0, 4.98, 3.95, 0.95, "3 · UX wizard +\nlive overlay", fill=WHITE, border=FLOW_BLUE, fs=11.5, bold=True)
 banner(s, 0.4, 6.2, 12.55, 0.72, "Hardware gate — motor torque ~2.6 kN today; fix driver Vref / cooling to fracture 100% infill.",
        fill=YELLOW_WARN, fg=BLACK, fs=11)
-pageno(s, 178)
+pageno(s)
 
 # ---- Slide 181: specimen register  [extended 2026-08-17: S20-S26] ----
 # It stopped at S19, which pre-dates the entire SF9 advanced-mode campaign (S20-S23) and all three
@@ -1040,8 +1055,8 @@ Rc = [["Spec", "Infill", "Colour", "Test / result"],
 table(s, 0.4, 1.4, 6.2, 5.1, Lc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
 table(s, 6.75, 1.4, 6.2, 5.1, Rc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
 footer(s, "All spray markers (black dots on PLA). V1_Spray batch = 50% · V2_Spray = 100%. "
-          "VC1-3 = the frame-capture fracture runs (p217-222). Colour column to be filled by operator.")
-pageno(s, 179)
+          "VC1-3 = the frame-capture fracture runs (p221-224). Colour column to be filled by operator.")
+pageno(s)
 
 # ---- Slide 180: buck-converter enclosure CAD ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1060,7 +1075,7 @@ tb(s, 7.35, 5.28, 5.55, 1.4,
    "•  Open top + side slots for wiring / mounting",
    fs=11.5, colour=BLACK)
 footer(s, "CAD for a PLA-printed part. Callout arrows mark the PCB locating pins (floor posts) and the LED-switch extrusion (side tube).")
-pageno(s, 180)
+pageno(s)
 
 # ---- Motor torque ceiling (hardware limit) ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1069,14 +1084,14 @@ header(s, 0.4, 1.28, 12.55, "Same crosshead speed (0.10 mm/s), different MAX for
 kpi(s, 0.4, 1.75, 4.0, "WEAK DAY (S15 · today)", "~2.6 kN")
 kpi(s, 4.6, 1.75, 4.0, "STRONG DAY (V6 · S16)", "3.2–3.8 kN")
 kpi(s, 8.8, 1.75, 4.15, "100% FULL-AREA NEEDS", "~3.7 kN")
-header(s, 0.4, 3.05, 12.55, "Why — torque capacity, NOT speed or software")
+header(s, 0.4, 3.05, 12.55, "What we suspected at the time — torque capacity, NOT speed or software")
 tb(s, 0.4, 3.5, 6.2, 1.5, "•  Driver current (Vref) set low\n\n•  PSU voltage sag under load", fs=12, colour=BLACK)
-tb(s, 6.75, 3.5, 6.2, 1.5, "•  Driver THERMAL derating (the chip, not motor)\n\n•  Mechanical binding (screw / rails)", fs=12, colour=BLACK)
+tb(s, 6.75, 3.5, 6.2, 1.5, "•  Driver THERMAL derating (the chip, not motor)\n\n•  Mechanical binding (screw / rails)  ← this one", fs=12, colour=BLACK)
 banner(s, 0.4, 5.25, 12.55, 1.0,
-       "WORKAROUND — use 50% / smaller-cross-section specimens (fracture < 2.6 kN) until the torque is restored (check Vref · cooling · PSU).",
-       fill=YELLOW_WARN, fg=BLACK, fs=12.5)
-footer(s, "At the SAME 0.10 mm/s: S15 stalled 2.6 kN but S16 fractured 3.8 kN — the ceiling varies day-to-day. See TEST_FAILURES.md (S15).")
-pageno(s, 181)
+       "SUPERSEDED — see p183. It was the fourth cause: the load holders had worked loose and the crossheads sat out of alignment. Fixed; the rig now pulls 3.5 kN.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=12.5)
+footer(s, "At the SAME 0.10 mm/s and on the SAME DAY: S15 stalled 2.6 kN but S16 fractured 3.8 kN. Read as day-to-day drift at the time — it was specimen-to-specimen, i.e. the remount.")
+pageno(s)
 
 # ---- Motor jitter = stall warning ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1092,9 +1107,108 @@ tb(s, 8.0, 3.94, 4.95, 1.8,
    "•  Motor at / beyond its torque limit\n\n•  Strain-rate loop then oscillated, chasing a motor that can't move",
    fs=11.5, colour=BLACK)
 banner(s, 0.4, 6.3, 12.55, 0.78,
-       "WARNING — jitter = STALL. STOP, don't force 100% full-area. The stall guard now auto-halts (< 0.05 mm in 6 s under load).",
-       fill=RED_FAIL, fg=BLACK, fs=12.5)
-pageno(s, 182)
+       "SUPERSEDED (next slide) — the jitter was BINDING, not a torque limit. The stall guard still auto-halts (< 0.05 mm in 6 s under load).",
+       fill=YELLOW_WARN, fg=BLACK, fs=12.5)
+pageno(s)
+
+# ---- Torque ceiling RESOLVED: it was a crosshead misalignment ----
+# Placed after the jitter slide rather than between it and the ceiling slide: those two are one
+# unit (the limit, then the symptom), and a fix printed before its own symptom reads backwards.
+import torque_fix_data as TFX                                                      # noqa: E402
+_tq = TFX.stats()
+_sd = TFX.same_day_pair()
+
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "RESOLVED — THE “TORQUE CEILING” WAS A CROSSHEAD MISALIGNMENT")
+tb(s, 0.5, 1.16, 12.4, 0.42,
+   "The load holders had worked loose, letting the crossheads sit out of alignment. The motor was "
+   "spending its torque on binding instead of on the specimen. Re-aligned and re-tightened, the rig "
+   "pulls %.1f kN with no stutter." % TFX.FIXED_KN,
+   fs=12, italic=True, colour=GREY_TEXT)
+
+kpi(s, 0.4, 1.72, 3.05, "ROOT CAUSE", "Loose load holders", vfs=13, fill=GREEN_PASS)
+kpi(s, 3.62, 1.72, 3.05, "AFTER THE FIX", "%.1f kN, no stutter" % TFX.FIXED_KN, vfs=13,
+    fill=GREEN_PASS)
+kpi(s, 6.84, 1.72, 3.05, "100 % FULL-AREA NEEDS", "~%.1f kN" % TFX.NEEDED_KN, vfs=15)
+kpi(s, 10.06, 1.72, 2.89, "SUPPOSED CEILING", "%.1f kN" % TFX.OLD_CEILING_KN, vfs=15,
+    fill=RED_FAIL)
+
+header(s, 0.4, 2.92, 6.25, "The data already said “mechanical” — before the fault was found")
+tb(s, 0.4, 3.30, 6.25, 2.05,
+   "•  The same machine has fractured 100 %% infill at %.0f–%.0f N on %d separate specimens over "
+   "three months (mean %.0f ± %.0f N, CV %.1f %%).\n"
+   "•  That is %d of %d runs straight THROUGH a %.1f kN “ceiling”. A ceiling ten runs walk past is "
+   "not a ceiling.\n"
+   "•  Decisive: %s stalled at %.1f kN and %s fractured at %.0f N on the SAME DAY (%s) — +%.0f %%, "
+   "same rig, same 0.10 mm/s."
+   % (_tq["min"], _tq["max"], _tq["n"], _tq["mean"], _tq["sd"], _tq["cv"],
+      _tq["over_ceiling"], _tq["n"], TFX.OLD_CEILING_KN,
+      _sd["stall_spec"], _sd["stall_kN"], _sd["frac_spec"], _sd["frac_N"], _sd["date"],
+      _sd["ratio_pct"]),
+   fs=11, colour=BLACK)
+
+header(s, 6.95, 2.92, 6.0, "What that retires — the four ranked causes (p201)")
+table(s, 6.95, 3.30, 6.0, 1.95,
+      [["Ranked cause", "Verdict"],
+       ["1  Driver current (Vref) too low", "exonerated"],
+       ["2  Driver thermal derating", "exonerated"],
+       ["3  PSU voltage sag under load", "exonerated"],
+       ["4  Mechanical binding  (ranked LAST)", "CONFIRMED"]],
+      cw=[4.0, 2.0], hf=10, bf=10)
+
+header(s, 0.4, 5.38, 12.55, "Why only the mechanical cause fits")
+tb(s, 0.4, 5.74, 12.55, 0.56,
+   "Vref is a setting — it does not change between two specimens. Thermal derating gets WORSE "
+   "through a session, not 46 % better on the next pull. PSU sag scales with load, so it cannot let "
+   "a HIGHER load through. Binding is the only candidate that is intermittent, and it changes "
+   "exactly when the specimen is remounted — which is when alignment changes.",
+   fs=11, colour=BLACK)
+
+banner(s, 0.4, 6.32, 12.55, 0.55,
+       "SUPERSEDES p181 and p182 — the 50 %%-specimen workaround is no longer needed. 100 %% "
+       "full-area specimens fracture normally at ~%.1f kN." % (_tq["mean"] / 1000.0),
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=12.5)
+footer(s, "Not a hardware purchase and not a software change — a fastener. The stall guard and the "
+          "10 kN / 30 mm backstops stay exactly as they are; they were never the problem.")
+pageno(s)
+
+# ---- The post-fix register: which runs carry a known-good load path ----
+_pf = TFX.post_fix()
+_pf100 = [x for x in _pf if "100 %" in x[2]]
+_pf100_pk = [x[4] for x in _pf100]
+
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "TESTS AFTER THE REALIGNMENT — THE RELIABLE SET")
+tb(s, 0.5, 1.16, 12.4, 0.42,
+   "Every run below (%s onward) was on a rig whose crossheads were known to be aligned and whose "
+   "load holders were known to be tight. Both stalls on record fall BEFORE this line; none after."
+   % TFX.FIX_DATE,
+   fs=12, italic=True, colour=GREY_TEXT)
+
+table(s, 0.4, 1.68, 12.55, 3.35,
+      [["Specimen", "Date", "Material", "What it was for", "Peak", "UTS", "E", "Outcome"]] +
+      [[spec, date, mat, role, "%.0f N" % pk, "%.1f MPa" % uts,
+        ("%.2f GPa" % E) if E else "—", "fractured"]
+       for spec, date, mat, role, pk, uts, E in _pf],
+      cw=[1.05, 1.25, 1.75, 3.85, 1.05, 1.15, 1.15, 1.30], hf=10, bf=9.5)
+
+kpi(s, 0.4, 5.18, 3.05, "RUNS SINCE THE FIX", "%d" % len(_pf), vfs=17, fill=GREEN_PASS)
+kpi(s, 3.62, 5.18, 3.05, "STALLS SINCE THE FIX", "0", vfs=17, fill=GREEN_PASS)
+kpi(s, 6.84, 5.18, 3.05, "100 % RUNS, PEAK RANGE",
+    "%.0f–%.0f N" % (min(_pf100_pk), max(_pf100_pk)), vfs=14)
+kpi(s, 10.06, 5.18, 2.89, "STALLS BEFORE IT", "%d" % len(TFX.STALLS), vfs=17, fill=RED_FAIL)
+
+header(s, 0.4, 6.26, 12.55, "Why this set is the one to quote")
+tb(s, 0.4, 6.60, 12.55, 0.48,
+   "All %d ran to fracture with no stutter, and the %d at 100 %% infill peaked %.0f–%.0f N — every "
+   "one ABOVE the %.1f kN carried as a hardware ceiling. Earlier results are not wrong (S15 and T7 "
+   "were caught by the stall guard and excluded, never silently averaged in), but only this set is "
+   "free of a load path that could bind."
+   % (len(_pf), len(_pf100), min(_pf100_pk), max(_pf100_pk), TFX.OLD_CEILING_KN),
+   fs=11, colour=BLACK)
+footer(s, "S12 is listed because the PULL was sound (47.8 MPa) — what failed was the frame capture. "
+          "Peaks are UTS × the CAD 80 mm² nominal area.")
+pageno(s)
 
 
 # =====================================================================================
@@ -1104,7 +1218,7 @@ s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "MEASURING CAUCHY (TRUE) STRESS")
 tb(s, 0.4, 2.9, 12.55, 1.7, "Getting the DEFORMING cross-section for TRUE / Cauchy stress + Poisson ratio "
    "- a separate future work-stream: edge-width tracking on a matte-black backdrop.", fs=16, bold=True, colour=DARK_GREEN)
-pageno(s, 183)
+pageno(s)
 
 # ===== SLIDE 23 — Engineering vs true (Cauchy) stress + measuring the current area =====
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1138,7 +1252,7 @@ banner(s, 0.4, 5.65, 12.6, 0.72,
        fill=LIGHT_BLUE, fg=BLACK, fs=12)
 footer(s, "Current V6 report & plots = engineering stress (nominal 80 mm²). True/Cauchy needs the deforming "
           "area; post-necking needs full-field DIC or markers at the neck.")
-pageno(s, 184)
+pageno(s)
 
 # ---- Slide 164: measuring Poisson / true stress WITHOUT transverse dots ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1177,7 +1291,7 @@ banner(s, 0.4, 5.65, 12.6, 0.72,
        fill=LIGHT_BLUE, fg=BLACK, fs=12)
 footer(s, "Supersedes the transverse-marker idea on the previous slide: the narrow gauge + camera resolution "
           "rule out a transverse dot pair. Measure the specimen's own edges (or full-field speckle) instead.")
-pageno(s, 185)
+pageno(s)
 
 # =============================================================================================
 # SF9 — ADVANCED TEST MODES (pages 186-199): 1 overview + 2 per mode + 1 failure analysis.
@@ -1227,7 +1341,7 @@ def sf9_how(page, name, tid, schematic, what, settings, limits, guide, note=None
            fill=YELLOW_WARN, fg=BLACK, fs=11)
     tb(s, 0.5, GUIDE_Y, 12.4, 0.32, guide, fs=10.5, italic=True, colour=GREY_TEXT)
     footer(s, SF9_BACKSTOP)
-    pageno(s, page)
+    pageno(s)
     return s
 
 
@@ -1260,7 +1374,7 @@ def sf9_result(page, name, tid, fig, kpis=None, tbl=None, verdict=None, vfill=GR
     if verdict:
         banner(s, 0.45, VERDICT_Y, 12.45, 0.55, verdict, fill=vfill, fg=DARK_GREEN, fs=12)
     footer(s, foot)
-    pageno(s, page)
+    pageno(s)
     return s
 
 
@@ -1281,7 +1395,7 @@ banner(s, 0.45, 6.14, 12.45, 0.72,
        fill=LIGHT_BLUE, fg=BLACK, fs=12)
 footer(s, "Rig-validated 2026-08-08/09 on S18, S20, S21. Engine: control_policies.py · "
           "app wiring: main.py `_policy_step` · schematics: ui_help/.")
-pageno(s, 186)
+pageno(s)
 
 # ---- 187/188: CYCLIC ----
 ct, cs = SF9["cyc_tri"], SF9["cyc_sin"]
@@ -1337,13 +1451,13 @@ banner(s, 0.45, 5.94, 12.45, 0.58,
        fill=YELLOW_WARN, fg=BLACK, fs=11)
 banner(s, 0.45, 6.58, 12.45, 0.46,
        "✅ RESOLVED — T6.4 / T6.5 ran 2026-08-11 on S22 at 400→1100 N and the loops closed: "
-       "%.1f px measured against the 13.1 px predicted here.  See p211-212."
+       "%.1f px measured against the 13.1 px predicted here.  See p215-214."
        % SF9["loops_t65"][0]["px_span"],
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
 footer(s, "The 400 N floor is the key: never unload through the slack band, so backlash is crossed "
           "once at the start instead of twice per cycle. Arm auto-stop — 1100 N is above the 694 N "
           "yield knee, which is the point, but T8 fractured at 1397 N.")
-pageno(s, 189)
+pageno(s)
 
 # ---- 190/191: STAIRCASE ----
 sl, sm = SF9["stair_lin"], SF9["stair_smo"]
@@ -1399,7 +1513,7 @@ banner(s, 0.45, 6.28, 12.45, 0.58,
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
 footer(s, "Fit quality improves with the Smooth ramp (R² ≥ 0.986 vs 0.954) because a tapered approach "
           "spends more samples in steady loading and fewer in the overshoot transient.")
-pageno(s, 192)
+pageno(s)
 
 # ---- 193/194: RELAXATION ----
 rx = SF9["relax"]
@@ -1461,7 +1575,7 @@ sf9_result(196, "CREEP", "T1", "documentation/sf9_creep.png",
            vfill=YELLOW_WARN,
            proposal="✅ RESOLVED — T9 ran 2026-08-11 on S23 at 600 N tared for %.0f s and creep IS "
                     "resolved: %+.0f µε drift-corrected = %.0f× the noise floor, decelerating "
-                    "(Findley n = %.2f).  See p213-215."
+                    "(Findley n = %.2f).  See p217-217."
                     % (SF9["t9"]["dur"], SF9["t9"]["net"],
                        SF9["t9"]["net"] / SF9["t9_base"]["sd"], SF9["t9"]["findley_n"]),
            foot="T1 could not have detected creep at all: fitted rate +0.002 ± 0.060 µε/s, so the 95 % "
@@ -1523,12 +1637,12 @@ for i, (lab, val) in enumerate([("Peak reached", "%.0f N" % t7["peak"]),
                                 ("…of commanded rate", "%.1f %%" % t7["frac_of_cmd"])]):
     kpi(s, 0.45 + i * 2.49, 4.98, 2.37, lab, val, h=0.82, vfs=15,
         fill=RED_FAIL if i in (2, 4) else LIGHT_BLUE, vcol=DARK_GREEN)
-header(s, 0.5, 5.92, 6.0, "Why it stalled — ranked")
+header(s, 0.5, 5.92, 6.0, "Why it stalled — ranked at the time (ANSWER: no. 4)")
 tb(s, 0.5, 6.24, 6.3, 1.1,
    "1  Stepper DRIVER CURRENT (Vref) set too low — most likely, and cheapest to check\n"
    "2  Driver THERMAL DERATING — T7 was the 7th test of a 2 h 15 min session\n"
    "3  PSU voltage SAG under peak load\n"
-   "4  Mechanical binding in the lead screw",
+   "4  ✔ MECHANICAL BINDING — crossheads misaligned, load holders loose.  See p183.",
    fs=11)
 header(s, 7.0, 5.92, 5.9, "Mitigation")
 tb(s, 7.0, 6.24, 5.9, 1.1,
@@ -1539,7 +1653,7 @@ tb(s, 7.0, 6.24, 5.9, 1.1,
    fs=11)
 footer(s, "NOT a hard ceiling: six 100 % specimens fractured at 3.1–3.4 kN. Software response was "
           "correct — nothing ran away, and the specimen was released intact and reusable.")
-pageno(s, 199)
+pageno(s)
 
 # ---- 200: can the Vref fix be done in software? ----
 import math as _math                                                               # noqa: E402
@@ -1593,7 +1707,7 @@ banner(s, 0.45, 6.50, 12.45, 0.44,
 footer(s, "Motor AMP57TH76-4280 (1.85 Nm), gearbox EPL64/2 20:1, 5 mm lead — from README.md and the "
           "MM_PER_S_PER_RPM constant in main.py. Torque figures are holding torque at rated current; "
           "if the driver runs the motor below rating, available force scales down roughly with current.")
-pageno(s, 200)
+pageno(s)
 
 # ---- 201/202: PROGRESSIVE CYCLIC → FRACTURE ----
 pc = SF9["pc"]
@@ -1659,7 +1773,7 @@ for _t, _d in _ex:
 banner(s, 0.45, 7.02, 12.45, 0.0, "", fill=WHITE, fg=WHITE, fs=1)
 footer(s, "Springs in series: 1/K_measured = 1/K_specimen + 1/K_machine. K_specimen = E·A/L; with "
           "A = 80 mm² and L = 80 mm that is numerically E in MPa, which is why all three fit on one axis.")
-pageno(s, 203)
+pageno(s)
 
 # ---- 204: PLAIN-ENGLISH — why energy loss dips then climbs ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1685,7 +1799,7 @@ banner(s, 0.45, 6.38, 12.45, 0.52,
 footer(s, "Careful: cycle 5 is where MATERIAL damage overtakes the still-fading MACHINE settling — it is "
           "not a pure yield point. T7.2's relaxation knee says 694 N, this says 893 N, so the deck quotes "
           "yield onset as a BRACKET of 700–900 N rather than one number.")
-pageno(s, 204)
+pageno(s)
 
 # ---- 205: SF3 — what the Settings feature actually saves ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1749,7 +1863,7 @@ tb(s, 6.85, 6.03, 6.05, 0.75,
    fs=10, italic=True, colour=GREY_TEXT)
 footer(s, "Stored as plain JSON in Software/UTM_PyQt6/recipes/ — readable, diffable, and easy to hand "
           "to someone else. The folder is gitignored as user-local; the two defaults regenerate on launch.")
-pageno(s, 205)
+pageno(s)
 
 # ---- 206: stress-strain for every mode ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1768,7 +1882,7 @@ banner(s, 0.45, 6.20, 12.45, 0.60,
 footer(s, "ε_f 3.10 % (T7.2) and 3.32 % (T8). A marker-separation plausibility bound is applied: at "
           "fracture L_px jumps 1668→1825 px ONE SAMPLE before the load collapses, which would otherwise "
           "stretch both fracture panels to a fictitious 10 % strain.")
-pageno(s, 206)
+pageno(s)
 
 # ---- 207: PLA vs literature ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1820,7 +1934,7 @@ tb(s, 5.7, 6.99, 7.0, 0.4,
    "‡ TDS carries no viscoelastic data. Relaxation/creep compared against Materials 15(10) 3509 and "
    "J. Appl. Polym. Sci. e54463 (~11–13 % relaxation, far longer holds). Tg 55–60 °C is from the TDS.",
    fs=9.5, italic=True, colour=GREY_TEXT)
-pageno(s, 207)
+pageno(s)
 
 # ---- 208: campaign register — the T-number ↔ slide-page cross reference ----
 from sf9_data import when as SF9_WHEN                                              # noqa: E402
@@ -1892,11 +2006,11 @@ tb(s, 0.5, 6.34, 12.4, 0.62,
    "Specimen economy: S20 (100 %) survived all eight NON-destructive runs (T1–T6.3) AND the failed "
    "T7 — a destructive protocol it was never broken by. The two destructive runs that DID succeed "
    "each consumed a fresh specimen (S18, S21). "
-   "T7 came after 2 h 15 min of continuous testing that day, which is the thermal-derating argument on p199.",
+   "T7 came after 2 h 15 min of continuous testing that day, which is the thermal-derating argument on p201.",
    fs=11, colour=GREY_TEXT)
 footer(s, "Raw CSVs: Software/UTM_PyQt6/8.7/<specimen folder>/. Metrics recomputed by "
           "documentation/sf9_data.py — this table is generated, not typed.")
-pageno(s, 208)
+pageno(s)
 
 # ---- 209: REFERENCE — the three strain terms, and why we report engineering ----
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -1927,20 +2041,20 @@ header(s, 6.85, 5.58, 6.0, "So the choice is forced")
 tb(s, 6.85, 5.92, 6.05, 1.25,
    "•  A stress–strain curve must be INTERNALLY CONSISTENT — engineering with engineering, or true "
    "with true. Mixing them is simply wrong.\n"
-   "•  True stress needs the current cross-section ⇒ Poisson, which the narrow gauge blocks (p188).\n"
+   "•  True stress needs the current cross-section ⇒ Poisson, which the narrow gauge blocks (p190).\n"
    "•  So engineering + engineering is the only defensible pairing available today.\n"
    "•  ISO 527 and the add:north TDS also report engineering — which is what keeps our k-factors "
-   "comparable (p206).", fs=10)
+   "comparable (p208).", fs=10)
 footer(s, "In code: cauchy = (L−L₀)/L₀ and true_strain = ln(L/L₀), both written to every CSV. Verified "
           "on real data: DIC_True always equals ln(1 + DIC_Cauchy), so the maths was right — only the "
           "NAME was misleading. The column name is kept for backward compatibility with every past test.")
-pageno(s, 209)
+pageno(s)
 
 # ---- 210: REFERENCE — how much would true stress change the answer? ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "REFERENCE — WOULD TRUE STRESS CHANGE OUR ANSWERS?")
 tb(s, 0.5, 1.16, 12.4, 0.34,
-   "Worth asking before building the edge-tracking rig on p188. Short answer: it is a ~3 % refinement "
+   "Worth asking before building the edge-tracking rig on p190. Short answer: it is a ~3 % refinement "
    "on the numbers — but it buys two things nothing else can.",
    fs=11.5, italic=True, colour=GREY_TEXT)
 img_fit(s, "documentation/sf9_true_stress.png", 0.45, 1.52, 12.45, 3.25)
@@ -1960,11 +2074,11 @@ banner(s, 0.45, 6.24, 12.45, 0.50,
        "thinning: S16 falls 47.4 → 42 MPa, and volume-conserved true stress is still only 44.5.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
 banner(s, 0.45, 6.80, 12.45, 0.44,
-       "⚠ DESIGN FIX for p188: it says “average width over 100s of rows”. Necking is LOCAL — averaging "
+       "⚠ DESIGN FIX for p190: it says “average width over 100s of rows”. Necking is LOCAL — averaging "
        "under-corrects exactly where it matters. Track the MINIMUM width along the gauge, not the mean.",
        fill=YELLOW_WARN, fg=BLACK, fs=10.5)
 footer(s, "")
-pageno(s, 210)
+pageno(s)
 
 # =============================================================================================
 # FOLLOW-UP CAMPAIGN (pages 211-216) — the two re-runs that turned SF9's two NEGATIVE results
@@ -1999,7 +2113,7 @@ sf9_result(211, "CYCLIC — RE-RUN", "T6.4 · T6.5", "documentation/sf9_cyclic_t
                  "resolvable every cycle — impossible on T6.3"]],
            verdict="T6.5 IS THE SLIDE-READY CYCLIC RESULT: 8 cycles at 400→1100 N, peak held to "
                    "± %.1f N, %d closed loops, and BOTH damage metrics (loop area, unload E) fall "
-                   "monotonically. The negative result on p189 is closed."
+                   "monotonically. The negative result on p191 is closed."
                    % (_t65["pk_mae"], len(_L65)),
            proposal="STILL MISSING — a DAMAGE CURVE. T6.4 lost DIC mid-run and T6.5 ran on the "
                     "already-cycled specimen, and E RECOVERED over the 40 min between them "
@@ -2015,7 +2129,7 @@ s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "T6.3 → T6.5 — WHY THE RE-RUN WORKED")
 tb(s, 0.5, 1.14, 12.4, 0.36,
    "One parameter, not a new machine. Same mode, same engine, same camera, same code — the ONLY "
-   "change is where the cycle bottoms out and tops out. p189 predicted a 13.1 px loop from that "
+   "change is where the cycle bottoms out and tops out. p191 predicted a 13.1 px loop from that "
    "change alone; here is the measurement.", fs=11.5, italic=True, colour=GREY_TEXT)
 img_fit(s, "documentation/sf9_cyclic_compare.png", 0.45, 1.52, 12.45, 3.05)
 
@@ -2047,7 +2161,7 @@ banner(s, 0.45, 6.16, 12.45, 0.56,
 footer(s, "Kept honest: T6.3's loop area was 7.6 kJ/m³, not zero — it was never 'no signal', it was "
           "signal you cannot attribute, and the R² column is what separates those two cases. Different "
           "specimens (S20 100 % vs S22 50 %), so absolute stress is not comparable; resolvability is.")
-pageno(s, 212)
+pageno(s)
 
 # ---- 213: CREEP re-run — the two-run protocol and its baseline ----
 _b9, _t9 = SF9["t9_base"], SF9["t9"]
@@ -2087,9 +2201,9 @@ banner(s, 0.45, 6.42, 12.45, 0.50,
        % (_b9["s1"], _b9["s2"], _b9["ratio"]),
        fill=LIGHT_BLUE, fg=BLACK, fs=11)
 footer(s, "The baseline also RE-MEASURED the DIC noise floor as ± %.0f µε over a full 900 s window "
-          "(p196's ± 12 µε is a 40 s window). %d of %d rows DIC-valid at %.1f ± %.2f N, crosshead frozen."
+          "(p198's ± 12 µε is a 40 s window). %d of %d rows DIC-valid at %.1f ± %.2f N, crosshead frozen."
           % (_b9["sd"], _b9["n"], _b9["n_raw"], _b9["Fmean"], _b9["Fsd"]))
-pageno(s, 213)
+pageno(s)
 
 # ---- 214: CREEP re-run — results ----
 sf9_result(214, "CREEP — RE-RUN", "T9", "documentation/sf9_creep_t9.png",
@@ -2115,7 +2229,7 @@ sf9_result(214, "CREEP — RE-RUN", "T9", "documentation/sf9_creep_t9.png",
                  "only %.0f %% of that motion is specimen — rest is rig" % _t9["spec_frac_um"]]],
            verdict="CREEP RESOLVED: %+.0f µε drift-corrected = %.0f× the %.0f µε noise floor, "
                    "decelerating (n = %.2f), while the load sat at %.0f ± %.1f N. The negative result "
-                   "on p196 is closed."
+                   "on p198 is closed."
                    % (_t9["net"], _t9["net"] / _b9["sd"], _b9["sd"], _t9["findley_n"],
                       _t9["Fmean"], _t9["Fsd"]),
            foot="Also measured: creep compliance J = %.3f → %.3f GPa⁻¹ (+%.1f %%), plus a free fixed-grip "
@@ -2158,20 +2272,20 @@ banner(s, 0.45, 6.00, 12.45, 0.52,
        % (_b9["total"], _b9["dur"], _t9["drift_pct"], 100 * _b9["total"] / 450.0, _b9["sub_err"]),
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
 banner(s, 0.45, 6.56, 12.45, 0.42,
-       "⚠ NOISE FLOOR DEPENDS ON THE WINDOW: ± 12 µε on p196 is T1's own 40 s scatter; over a full "
+       "⚠ NOISE FLOOR DEPENDS ON THE WINDOW: ± 12 µε on p198 is T1's own 40 s scatter; over a full "
        "900 s window it is ± %.0f µε. Any LONG-hold claim must be judged against %.0f, not 12."
        % (_b9["sd"], _b9["sd"]),
        fill=YELLOW_WARN, fg=BLACK, fs=10.5)
 footer(s, "Honest limits: the creep/instantaneous ratio of %.1f %% is an UPPER bound (ε_inst is tared at "
           "preload), and n=1 — one specimen, one stress level. A compliance CURVE needs 3-4 levels."
           % _t9["ratio_pct"])
-pageno(s, 215)
+pageno(s)
 
 # ---- 216: follow-up campaign register ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "SF9 — FOLLOW-UP CAMPAIGN REGISTER  (T6.4 – T9, 2026-08-11)")
 tb(s, 0.5, 1.14, 12.4, 0.34,
-   "Continues the T1–T8 register on p208. One session, two specimens, five runs — aimed squarely at "
+   "Continues the T1–T8 register on p210. One session, two specimens, five runs — aimed squarely at "
    "the two negative results (cyclic hysteresis, creep) and at the first fatigue-damage number.",
    fs=11, italic=True, colour=GREY_TEXT)
 
@@ -2216,8 +2330,8 @@ banner(s, 0.45, 4.10, 12.45, 0.62,
 
 header(s, 0.5, 4.90, 6.05, "What is now CLOSED")
 tb(s, 0.5, 5.24, 6.05, 1.55,
-   "•  Cyclic hysteresis is measurable — loop area AND unload modulus both trend (p211-212).\n"
-   "•  Creep is measurable — %+.0f µε at %.0f× the noise floor, decelerating (p213-215).\n"
+   "•  Cyclic hysteresis is measurable — loop area AND unload modulus both trend (p215-214).\n"
+   "•  Creep is measurable — %+.0f µε at %.0f× the noise floor, decelerating (p217-217).\n"
    "•  The DIC noise floor is now MEASURED over a full 900 s window: ± %.0f µε.\n"
    "•  Fatigue damage has a first number: %.1f %% TRUE UTS after %d cycles at 79 %% of fracture,\n"
    "   measured against S18 — the run that used the SAME protocol (T7.3).\n"
@@ -2234,7 +2348,7 @@ tb(s, 6.85, 5.24, 6.05, 1.55,
    "•  The `Infill` CSV header still writes 100 % after an app restart (label only).", fs=10.5)
 footer(s, "Raw CSVs: Software/UTM_PyQt6/SF9 - Advanced Test Modes/<specimen folder>/. Every number on "
           "this page is recomputed by documentation/sf9_data.py — the table is generated, not typed.")
-pageno(s, 216)
+pageno(s)
 
 # =====================================================================================
 # Slides 217-222: the S25 / S26 frame-capture pair (2026-08-17)
@@ -2272,7 +2386,7 @@ def _vc_chip(sl, x, y, w, h, key, text):
        anchor=MSO_ANCHOR.MIDDLE)
 
 
-# ---- Slide 217: is the capture trustworthy enough to hand to extensometer software? ----
+# ---- Slide 219: is the capture trustworthy enough to hand to extensometer software? ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "S25 · S26 — FRAME CAPTURE, CHECKED AGAINST THE TEST DATA")
 tb(s, 0.4, 1.18, 12.55, 0.44,
@@ -2325,7 +2439,7 @@ tb(s, 9.0, 2.06, 3.95, 2.30,
    "Both open ≈ 0.6 s BEFORE the crosshead moves and run 4.6 s past fracture.", fs=10.5)
 header(s, 9.0, 4.52, 3.95, "The one that did not do this")
 tb(s, 9.0, 4.90, 3.95, 1.45,
-   "S24 (the first capture run, p217-class data) logged only 27 % DIC coverage — the frames were "
+   "S24 (the first capture run, p219-class data) logged only 27 % DIC coverage — the frames were "
    "all there and all distinct, so the loss was in the load↔DIC matching step. It has not recurred: "
    "both runs here are at 100 %.", fs=10.5)
 banner(s, 0.4, 6.55, 12.55, 0.42,
@@ -2334,9 +2448,9 @@ banner(s, 0.4, 6.55, 12.55, 0.42,
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
 footer(s, "Raw: Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/Specimen_S25… and …S26…/. "
           "Frame counts, rates and coverage recomputed at build time by documentation/s25_s26_data.py.")
-pageno(s, 217)
+pageno(s)
 
-# ---- Slide 218: the two curves, overlaid ----
+# ---- Slide 220: the two curves, overlaid ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "S25 vs S26 — STRESS vs STRAIN, OVERLAID")
 tb(s, 0.4, 1.18, 12.55, 0.42,
@@ -2375,9 +2489,9 @@ tb(s, 9.05, 4.84, 3.9, 2.05,
    "is ordinary specimen scatter in a brittle-ish failure, not an instrument effect.", fs=10.5)
 footer(s, "Both curves come from utm_analysis.analyze() — the same function behind the app's "
           "Generate-report button. Plot: documentation/s25_s26_plots.py.")
-pageno(s, 218)
+pageno(s)
 
-# ---- Slide 219: E and sigma_y are one disagreement, not two ----
+# ---- Slide 221: E and sigma_y are one disagreement, not two ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "WHY E AND σ_y DISAGREE — AND WHY UTS DOES NOT")
 tb(s, 0.4, 1.15, 12.55, 0.60,
@@ -2409,7 +2523,7 @@ banner(s, 0.4, 5.45, 12.55, 0.95,
        fill=YELLOW_WARN, fg=BLACK, fs=12)
 footer(s, "Shaded bands are the two candidate fit windows on each specimen's own curve. "
           "Recomputed by s25_s26_data.best_elastic_fit().")
-pageno(s, 219)
+pageno(s)
 
 # ---- Slides 220-222: the comparison table itself ----
 # One strain axis for both runs. The raw curves are 768 + 903 samples that never sample the SAME
@@ -2460,7 +2574,7 @@ for _i, _chunk in enumerate(_vc_chunks, 1):
               f"grid-interpolated ones. FULL RESOLUTION (all {len(VC.full_rows('S25'))} + "
               f"{len(VC.full_rows('S26'))} raw samples): "
               f"documentation/S25_S26_stress_strain_reference.pdf")
-    pageno(s, 219 + _i)
+    pageno(s)
 
 
 # =====================================================================================
@@ -2480,7 +2594,7 @@ _EF_EVID = EFP.evidence(_os.path.join("documentation", "e_fit_evidence.png"))
 _EF_ROWS = EF.table()
 _EF_SUM = EF.summary(_EF_ROWS)
 
-# ---- Slide 223: the mechanism ----
+# ---- Slide 225: the mechanism ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "E — WHERE THE FIT WINDOW LANDS, AND WHY IT MATTERS")
 tb(s, 0.4, 1.15, 12.55, 0.62,
@@ -2506,9 +2620,9 @@ banner(s, 0.4, 5.55, 12.55, 0.85,
        fill=YELLOW_WARN, fg=BLACK, fs=12)
 footer(s, "Rolling fit: 0.20 %-wide window stepped in 0.02 % increments. Markers = centre of each "
           "specimen's steepest straight run. Generated by documentation/e_fit_plots.py.")
-pageno(s, 223)
+pageno(s)
 
-# ---- Slide 224: the evidence, and the decision ----
+# ---- Slide 226: the evidence, and the decision ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "E — THREE WAYS TO PICK THE WINDOW, ON OUR NINE 100 % RUNS")
 tb(s, 0.4, 1.15, 12.55, 0.44,
@@ -2544,13 +2658,13 @@ banner(s, 0.4, 5.55, 12.55, 0.85,
        "as E, and the 0.05–0.40 % value alongside it as E_fixed so nothing is lost. Every test in "
        "the deck and the registry was re-analysed on the new basis. UTS, ε_f, toughness and the "
        "anchor are untouched and were verified bit-identical on all 20 runs; σ_y moves because "
-       "the 0.2 % offset line has slope E. See p237.",
+       "the 0.2 % offset line has slope E. See p239.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
 footer(s, "“Steepest straight run” = the steepest stretch below 2 % strain, at least 0.25 % wide, "
           "whose R² is within 0.0005 of the straightest the record can offer (capped at 0.999). "
           "Steepest, not straightest: the toe and the yield knee are smooth too. Standard clauses "
           "to be checked against the source documents before publication.")
-pageno(s, 224)
+pageno(s)
 
 # =====================================================================================
 # Slides 225-231: S13, the first BLACK specimen taken to fracture
@@ -2578,7 +2692,7 @@ def _pct(v):
     return f"{v:+.1f} %"
 
 
-# ---- Slide 225: why a black specimen, and what came back ----
+# ---- Slide 227: why a black specimen, and what came back ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "S13 — THE FIRST BLACK SPECIMEN PULLED TO FRACTURE")
 tb(s, 0.4, 1.15, 12.55, 0.62,
@@ -2621,12 +2735,12 @@ table(s, 6.85, 3.42, 6.1, 2.35, _v13, cw=[2.6, 2.2, 0.9], hf=10, bf=9.5,
 banner(s, 0.4, 6.0, 12.55, 0.85,
        "HEADLINE — black markers work, and work slightly BETTER than white on the one thing that "
        "could have gone wrong (noise). The 47 % coverage is real but is NOT a marker-colour "
-       "effect; p230 separates the two.", fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
+       "effect; p232 separates the two.", fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
 footer(s, "S13 · 100 % infill · black PLA, white spray dots · 2026-08-18 · "
           "Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/Specimen_S13_V2_Spray_Video7/")
-pageno(s, 225)
+pageno(s)
 
-# ---- Slide 226: the run on its own ----
+# ---- Slide 228: the run on its own ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "S13 ALONE — THE RUN AS IT HAPPENED")
 tb(s, 0.4, 1.15, 12.55, 0.42,
@@ -2648,9 +2762,9 @@ tb(s, 9.1, 1.92, 3.85, 4.55,
    "51 500 µε: 0.02 % of full scale.", fs=10.5)
 footer(s, "Generated by documentation/s13_plots.py from the test CSV. Strain is DIC gauge strain "
           "over 80 mm; stress is engineering stress on 80 mm², anchor-corrected.")
-pageno(s, 226)
+pageno(s)
 
-# ---- Slide 227: head to head with S26 ----
+# ---- Slide 229: head to head with S26 ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "S13 (BLACK) vs S26 (WHITE) — HEAD TO HEAD")
 tb(s, 0.4, 1.15, 12.55, 0.60,
@@ -2670,9 +2784,9 @@ banner(s, 0.4, 6.05, 12.55, 0.80,
        f"scatter.", fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
 footer(s, "Circles mark UTS. Right panel: |black − white mean| against |S25 − S26|, both as a "
           "percentage of the white mean.")
-pageno(s, 227)
+pageno(s)
 
-# ---- Slide 228: the numbers ----
+# ---- Slide 230: the numbers ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "BLACK vs WHITE — THE NUMBERS, 100 % INFILL ONLY")
 tb(s, 0.4, 1.15, 12.55, 0.60,
@@ -2711,10 +2825,10 @@ tb(s, 0.4, 6.42, 12.55, 0.75,
    "specimen-to-specimen scatter with no variable changed at all. Black beats that yardstick on "
    "every mechanical property, so the marker colour cannot be resolved above it.", fs=11)
 footer(s, "Recomputed at build time by documentation/s13_data.py via utm_analysis.analyze(). "
-          "Noise measured over a COMMON 10 s window — see p229 for why that matters.")
-pageno(s, 228)
+          "Noise measured over a COMMON 10 s window — see p231 for why that matters.")
+pageno(s)
 
-# ---- Slide 229: noise ----
+# ---- Slide 231: noise ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "DIC NOISE — THE BLACK SPECIMEN IS THE QUIETEST")
 tb(s, 0.4, 1.15, 12.55, 0.60,
@@ -2747,9 +2861,9 @@ banner(s, 0.4, 5.55, 12.55, 0.80,
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
 footer(s, "Noise = standard deviation of DIC gauge strain with the specimen stationary and the "
           "crosshead stopped. Drift over the window: S13 1.6, S25 0.7, S26 1.0 µε/s.")
-pageno(s, 229)
+pageno(s)
 
-# ---- Slide 230: the coverage problem ----
+# ---- Slide 232: the coverage problem ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "S13's 47 % DIC COVERAGE — WHAT IT IS, AND WHAT IT IS NOT")
 tb(s, 0.4, 1.15, 12.55, 0.42,
@@ -2787,9 +2901,9 @@ banner(s, 0.4, 5.35, 12.55, 1.05,
        fill=YELLOW_WARN, fg=BLACK, fs=11)
 footer(s, "Left: distribution of the gap between consecutive DIC readings, against the matching "
           "window. Right: markers FOUND vs load rows that received a value.")
-pageno(s, 230)
+pageno(s)
 
-# ---- Slide 231: what it cost, and the verdict ----
+# ---- Slide 233: what it cost, and the verdict ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "WHAT THE MISSING COVERAGE COST — AND THE VERDICT")
 tb(s, 0.4, 1.15, 12.55, 0.42,
@@ -2838,7 +2952,7 @@ banner(s, 0.4, 5.35, 7.9, 1.05,
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
 footer(s, "One blemish worth recording: S13's AVI sinks came out 1539 / 1540 / 1540 frames — the "
           "writers stopped one frame apart. Harmless here, but the other runs matched exactly.")
-pageno(s, 231)
+pageno(s)
 
 # =====================================================================================
 # Slides 232-236: S27 / S28, the 50 % infill video pair, and the infill knock-down factor
@@ -2864,7 +2978,7 @@ _C27, _C28 = SI.capture_facts("S27"), SI.capture_facts("S28")
 _M50 = {k: SI.group_mean(SI.PAIR_50, k) for k in ("UTS", "sy", "E", "ef", "tough")}
 _M100 = {k: SI.group_mean(SI.PAIR_100, k) for k in ("UTS", "sy", "E", "ef", "tough")}
 
-# ---- Slide 232: the pair, and the capture behind it ----
+# ---- Slide 234: the pair, and the capture behind it ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "S27 · S28 — THE 50 % INFILL VIDEO PAIR")
 tb(s, 0.4, 1.15, 12.55, 0.62,
@@ -2913,9 +3027,9 @@ banner(s, 0.4, 6.05, 12.55, 0.80,
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
 footer(s, "Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/Specimen_S27_V1_Spray_Video4/ and "
           "…_S28_…_Video5/. Frame counts and rates recomputed at build time.")
-pageno(s, 232)
+pageno(s)
 
-# ---- Slide 233: the pair head to head ----
+# ---- Slide 235: the pair head to head ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "S27 vs S28 — HOW REPEATABLE IS A 50 % SPECIMEN?")
 tb(s, 0.4, 1.15, 12.55, 0.60,
@@ -2930,13 +3044,13 @@ banner(s, 0.4, 6.05, 12.55, 0.85,
        f"{SI.group_spread(SI.PAIR_100, 'UTS'):.1f} % and "
        f"{SI.group_spread(SI.PAIR_100, 'E'):.1f} % for the 100 % pair — better on all four "
        f"properties. With n = 2 in each group this is an observation about these four specimens, "
-       f"not a demonstrated property of infill; p236 explains what does follow from it.",
+       f"not a demonstrated property of infill; p238 explains what does follow from it.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
 footer(s, "Circles mark UTS. Right panel: |S27 − S28| and |S25 − S26|, each as a percentage of "
           "its own pair mean.")
-pageno(s, 233)
+pageno(s)
 
-# ---- Slide 234: the knock-down factor ----
+# ---- Slide 236: the knock-down factor ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "THE INFILL KNOCK-DOWN FACTOR — 50 % vs 100 %")
 tb(s, 0.4, 1.15, 12.55, 0.62,
@@ -2954,9 +3068,9 @@ banner(s, 0.4, 6.25, 12.55, 0.80,
 footer(s, f"Reference: {SI.TDS_NAME} — {SI.TDS['UTS']:.0f} MPa, {SI.TDS['E']:.2f} GPa. "
           f"Earlier campaign figures quoted k ≈ 2.4 for 50 % against Chacón (2017); the difference "
           f"is which reference, not which specimens.")
-pageno(s, 234)
+pageno(s)
 
-# ---- Slide 235: the numbers ----
+# ---- Slide 237: the numbers ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "50 % vs 100 % — THE NUMBERS, AND EVERY RUN ON RECORD")
 tb(s, 0.4, 1.15, 12.55, 0.42,
@@ -3003,9 +3117,9 @@ banner(s, 0.4, 4.45, 7.2, 1.35,
        fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
 footer(s, "Registry rows read live and de-duplicated; infill classified by PEAK FORCE rather than "
           "the header label, which is known to write 100 % after an app restart.")
-pageno(s, 235)
+pageno(s)
 
-# ---- Slide 236: what it closes, and what it feeds ----
+# ---- Slide 238: what it closes, and what it feeds ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "WHAT S27 / S28 CLOSE — AND WHAT THEY FEED")
 tb(s, 0.4, 1.15, 12.55, 0.42,
@@ -3027,7 +3141,7 @@ tb(s, 6.85, 2.05, 6.1, 2.5,
    f"disagrees by {SI.group_spread(SI.PAIR_100, 'E'):.1f} %. Looking at the local slope explains "
    f"why: across 0.05–0.60 % strain it moves about 5 % on S28 but 42 % on S26. A fixed fit window "
    f"is only as repeatable as the curve is straight inside it.\n\n"
-   f"That is the same mechanism p223 argues, now visible in a second material — which is the "
+   f"That is the same mechanism p225 argues, now visible in a second material — which is the "
    f"evidence the decision was waiting for. It does NOT settle whether the low-strain compliance "
    f"is seating or real PLA non-linearity: with n = 2 per group these four specimens cannot carry "
    f"that.", fs=11)
@@ -3043,9 +3157,9 @@ banner(s, 0.4, 5.90, 12.55, 0.75,
        "here came back at 98–100 % coverage. The grab loop is now instrumented, so the next low "
        "run will name its own bottleneck in the CSV header.",
        fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
-footer(s, "Deck: 50 % pair p232-235 · 100 % pair p217-222 · E fit window p223-224 · black "
-          "specimen p225-231.")
-pageno(s, 236)
+footer(s, "Deck: 50 % pair p236-237 · 100 % pair p221-224 · E fit window p227-226 · black "
+          "specimen p229-233.")
+pageno(s)
 
 # =====================================================================================
 # Slides 237-242: the E fit-window switch, and the S27/S28 deviation + 50-vs-100 comparison
@@ -3068,11 +3182,11 @@ def _dev_chip(sl, x, y, w, h, key, text):
        anchor=MSO_ANCHOR.MIDDLE)
 
 
-# ---- Slide 237: the E decision, taken ----
+# ---- Slide 239: the E decision, taken ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "THE E FIT WINDOW — DECISION TAKEN, AND WHAT IT MOVED")
 tb(s, 0.4, 1.15, 12.55, 0.62,
-   "p223–224 laid out the evidence; the gate was S27/S28 running on the old code, which they have. "
+   "p225–224 laid out the evidence; the gate was S27/S28 running on the old code, which they have. "
    "utm_analysis.analyze() now reports the STEEPEST STRAIGHT RUN as E, with the old fixed-window "
    "value kept alongside as E_fixed so no historical number is lost. Every test in the registry "
    "was re-analysed.", fs=12, italic=True, colour=GREY_TEXT)
@@ -3117,9 +3231,9 @@ footer(s, "Rule: steepest stretch below 2 % strain, ≥ 0.25 % wide, ≥ 25 poin
           "of the straightest the record can offer (capped 0.999). The relative floor matters — an "
           "absolute one alone fell back to the fixed window on the noisier 50 % runs, which would "
           "have meant two rules over one dataset.")
-pageno(s, 237)
+pageno(s)
 
-# ---- Slide 238: the deviation ----
+# ---- Slide 240: the deviation ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "S27 vs S28 — HOW FAR APART DO THE TWO CURVES ACTUALLY RUN?")
 tb(s, 0.4, 1.15, 12.55, 0.60,
@@ -3140,7 +3254,7 @@ for _i, (_lab, _val) in enumerate((
 footer(s, f"Shared strain range ε {_DEV['lo']:.2f}–{_DEV['hi']:.2f} %. Δσ = σ(S28) − σ(S27) at "
           f"matched strain; the worst case sits at the very end, where one specimen has begun to "
           f"fracture and the other has not.")
-pageno(s, 238)
+pageno(s)
 
 # ---- Slides 239-241: the deviation table ----
 _dev_rows = DV.grid_rows()
@@ -3180,9 +3294,9 @@ for _i, _chunk in enumerate(_dev_chunks, 1):
     _dev_chip(s, 8.70, 6.58, 4.2, 0.30, "fracture", "Fracture — load collapse")
     footer(s, f"Highlighted rows carry MEASURED values at each run's true landmark strain. "
               f"Across the whole shared range the two agree to {_DEV['mean_pct']:.2f} % on average.")
-    pageno(s, 238 + _i)
+    pageno(s)
 
-# ---- Slide 242: 50 % vs 100 % ----
+# ---- Slide 244: 50 % vs 100 % ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "50 % vs 100 % INFILL — S27 AND S28 AGAINST S26")
 tb(s, 0.4, 1.15, 12.55, 0.60,
@@ -3201,11 +3315,13 @@ banner(s, 0.4, 6.15, 12.55, 0.80,
        f"is simply less of it.", fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
 footer(s, "S26 chosen as the 100 % comparator because it is the closest run in protocol and date. "
           "Ratios use both-run means at each infill, not S26 alone.")
-pageno(s, 242)
+pageno(s)
 
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
-    print(f"Saved: V6a_8_6_20_slides.pptx ({len(prs.slides.__iter__.__self__._sldIdLst)} slides, pages 141-242)")
+    _n = len(prs.slides.__iter__.__self__._sldIdLst)
+    print(f"Saved: V6a_8_6_20_slides.pptx ({_n} slides, "
+          f"pages {FIRST_PAGE}-{FIRST_PAGE + _n - 1})")
 except PermissionError:
     prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
     print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx")

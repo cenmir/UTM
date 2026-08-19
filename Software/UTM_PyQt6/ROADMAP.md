@@ -214,6 +214,28 @@ milestones: 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign (see `TESTIN
 >    ▸ Do NOT just raise the 100 ms window — that hides it by pairing load samples with staler
 >    strain. UTS is unaffected either way; ε_f is the number most at risk (664 ms worst-case gap).
 >
+> **⬜ NEW CAMPAIGN — PETG and TPU against PLA.** IN PROGRESS: the operator is running the first
+>    PETG specimens now (2026-08-19). Everything on record so far is PLA, so every claim the rig
+>    makes is single-material; a second and third polymer is what turns "the rig measures PLA" into
+>    "the rig measures polymers".
+>    ▸ **The question is whether the TREND comes out right**, not just whether the numbers do.
+>    Expected ordering, from the datasheets: **PLA stiffest and most brittle** (E ~2.9 GPa, ε_f
+>    ~8 %), **PETG less stiff but far more ductile** (E ~1.5–2.1 GPa, ε_f tens of %), **TPU a
+>    different class entirely** — elastomeric, E in the low MPa, strain to break in the hundreds of
+>    %. If the rig reproduces that ordering it is measuring material, not itself.
+>    ▸ **PETG gets a like-for-like reference check**, the same treatment PLA got against the
+>    add:north E-PLA TDS: find the TDS for the actual filament used, and compare E / σ_y / UTS /
+>    ε_f the same way, with the same infill knock-down caveat. **Log the exact brand, spool and
+>    print settings at test time** — the PLA reference only worked because the filament was known.
+>    ▸ **Two things to decide before TPU, not after:** (a) ε_f in the hundreds of % will run past the
+>    30 mm travel cap and probably out of the DIC field — expect the markers to leave the ROI, so
+>    treat TPU as a crosshead-strain test with DIC as a bonus, or shorten the gauge; (b) the
+>    load-collapse fracture detector is tuned for a brittle drop — a TPU that draws without ever
+>    collapsing may never trigger it, exactly like the ductile 100 % PLA case that made
+>    load-collapse the ONLY detector. Check the guard before spending a specimen.
+>    ▸ Run them on the post-realignment rig (above), same 0.10 mm/s, same preload discipline, so
+>    material is the only variable that moves.
+>
 > **⬜ Software, in the order I would take it:**
 > 7. **✅ SF13 — guided wizard. BUILT 2026-08-18.** `Software/UTM_PyQt6/utm_wizard.py` +
 >    View ▸ Guided wizard (Ctrl+Shift+G). **Optional and OFF by default**, at the operator's
@@ -265,9 +287,21 @@ milestones: 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign (see `TESTIN
 >   against the source standards before publication. Prior art:
 >   `documentation/E_modulus_explained.pptx` slide 5 (the original S16 observation).
 >
-> **⬜ Decisions that are the operator's, not mine:**
-> - **Motor torque ceiling** — driver Vref, or wire the TMC2160's SPI to the ESP32 so current and
->   thermal status become a logged channel (§4).
+> **✅ MOTOR TORQUE CEILING — RESOLVED 2026-08-12. It was never a torque limit.** The load holders
+> had worked loose, letting the crossheads sit out of alignment, so the motor was spending torque on
+> binding instead of on the specimen. Re-aligned and re-tightened, the rig pulls **3.5 kN with no
+> stutter**. Deck **p183** (root cause) and **p184** (the post-fix register).
+>   ▸ The evidence was on disk before the fault was found: the same machine has fractured 100 %
+>   infill at **3586–3826 N on 11 specimens** across three months — 11 of 11 straight through a
+>   "2.6 kN ceiling". Decisive pair: **S15 stalled at 2.6 kN and S16 fractured at 3792 N on the SAME
+>   DAY** (2026-07-28), +46 % on the same rig at the same speed.
+>   ▸ Of the four ranked causes on the old T7 slide, the three electrical ones (Vref, thermal
+>   derating, PSU sag) are **exonerated** — none of them can be intermittent between two consecutive
+>   specimens. The mechanical one, ranked LAST, was it.
+>   ▸ **Runs after 2026-08-12 are the reliable set**: S24, S25, S26, S27, S28, S12, S13 — 7 runs,
+>   0 stalls, the five 100 % ones peaking 3693–3822 N. Both stalls on record fall before the line.
+>   ▸ Still open, and unrelated: wiring the TMC2160's SPI to the ESP32 so motor current and thermal
+>   status become a logged channel. Now a nice-to-have for diagnostics, not a blocker (§4).
 >
 > **✅ Cleared 2026-08-17/18 — GUI and pipeline, all bench-verified offscreen:**
 > **Return to 0 mm** gated on SIGNED tension (50 N) instead of magnitude — `abs()` was blocking the
@@ -492,11 +526,35 @@ show *all* smart features and auto-preload is a real, validated one that was sim
 ---
 
 ## 4. Hardware constraints (not software — track separately)
-- 🔴 **Motor torque ceiling is VARIABLE — normally 3.2–3.4 kN, degrading to ~2.6 kN on a bad session.** Measured peaks in `8.6.20/`: **S16 3374.6 · V6a 3350.7 · V6c 3275.0 · V6d 3218.4 · V6e 3162.2 · V6b 3109.7 N** — six 100 % infill specimens over 3.1 kN, **all fractured successfully**. So 100 % full-area fracture is **NOT** blocked in general; it only fails in a degraded session (S15 2593 N; 2026-08-09 **T7 on S20 stalled at 2355 N tared ≈ 2655 N absolute** — an earlier note here said 1888 N/2190 N, which was a mid-run screenshot reading, not the peak; corrected from the CSV). Torque-capacity issue, **not** speed or the strain-rate mode. Suspects in order: stepper **driver current (Vref)**, **driver thermal derating**, **PSU voltage sag under load**, mechanical binding.
-  - ⚠️ **Raising Vref is NOT a software change today.** The firmware drives the motors with **STEP/DIR/ENABLE only** — no SPI, no UART, no TMCStepper library — so nothing in `main.py` or the firmware can alter motor current. It is a physical adjustment on the driver board.
-  - 🟢 **But it COULD be.** The drivers are **MKS TMC2160_57** — SPI Trinamic parts. Wiring CS/SCK/MOSI/MISO to the ESP32 would allow setting run current in code (`GLOBALSCALER` + `IRUN`) and **reading `DRV_STATUS` (otpw/ot) and StallGuard** — turning the thermal-derating theory into a logged channel instead of an inference. Deck p200.
-  - **Drivetrain is not the limit:** 2 × 1.85 Nm × 20:1 into a 5 mm lead gives **≥12.5 kN even at a pessimistic 15 % screw efficiency = 3.4× the 3.7 kN needed**, yet T7 stopped at 72 %. A mechanical-sizing explanation does not survive that arithmetic; an electrical one does. Practical workaround on a weak day: **50 % specimens** (fracture ≈1.7 kN true). See `TEST_FAILURES.md` (S15) and memory `project_motor_stall_limit`.
-  - ⚠️ Earlier revisions of this file (and the app help text) quoted a flat "~2.6 kN ceiling" and claimed 100 % infill needed a reduced cross-section — **that was wrong**, contradicted by the six peaks above. Corrected 2026-08-09.
+- ✅ **NOT A TORQUE CEILING AT ALL — RESOLVED 2026-08-12. It was crosshead misalignment.** The load
+  holders had worked loose, so the crossheads sat out of alignment and the motor spent torque on
+  binding instead of on the specimen. Re-aligned and re-tightened, the rig pulls **3.5 kN with no
+  stutter**. Deck **p183** (root cause) / **p184** (post-fix register); `documentation/torque_fix_data.py`
+  recomputes the evidence from `registry.json`.
+  - **The three electrical suspects are exonerated** — driver current (Vref), driver thermal
+    derating, PSU voltage sag. Mechanical binding, which every earlier revision of this file ranked
+    LAST, was the answer.
+  - **Why only binding fits:** 100 % infill has fractured at **3586–3826 N on 11 specimens** across
+    three months (mean 3726 ± 75 N, CV 2.0 %) — 11 of 11 straight through the supposed 2.6 kN
+    ceiling. Decisive: **S15 stalled at 2.6 kN and S16 fractured at 3792 N on the SAME DAY**
+    (2026-07-28), +46 % on the same rig at the same speed. Vref does not change between two
+    specimens; thermal derating gets worse through a session, not better; PSU sag cannot let a
+    *higher* load through. Only binding is intermittent, and it changes at a remount.
+  - **The drivetrain arithmetic was right all along and pointed here:** 2 × 1.85 Nm × 20:1 into a
+    5 mm lead gives **≥12.5 kN even at a pessimistic 15 % screw efficiency = 3.4× the 3.7 kN
+    needed**, yet T7 stopped at 72 %. That gap was never electrical — it was friction in a
+    misaligned load path.
+  - 🟢 **Still worth doing, now for diagnostics rather than as a fix:** the drivers are **MKS
+    TMC2160_57**, SPI Trinamic parts. Wiring CS/SCK/MOSI/MISO to the ESP32 would let motor current
+    be set in code (`GLOBALSCALER` + `IRUN`) and **`DRV_STATUS` (otpw/ot) + StallGuard** be logged —
+    which would have distinguished binding from derating directly instead of by inference. Deck p202.
+  - ⚠️ **Historical note, kept deliberately:** revisions of this file have twice stated a wrong
+    ceiling — first a flat "~2.6 kN" requiring reduced cross-sections (corrected 2026-08-09), then a
+    "variable 3.2–3.4 kN torque capacity" (corrected 2026-08-12). Both were inferences from a
+    symptom whose cause was mechanical. See `TEST_FAILURES.md` (S15) and memory
+    `project_motor_stall_limit`.
+  - **Runs after 2026-08-12 are the reliable set** — S24, S25, S26, S27, S28, S12, S13: 7 runs,
+    0 stalls, the five 100 % ones peaking 3693–3822 N. Prefer them when a number must be defended.
 - ⚠️ **Multi-marker transverse Poisson** infeasible on the current mini-dogbone (gauge too narrow for a transverse pair; elastic width change sub-pixel at ~20 px/mm). Needs a gauge-zoomed camera + dark backdrop, or a dedicated extensometer.
 
 ---
