@@ -105,12 +105,12 @@ def steps(app):
                     f"press Calibrate Px₀ again"])
     else:
         add("px0", "Calibrate Px₀ — freeze the strain reference", px0_ok,
-            f"{px0:.1f} px @ {px0_load or 0:.0f} N  (Prepare test re-freezes it too)"
+            f"{px0:.1f} px @ {px0_load or 0:.0f} N  (nothing else moves it)"
             if px0_ok else
             "strain has no reference until this is set — Tare DIC does NOT set it")
 
     prepared = getattr(app, "_prepared_t", None) is not None
-    add("prepare", "Prepare test (tares Px₀, position, force)", prepared,
+    add("prepare", "Prepare test (tares DIC readouts, position, force)", prepared,
         "done" if prepared else "clears the plots and zeroes the axes")
 
     armed = False

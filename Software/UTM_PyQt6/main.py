@@ -3540,12 +3540,12 @@ class UTMApplication(QMainWindow):
         self.prepareTestButton = QPushButton("Prepare test")
         self.prepareTestButton.setObjectName("prepareTestButton")   # emphasised by theme
         self.prepareTestButton.setToolTip(
-            "One click: clear the consoles and plots, then tare Px₀, POSITION and FORCE so the "
-            "test starts from zero.\n\n"
-            "Px₀ is tared FIRST, while the load reading still shows the preload it is captured "
-            "under — that load goes into the CSV header.\n\n"
-            "So press this AFTER preloading. It re-freezes the strain reference every time, and "
-            "says so in the console.")
+            "One click: clear the consoles and plots, then tare the DIC READOUTS, POSITION and "
+            "FORCE so the test starts from zero.\n\n"
+            "It does NOT move Px₀ — that reference belongs to Calibrate Px₀ alone. Prepare "
+            "reports the Px₀ in force, and warns if none has been set.\n\n"
+            "Press it AFTER preloading and AFTER Calibrate Px₀: it tares the FORCE, so the load "
+            "Px₀ was captured at has to be recorded already.")
         self.autoStopFractureCheck = QCheckBox("Auto-stop at fracture")
         self.autoStopFractureCheck.setObjectName("autoStopFractureCheck")   # emphasised by theme
         self.autoStopFractureCheck.setToolTip("During a MANUAL tension pull, stop the motor automatically when the "
@@ -3787,20 +3787,16 @@ class UTMApplication(QMainWindow):
         """One click: clear the consoles and plots, then tare Px₀, POSITION and FORCE.
 
         Px₀ is tared FIRST, before the force tare, and that order is the whole reason this is safe.
-        on_tare_dic stamps _px0_load_N from the LIVE load and that value goes into the CSV header —
-        so taring DIC after the force tare would record "captured at 0 N" on a specimen actually
-        holding 300 N, which is precisely the ambiguity that made the S25/S26 headers unable to say
-        which strain-zero convention had been used. Taring it first records the real preload.
+        It does NOT re-freeze Px₀. That reference is the denominator of every strain in the test and
+        has exactly one owner, Calibrate Px₀, which asks before it moves. A button pressed at the
+        start of every specimen is the wrong place to redefine it silently — an earlier version did
+        so conditionally, on a hidden 5 N comparison, and moved the strain zero on some runs and not
+        others depending on a number nobody could see.
 
-        This DOES re-freeze the strain reference, so it is announced loudly rather than folded into
-        a summary line. An earlier version of this button re-tared DIC only when Px₀ happened to
-        have been captured at a lower load — a hidden 5 N comparison the operator could not see,
-        which meant calibrating and preparing at the same load silently moved the strain zero on
-        some runs and not others. Unconditional and stated is the opposite of that: it always
-        happens, and the console always says so.
-
-        Pressing it after Calibrate Px₀ is harmless — nothing has moved between the two, so the
-        second tare lands on the same physical state and reproduces the same Px₀ to within noise.
+        What Prepare DOES do to the DIC is tare the READOUTS: clear the console, the blob history
+        behind the health badge, the measured rates and the strain queue, so the new specimen starts
+        on clean diagnostics. It reports the Px₀ in force, and warns if none has been set — the pull
+        would record no usable strain.
         """
         # Fresh start — clear both consoles + BOTH plots, so the new specimen starts on empty axes
         self.consoleTextEdit.clear()
@@ -3814,26 +3810,26 @@ class UTMApplication(QMainWindow):
                 except Exception as e:
                     self.append_to_console(f"[Prepare] could not clear {label} plot: {e}")
         done, skipped = [], []
-        # Px₀ FIRST — while the load reading still shows the preload it is being captured under.
-        # After the force tare below it would read 0 N and the header would lose that provenance.
+        # Tare DIC — clears the console, the health history, the measured rates and the strain
+        # queue, and REPORTS the reference without touching it. Px₀ is not re-frozen here: it is
+        # the denominator of every strain in the test and belongs to Calibrate Px₀ alone, which
+        # asks first. A button pressed at the start of every specimen is the wrong place to
+        # silently redefine it.
         before_px0 = getattr(self.camera_manager, "initial_distance", None)
         try:
-            self.on_tare_dic(confirm=False)
+            self.on_tare_dic_now()
+            done.append("DIC readouts")
         except Exception as e:
-            self.append_to_console(f"[Prepare] Px₀ tare failed: {e}")
+            self.append_to_console(f"[Prepare] DIC tare failed: {e}")
         px0 = getattr(self.camera_manager, "initial_distance", None)
-        if px0:
-            done.append("Px₀")
-            if before_px0 and abs(px0 - before_px0) > 0.05:
-                self.append_to_console(f"[Prepare] Px₀ MOVED {before_px0:.1f} → {px0:.1f} px "
-                                       "— the strain zero is now this reading.")
-        else:
-            skipped.append("Px₀ — camera not tracking 2 markers")
-            self.append_to_console("[Prepare] ⚠ Px₀ NOT set — the camera is not tracking two "
-                                   "markers, so the pull would record no usable strain. Fix the "
-                                   "DIC first, then press Prepare test again.")
+        if not px0:
+            skipped.append("Px₀ never calibrated")
+        elif before_px0 is not None and abs(px0 - before_px0) > 1e-9:
+            # Cannot happen by this path; if it ever does, something else moved the reference.
+            self.append_to_console(f"[Prepare] ⚠ Px₀ changed {before_px0:.1f} → {px0:.1f} px "
+                                   "during Prepare — it should not have.")
 
-        # Position + force after it, in that order
+        # Then position and force, in that order
         for label, fn in [("position", getattr(self, 'on_tare_location', None)),
                           ("force", getattr(self, 'on_tare', None))]:
             if callable(fn):
@@ -3847,10 +3843,10 @@ class UTMApplication(QMainWindow):
         # shows reads a flag that already existed; this was the one with no durable trace.
         self._prepared_t = time.monotonic()
         if skipped:
-            self.set_status("Prepared — position + force tared; ⚠ Px₀ NOT calibrated yet",
+            self.set_status("Prepared — DIC readouts + position + force tared; ⚠ Px₀ NOT calibrated yet",
                             is_warning=True)
         else:
-            self.set_status("Prepared — position + force tared; Px₀ unchanged")
+            self.set_status("Prepared — DIC readouts + position + force tared; Px₀ unchanged")
 
     def on_fracture_test(self):
         """One-click run to fracture: checklist confirm -> arm auto-stop -> pull in tension.
