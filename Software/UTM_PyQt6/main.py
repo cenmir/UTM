@@ -3839,6 +3839,12 @@ class UTMApplication(QMainWindow):
                     self.append_to_console(f"[Prepare] {label} tare failed: {e}")
 
         self.append_to_console(f"[Prepare] tared: {', '.join(done) if done else 'nothing'}")
+        if skipped:
+            # The status line said this already, but the status line is transient and the console is
+            # the record the operator scrolls back through. A pull started without Px₀ records no
+            # usable strain at all, which is worth more than a message that disappears.
+            self.append_to_console(f"[Prepare] ⚠ {', '.join(skipped)} — strain has no reference "
+                                   "until Calibrate Px₀ is pressed; this run would record none.")
         # Stamped so the guided checklist can tell "prepared" from "not yet" — every other step it
         # shows reads a flag that already existed; this was the one with no durable trace.
         self._prepared_t = time.monotonic()

@@ -349,13 +349,16 @@ class LiveFractureDetector:
     - Arms only after the load has built past `arm_frac` of the running peak (so the
       toe / grip-seating region cannot trigger it).
     - Fires on load collapse below `collapse_frac` of the running peak, OR on an
-      unphysical one-frame DIC strain jump (> `ec_jump`) while both markers track.
+      unphysical one-frame DIC strain jump (> `ec_jump`) while both markers track AND
+      the load has already fallen below `jump_load_frac` of the peak — a broken
+      specimen cannot still be carrying its peak force.
     """
 
-    def __init__(self, collapse_frac=0.5, arm_frac=0.3, ec_jump=0.03):
+    def __init__(self, collapse_frac=0.5, arm_frac=0.3, ec_jump=0.03, jump_load_frac=0.9):
         self.collapse_frac = collapse_frac
         self.arm_frac = arm_frac
         self.ec_jump = ec_jump
+        self.jump_load_frac = jump_load_frac
         self.peak = 0.0
         self.armed = False
         self.fired = False
@@ -369,9 +372,23 @@ class LiveFractureDetector:
             self.peak = force
         if self.peak > 0 and force >= self.arm_frac * self.peak:
             self.armed = True
+        # A DIC jump only counts as fracture if the LOAD agrees. A specimen that has broken cannot
+        # still be at its peak force, so a strain jump while the load is holding up is a tracking
+        # fault, not a fracture.
+        #
+        # S29 (PETG, 2026-08-19) is why this qualifier exists. The detector momentarily picked up a
+        # mount edge instead of a speckle dot; L_px moved 1722 -> 1858 px in one frame and ec went
+        # 0.029 -> 0.109, a jump of 0.081 against the 0.03 threshold. It fired at 2931 N — the peak
+        # — and auto-stopped a test on an INTACT specimen, which then sat relaxing 2909 -> 2726 N
+        # for 19 s with the crosshead frozen. The run was lost at 36.6 MPa, well short of failure.
+        #
+        # `armed` is deliberately still not required: a genuine brittle fracture can arrive before
+        # the load has built to arm_frac of a peak it never reached. The load qualifier is the
+        # narrower and better-founded gate.
         if (ec is not None and lpx is not None and self._prev_ec is not None
                 and self._prev_lpx is not None and lpx > 100 and self._prev_lpx > 100
-                and ec - self._prev_ec > self.ec_jump):
+                and ec - self._prev_ec > self.ec_jump
+                and self.peak > 0 and force < self.jump_load_frac * self.peak):
             self.fired = True
         if self.armed and self.peak > 0 and force < self.collapse_frac * self.peak:
             self.fired = True

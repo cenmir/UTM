@@ -118,6 +118,24 @@ class CameraManager(QObject):
     # every frame past +25 % would be discarded. Raise it before the first elastomer run — see the
     # PETG/TPU campaign notes.
     PAIR_MAX_DEV = 0.25
+
+    # How fast the separation may CHANGE. This is the guard that catches a grip or mount edge being
+    # picked up in place of a marker, which the ±25 % window cannot: on S29 the swap moved L_px by
+    # 135 px in a single frame — only +8 % of Px₀, comfortably inside the window, and it still cost
+    # the whole test (a bogus one-sample strain jump tripped the auto-stop at peak load, 2931 N,
+    # with the specimen intact).
+    #
+    # The rate argument is what makes it safe. At 0.10 mm/s over an 80 mm gauge at 20.9 px/mm, real
+    # strain moves the pair by about 0.1 px per frame, i.e. ~2 px/s — and that is the case where ALL
+    # crosshead motion reaches the gauge, where measured DIC is ~0.38 of it. 30 px/s is a 15x margin
+    # on the physical limit and still ~500x tighter than the swap it has to reject.
+    #
+    # Rate, not a flat step, because dropouts create gaps: after 10 s with no reading the specimen
+    # really has moved, and a flat limit would reject the recovery frame and never re-acquire.
+    # Unlike PAIR_MAX_DEV this needs no change for TPU — an elastomer strains enormously but not
+    # instantaneously, and at 0.10 mm/s it moves the markers no faster than PLA does.
+    PAIR_MAX_STEP_PX_PER_S = 30.0
+    PAIR_STEP_FLOOR_PX = 30.0        # always allow this much, so noise alone can never lock it out
     MIN_AREA = 2000
     MAX_AREA = 200000
     MIN_CIRCULARITY = 0.5
@@ -128,6 +146,9 @@ class CameraManager(QObject):
         self.mask_x = None
         self.camera = None
         self.initial_distance = None
+        # (monotonic, separation) of the last ACCEPTED pair — the baseline the rate guard measures
+        # against. None means "no baseline yet", which lets the next pair through unchallenged.
+        self._last_sep = None
         # The two marker positions AT the moment Px₀ was frozen, in raw-frame pixels. Only the
         # SEPARATION enters the strain maths; these are kept so the live view can draw the frozen
         # reference beside the moving markers and make the travel visible rather than numeric.
@@ -468,6 +489,23 @@ class CameraManager(QObject):
                         f"(more than {self.PAIR_MAX_DEV:.0%} off; a marker has probably been lost)"
                     )
                     return []
+                # ...and it has to have got there at a physical SPEED. A mount edge picked up in
+                # place of a marker lands well inside the window above but arrives instantly; real
+                # strain cannot move the pair more than ~2 px/s at test speed.
+                now = time.monotonic()
+                prev = self._last_sep                      # (monotonic, separation) or None
+                if prev is not None:
+                    dt = max(1e-3, now - prev[0])
+                    allowed = self.PAIR_STEP_FLOOR_PX + self.PAIR_MAX_STEP_PX_PER_S * dt
+                    if abs(sep - prev[1]) > allowed:
+                        self.error_occurred.emit(
+                            f"Pair rejected — separation moved {abs(sep - prev[1]):.0f} px in "
+                            f"{dt*1000:.0f} ms (limit {allowed:.0f} px). A grip or mount edge has "
+                            f"most likely been picked up instead of a marker."
+                        )
+                        return []                          # NOT recorded: a rejected pair must not
+                        # become the baseline, or one bad frame would drag the guard onto itself
+                self._last_sep = (now, sep)
 
             if len(valid) == 2:
                 self.blobs_detected.emit(valid)
@@ -540,6 +578,10 @@ class CameraManager(QObject):
         if frame is None:
             self.error_occurred.emit("Tare failed - no frame captured")
             return
+        # Clear the rate baseline BEFORE detecting: a tare is the one moment a large, instantaneous
+        # change in separation is legitimate (new specimen, re-mount), and a stale baseline from the
+        # previous specimen would reject the very frame the tare needs.
+        self._last_sep = None
         centroids = self.detect_blobs(frame)
         if len(centroids) == 2:
             self.initial_distance = abs(centroids[1][1] - centroids[0][1])
