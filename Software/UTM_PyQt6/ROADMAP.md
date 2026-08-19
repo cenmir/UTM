@@ -5,8 +5,9 @@ Living source of truth; the V6a deck's roadmap slides are generated to match thi
 
 **Legend:** ✅ done + **rig-validated** · 🟢 built (offline/sim-validated) · 🟡 partial / in progress · ⬜ planned · 🔴 blocked by hardware
 
-_Last updated: 2026-08-11 — T6.5 + T9 closed the cyclic-hysteresis and creep negative results; deck now
-pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign (see `TESTING_TODO.md`)._
+_Last updated: 2026-08-19 — S13 (black) and S27/S28 (50 % video pair) analysed, the E fit window
+decided, SF13 built, and Px₀ given one owner; deck now pages 141-242 (102 slides). Earlier
+milestones: 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign (see `TESTING_TODO.md`)._
 
 ---
 
@@ -193,13 +194,13 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 >    S24 logged only 27 % DIC coverage — frames all present and distinct, so the loss was in the
 >    load↔DIC matching step; it has not recurred and is not currently reproducible.
 >
-> 5. **⬜ ANALYSE S27 / S28 — the 50 % infill video pair. RUN 2026-08-17, data on disk, NOT YET
->    ANALYSED.** `Specimen_S27_V1_Spray_Video4/` and `..._S28_..._Video5/`, both with their capture
->    folders moved in. Peaks 1290–1293 N → UTS ≈ 19.9 MPa, E ≈ 1.22–1.26 GPa, ε_f ≈ 4.0–4.2 %.
->    Wanted: capture integrity, the S27-vs-S28 comparison, and **50 % vs 100 % — the infill
->    knock-down factor** (50 % has needed k ≈ 2.4 against literature, 100 % lands at k ≈ 1).
->    This closes the MOT extensometer prerequisite. Deck + reference PDF to follow, same shape as
->    p217–222.
+> 5. **✅ S27 / S28 ANALYSED 2026-08-18 — the 50 % infill video pair.** Deck **p232–236**, plus
+>    **p237–242** for the deviation and the 50-vs-100 comparison. The pair is the tightest on
+>    record: **UTS 19.87 vs 19.91 MPa (0.2 % apart)**, ε_f 4.0/4.2 %, E 1.22/1.26 GPa, both with
+>    full capture integrity. **The infill knock-down is confirmed as an infill effect and not an
+>    instrument one:** 50 % needs k ≈ 2.4 against literature while 100 % lands at k ≈ 1.05–1.24, on
+>    the same rig, the same DIC and now the same E rule. This closes the MOT extensometer
+>    prerequisite.
 >
 > 6. **⬜ WHY DID DIC DELIVERY SLOW? — needs the live badge watched during a pull.** S13 came back
 >    at **47 % coverage** and S24 at **27 %**, on specimens of BOTH colours, so it is a pipeline
@@ -223,12 +224,17 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 >    new piece of state is `_prepared_t`, stamped by Prepare test, which was the only step with no
 >    durable trace. Nine steps; the Px₀ row is the point of it — under the after-preload convention
 >    a Px₀ frozen unloaded shows a warning instead of a tick.
+>    Extended the same day at the operator's request: the **data-streams** step (load cell +
+>    position gate the run; velocity is reported but never blocks), **"Choose specimen mode"** as an
+>    instruction rather than a value, each optional step saying **WHERE** it lives
+>    (Settings ▸ Capture settings), and the run step naming all three routes — fracture test, a
+>    manual pull, or an advanced mode. Twelve rows, nine of them blocking.
 >    ▸ Not yet seen on the rig; the panel is offscreen-verified only.
-> 8. **Registry hygiene.** `registry.json` now carries duplicate rows from repeated saves of one
->    run — S27 ×2, S28 ×3, S12 ×2 — which would double- and triple-weight those specimens in any
->    average. S27/S28 also record `infill_pct = 100` when they are 50 % (the known infill-label
->    defect writing 100 % after a restart; the force says 50 % plainly at ~1290 N). Both are trivial
->    to fix and should be done as part of the S27/S28 analysis, not before it.
+> 8. **✅ Registry hygiene — DONE 2026-08-18**, as part of the S27/S28 analysis. **28 → 24 rows**:
+>    the duplicate saves of one run (S27 ×2, S28 ×3, S12 ×2) are gone, so no specimen is
+>    double-weighted in an average any more; S27/S28 carry `infill_pct = 50` instead of the 100 the
+>    infill-label defect wrote after a restart; the video runs carry VC1–VC7 labels; and every row
+>    was re-scanned onto the new steepest-run E basis so the file is internally consistent.
 >
 > **✅ The E fit window — DECIDED AND IMPLEMENTED 2026-08-18.** `utm_analysis.analyze()` now
 >   reports the **steepest straight run** as `E`, keeping the old fixed-window value beside it as
@@ -271,8 +277,13 @@ pages 141-216 (76 slides). Earlier milestone: 2026-07-29 full rig-test campaign 
 > default, follows a filename you typed, follows an OPENED csv, and no longer nags to save after you
 > have saved — that prompt was gated on `data_unsaved`, which every incoming load sample sets
 > (`1c32a09`, `414f716`, `c870c28`, `478c194`) · **Tare DIC** is one click, no dialog; Calibrate Px₀
-> keeps its confirmation · **Prepare test tares Px₀ too**, FIRST, before the force tare, so the
-> header records the real preload rather than 0 N (`f945bb9`) · **Black preset ROI** (`f122259`) ·
+> keeps its confirmation · **Px₀ has exactly ONE owner — Calibrate Px₀** (`949ce20`, `6d41d49`).
+> Tare DIC clears the console, the blob history, the measured rates and the strain queue and leaves
+> the reference alone; **Prepare test tares DIC readouts + position + force**, reports the Px₀ in
+> force and warns when none is set, but never captures one. This reverses `f945bb9` and removes the
+> ordering hazard with it — nothing in Prepare touches Px₀, so it can no longer be frozen at 0 N by
+> a force tare running first; the dependency now runs the other way (**Calibrate Px₀ BEFORE
+> Prepare**) and the tooltip says so · **Black preset ROI** (`f122259`) ·
 > **blob disambiguation** — a third qualifying blob no longer discards the frame, and a pairing
 > nowhere near Px₀ is reported as a dropout rather than invented (`3f614dc`) · **speckle video
 > polarity** rebuilt on specimen-mode change, which would otherwise have written a negative
