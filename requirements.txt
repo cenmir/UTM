@@ -1,7 +1,36 @@
-PyQt6
-pyqt6-tools
-numpy
-matplotlib
-pandas
-scipy
-sympy
+# UTM DIC — dependencies, by what you actually want to do.
+#
+# This file used to list PyQt6 / pyqt6-tools / numpy / matplotlib / pandas / scipy / sympy, which
+# was wrong in both directions: it MISSED opencv-python, pypylon and pyserial — so the app could
+# not start after following it — and it pulled in scipy and sympy, which nothing imports. It sat at
+# the repo root, so it was the first thing anyone cloning would run.
+#
+# Verified 2026-08-19 against the real imports in Software/UTM_PyQt6/ and documentation/.
+
+# ── To run the APP on the rig ────────────────────────────────────────────────────────────────
+# (see also Software/UTM_PyQt6/requirements.txt, which annotates each line per module)
+PyQt6>=6.6.0
+PyQt6-Qt6>=6.6.0
+pyserial>=3.5              # non-blocking serial port probing — serial_manager.py
+opencv-python>=4.8.0       # thresholding + blob detection — camera_manager.py
+numpy>=1.24.0
+matplotlib>=3.7.0          # live plots and the one-page report — main.py, utm_report.py
+pypylon>=3.0.0             # Basler SDK. HARDWARE-SPECIFIC: needed to run the rig, not to
+                           # analyse data. Skip it if you have no camera — everything offline
+                           # still works.
+
+# ── To run the OFFLINE ANALYSIS only ─────────────────────────────────────────────────────────
+# utm_analysis.py, utm_registry.py, utm_dic.py, control_policies.py and utm_recipes.py are
+# deliberately stdlib-only. You need NOTHING from this file to compute E / sigma_y / UTS / eps_f
+# from a CSV — that is on purpose, so the numbers can be checked on any machine.
+
+# ── To rebuild the SLIDE DECKS and POSTERS in documentation/ ─────────────────────────────────
+python-pptx>=0.6.21        # every generate_*_slides.py
+pillow>=10.0.0             # image handling in the poster builders
+lxml>=4.9.0                # pulled in by python-pptx; listed because the posters use it directly
+pandas>=2.0.0              # analyze_hardware_tests.py, test_phase_8_6.py
+# rembg                    # background removal, used ONCE in a poster script. Large (onnxruntime);
+                           # install only if you are regenerating that poster.
+
+# ── Build only ───────────────────────────────────────────────────────────────────────────────
+# pyinstaller>=6.0.0       # packaging a Windows .exe — build_exe.py

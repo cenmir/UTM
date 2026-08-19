@@ -50,6 +50,70 @@ The software is written in python using the PyQt6 framework for the GUI.
 
 ## Digital Image Correlation
 
+Two spray-painted markers on the specimen gauge are tracked in every camera frame. Their pixel
+separation `L_px` against the frozen reference `Px₀` gives engineering strain directly on the
+specimen, so the measurement carries no machine compliance and no grip slip.
+
 ### Hardware
 
+Basler acA2440-35um over USB 3.0, 25 mm lens, LED illumination. The camera is mounted with the
+specimen across the sensor, so every frame is rotated 90° before detection — the loading axis is
+the *rotated* frame's Y.
+
 ### Software
+
+`camera_manager.py` thresholds each frame, finds the two markers, and emits strain.
+`utm_analysis.py` turns a saved CSV into E, σ_y, UTS, ε_f, toughness and the anchor. That module and
+its siblings are deliberately **stdlib-only**, so results can be recomputed on any machine with no
+camera stack installed.
+
+---
+
+# Getting started
+
+```bash
+git clone https://github.com/AdithyaSivakumar-3/UTM.git
+cd UTM
+python -m venv .venv && .venv\Scripts\activate      # Windows
+pip install -r requirements.txt
+python "Software/UTM_PyQt6/main.py"
+```
+
+Developed on **Python 3.14** and Windows. `requirements.txt` is grouped by what you want to do —
+read the comments before installing everything.
+
+**You do not need the rig to work on this.** `pypylon` is the only hardware-specific dependency;
+skip it and every offline path still runs. Without a camera the app starts but cannot track.
+
+## Where to look first
+
+| File | What it is |
+|---|---|
+| `Software/UTM_PyQt6/ROADMAP.md` | **Start here.** Living status of every feature: done, planned, blocked, and what needs rig time. |
+| `Software/UTM_PyQt6/main.py` | The application. Control loop, live plots, CSV export, all UI. |
+| `Software/UTM_PyQt6/camera_manager.py` | Camera, thresholding, marker detection, strain. |
+| `Software/UTM_PyQt6/utm_analysis.py` | The canonical analyser. Every script and the app share it — do not re-implement it. |
+| `Software/UTM_PyQt6/registry.json` | The specimen register: every test, with its computed properties. |
+| `Software/UTM_PyQt6/dic_replay.py` | Replays a saved capture through the real detector and explains why tracking failed. |
+| `documentation/` | Slide-deck and poster generators. Each rebuilds from data, never from typed-in numbers. |
+
+## What is NOT in this repository
+
+**The test data.** `Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/` is gitignored — it is
+several GB of CSVs, camera frames and videos. `registry.json` references those paths, so analysis
+and deck scripts will not find their inputs on a fresh clone. Ask for the data folder separately
+if you need to reproduce a result rather than write new code.
+
+Also excluded: captured frames and videos, generated reports, and `Validation docs/`.
+
+## Conventions worth knowing before you change anything
+
+- **Engineering stress and strain** throughout. Force ÷ *original* area; ΔL/L₀. The CSV also carries
+  a true-strain column, kept only so old files still parse.
+- **Px₀ is frozen AFTER the preload**, so the strain axis starts at a seated specimen. It has
+  exactly one owner — the Calibrate Px₀ button. Nothing else may move it.
+- **Elastic modulus is the steepest straight run**, chosen per specimen, not a fixed strain window.
+  `analyze()` also returns `E_fixed` so older numbers remain reproducible.
+- **Fracture is detected on load collapse.** A DIC jump alone is not enough — it misfires on
+  ductile material and on a lost marker.
+- Force is tared at the preload, so an unloaded or fractured specimen reads *negative*.
