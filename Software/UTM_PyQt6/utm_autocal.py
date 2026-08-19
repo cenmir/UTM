@@ -116,11 +116,28 @@ def best_threshold(frame, thresh_type=cv2.THRESH_BINARY_INV, lo=40, hi=220, step
     """Sweep the threshold on ONE frame and return (best_threshold, best_metrics, all_metrics).
 
     Needs no camera, so this half of calibration works on a recorded frame or a still image.
+
+    THRESH_OTSU is stripped for the sweep. It has to be: with the flag set, `cv2.threshold` ignores
+    the value it is handed and computes its own, so every one of the 37 swept points produced an
+    IDENTICAL binary image and an identical score. The sweep then relabelled each result with the
+    value it had passed in, and the widest-run rule returned the middle of the swept RANGE — 130 on
+    a frame where Otsu had actually used 132. The Black specimen preset is an Otsu mode, so on every
+    black specimen this function was scoring one setting thirty-seven times and reporting a number
+    the detector would never use.
+
+    Otsu is still evaluated, once, as a NAMED candidate in `all_metrics` (`m["otsu"] is True`), so
+    the caller can say whether a fixed threshold actually beats it rather than assuming either way.
     """
+    base = thresh_type & ~cv2.THRESH_OTSU
     results = []
     for t in range(lo, hi + 1, step):
-        m = frame_score(frame, t, thresh_type, **kw)
+        m = frame_score(frame, t, base, **kw)   # `base`, so the swept value is honoured
         m["threshold"] = float(t)
+        m["otsu"] = False
+        results.append(m)
+    if thresh_type & cv2.THRESH_OTSU:
+        m = frame_score(frame, 0, base | cv2.THRESH_OTSU, **kw)
+        m["otsu"] = True                        # threshold already carries the value Otsu CHOSE
         results.append(m)
     ok = [m for m in results if m["n_blobs"] == 2]
     if not ok:
@@ -128,15 +145,25 @@ def best_threshold(frame, thresh_type=cv2.THRESH_BINARY_INV, lo=40, hi=220, step
     best = max(ok, key=lambda m: m["score"])
     # Prefer the CENTRE of the widest run of working thresholds over the single best-scoring one:
     # a setting with room either side survives a lighting drift, a peak on a cliff does not.
-    ts = sorted(m["threshold"] for m in ok)
-    runs, cur = [], [ts[0]]
-    for a, b in zip(ts, ts[1:]):
-        (cur.append(b) if b - a <= step else (runs.append(cur), cur := [b]))
-    runs.append(cur)
-    widest = max(runs, key=len)
-    if len(widest) >= 3:
-        mid = widest[len(widest) // 2]
-        best = min(ok, key=lambda m: abs(m["threshold"] - mid))
+    #
+    # Runs are built from the SWEPT points only. Otsu's value is a threshold like any other but it
+    # is not a point on the grid, so letting it join would bridge a gap or start a spurious run and
+    # move the chosen centre.
+    swept_ok = [m for m in ok if not m.get("otsu")]
+    if len(swept_ok) >= 3:
+        ts = sorted(m["threshold"] for m in swept_ok)
+        runs, cur = [], [ts[0]]
+        for a, b in zip(ts, ts[1:]):
+            (cur.append(b) if b - a <= step else (runs.append(cur), cur := [b]))
+        runs.append(cur)
+        widest = max(runs, key=len)
+        if len(widest) >= 3:
+            mid = widest[len(widest) // 2]
+            centred = min(swept_ok, key=lambda m: abs(m["threshold"] - mid))
+            # Only take the centred pick if it is genuinely competitive — otherwise a wide plateau
+            # of mediocre settings would outrank a decisively better one.
+            if centred["score"] >= 0.95 * best["score"]:
+                best = centred
     return best["threshold"], best, results
 
 

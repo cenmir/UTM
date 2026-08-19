@@ -65,8 +65,29 @@ class CameraManager(QObject):
             "min_circularity": 0.5,
         },
         "Black": {
-            "threshold": 0,  # ignored — Otsu auto-selects
-            "threshold_type": cv2.THRESH_BINARY + cv2.THRESH_OTSU,  # BRIGHT dots on dark PLA
+            # FIXED, not Otsu. Measured over two full runs of saved frames (dic_replay.py):
+            #
+            #                     Otsu      fixed 149
+            #   S29  PETG        48.5 %       99.5 %      <- the run that had to be abandoned
+            #   S13  black PLA   99.8 %       99.8 %
+            #
+            # Otsu recomputes the cut per frame from the whole picture, so it follows the SCENE
+            # rather than the markers. On black PLA it happened to land at 131, inside that
+            # specimen's 140-180 working window. On PETG — glossier, more translucent, brighter
+            # body — it lands at 127, and that specimen's window is 130-160. Otsu sat three grey
+            # levels BELOW the range where both markers survive, so one marker fell under the cut
+            # on half the frames. Nothing was wrong with the markers, the ROI or the lighting: the
+            # threshold rule was choosing a value just outside the band that works.
+            #
+            # 149 is the joint optimum — the value whose WORSE material still scores 97.3 % raw
+            # (S29 99.4, S13 97.3). Not the peak for either alone (PETG peaks flat at 151-157,
+            # PLA at 148 and again at 166-169) but the one with both materials inside it.
+            #
+            # This is a lighting-dependent constant, so it is a starting point and not a law. When
+            # the LEDs or the material change, run Camera > Auto-calibrate DIC: it sweeps fixed
+            # thresholds AND Otsu, scores them on contrast margin, and applies the winner.
+            "threshold": 149,
+            "threshold_type": cv2.THRESH_BINARY,  # BRIGHT dots on a dark specimen
             "exposure": 50000,
             # SAME ROI as White: the specimen sits in the same place in the fixtures whatever
             # colour it is, so the crop that frames it is a property of the RIG, not the material.
@@ -86,8 +107,17 @@ class CameraManager(QObject):
 
     # Active blob detection configuration (defaults to Black specimen — keep in step with
     # SPECIMEN_PRESETS["Black"], which set_specimen_mode() overwrites these from)
-    THRESHOLD = 0
-    THRESHOLD_TYPE = cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    THRESHOLD = 149
+    THRESHOLD_TYPE = cv2.THRESH_BINARY
+
+    # How far a marker pair may sit from Px₀ before it is treated as a lost marker rather than as
+    # strain. The same 25 % the pair-CHOOSING path already used, now also applied when there are
+    # exactly two candidates and nothing to choose between.
+    #
+    # ⚠ TPU: a specimen that strains in the HUNDREDS of per cent will breach this legitimately and
+    # every frame past +25 % would be discarded. Raise it before the first elastomer run — see the
+    # PETG/TPU campaign notes.
+    PAIR_MAX_DEV = 0.25
     MIN_AREA = 2000
     MAX_AREA = 200000
     MIN_CIRCULARITY = 0.5
@@ -421,6 +451,23 @@ class CameraManager(QObject):
                 # out of qualifying. Discarding those frames threw away good strain data and read
                 # as a dropout in the health badge.
                 valid = self._choose_marker_pair(valid, frame.shape)
+
+            # A pair has to be PLAUSIBLE, not merely a pair. Until now the separation was only
+            # checked when there were more than two candidates to choose between; exactly two
+            # qualifying blobs went straight to the strain maths however far apart they were. On
+            # S13 that let one frame through with the markers 112 px apart against a 1668 px Px₀ —
+            # frame 1458 of 1539, i.e. after fracture, when one marker had gone. One row is all it
+            # takes: a single bogus L_px is exactly the post-fracture marker jump that has produced
+            # a wrong published number before. Cheap to catch, and a dropout is always better than
+            # a confident wrong strain.
+            if len(valid) == 2 and self.initial_distance:
+                sep = abs(valid[1][1] - valid[0][1])
+                if abs(sep - self.initial_distance) > self.PAIR_MAX_DEV * self.initial_distance:
+                    self.error_occurred.emit(
+                        f"Pair rejected — {sep:.0f} px vs Px₀ {self.initial_distance:.0f} px "
+                        f"(more than {self.PAIR_MAX_DEV:.0%} off; a marker has probably been lost)"
+                    )
+                    return []
 
             if len(valid) == 2:
                 self.blobs_detected.emit(valid)

@@ -5120,7 +5120,9 @@ class UTMApplication(QMainWindow):
         start_exp = getattr(cm, "EXPOSURE_TIME", None)
         start_thr = cm.THRESHOLD
         kw = dict(min_area=cm.MIN_AREA, max_area=cm.MAX_AREA, min_circ=cm.MIN_CIRCULARITY)
-        samples, best_thr_for = [], {}
+        samples, best_thr_for, otsu_votes = [], {}, []
+        start_otsu = bool(cm.THRESHOLD_TYPE & cv2.THRESH_OTSU)
+        base_type = cm.THRESHOLD_TYPE & ~cv2.THRESH_OTSU
 
         dlg = QProgressDialog("Sweeping exposure…", "Cancel", 0,
                               len(self.AUTOCAL_EXPOSURE_STEPS), self)
@@ -5146,6 +5148,11 @@ class UTMApplication(QMainWindow):
                     t, best, _all = AC.best_threshold(f, cm.THRESHOLD_TYPE, **kw)
                     if t is not None:
                         thrs.append(t); mets.append(best)
+                        # Which RULE won, not just which number. On an Otsu preset the sweep now
+                        # offers Otsu as one candidate against 37 fixed ones; if a fixed threshold
+                        # wins we have to be able to switch Otsu OFF, or the winner is applied to a
+                        # field the detector ignores.
+                        otsu_votes.append(bool(best.get("otsu")))
                     else:
                         mets.append(AC.frame_score(f, start_thr, cm.THRESHOLD_TYPE, **kw))
                     _t.sleep(1.0 / max(1, getattr(cm, "FRAME_RATE", 35)))
@@ -5170,6 +5177,16 @@ class UTMApplication(QMainWindow):
 
         new_exp = win["setting"]
         new_thr = best_thr_for.get(new_exp, start_thr)
+        # Majority of the frames that produced a winner. Otsu stays ON only if it kept winning.
+        keep_otsu = start_otsu and (sum(otsu_votes) * 2 >= len(otsu_votes)) if otsu_votes else start_otsu
+        rule_note = ""
+        if start_otsu and not keep_otsu:
+            rule_note = (f"\n\n▸ Threshold rule changes: AUTO (Otsu) → FIXED at {new_thr:.0f}. Otsu "
+                         "recomputes the cut on every frame from the whole picture, so a bright "
+                         "grip or a glare drifting in and out moves it — markers then qualify on "
+                         "one frame and not the next. A fixed cut cannot wobble.")
+        elif start_otsu:
+            rule_note = "\n\n▸ Threshold rule stays AUTO (Otsu) — it beat every fixed value swept."
         # A winner at either end of the swept range means the real optimum is probably beyond it.
         # Saying so is the difference between a useful tool and one that quietly hands back the
         # best of a set of bad options.
@@ -5193,7 +5210,7 @@ class UTMApplication(QMainWindow):
             f"{rows}\n\n"
             "Score is mostly CONTRAST MARGIN — how far the markers sit from the threshold — "
             "because that is what predicts whether tracking survives a flicker, not whether it "
-            f"works right now.{edge_note}\n\nApply? Cancel puts the camera back as it was.")
+            f"works right now.{rule_note}{edge_note}\n\nApply? Cancel puts the camera back as it was.")
         box.setStandardButtons(QMessageBox.StandardButton.Apply | QMessageBox.StandardButton.Cancel)
         box.setDefaultButton(QMessageBox.StandardButton.Apply)
         if box.exec() != QMessageBox.StandardButton.Apply:
@@ -5203,9 +5220,14 @@ class UTMApplication(QMainWindow):
 
         cm.set_exposure(new_exp)
         cm.THRESHOLD = new_thr
+        # The TYPE has to move with the value. Writing THRESHOLD alone while THRESH_OTSU stayed set
+        # applied the number to a field cv2.threshold ignores — the calibration reported a change it
+        # had not made.
+        cm.THRESHOLD_TYPE = (base_type | cv2.THRESH_OTSU) if keep_otsu else base_type
+        _rule = "auto (Otsu)" if keep_otsu else f"fixed {new_thr:.0f}"
         self.append_to_console(
             f"[Camera auto-cal] applied: exposure {start_exp/1000:.1f} → {new_exp/1000:.1f} ms, "
-            f"threshold {start_thr:.0f} → {new_thr:.0f}  "
+            f"threshold rule → {_rule}  "
             f"(detect {win['detect_rate']*100:.0f} %, contrast {win['contrast']:.2f})")
         if at_edge:
             self.append_to_console("[Camera auto-cal] ⚠ best value was at the EDGE of the swept range — "
