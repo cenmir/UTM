@@ -218,11 +218,31 @@ milestones: 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign (see `TESTIN
 >    The extensometer record is **strain only, no load**, and stops well before fracture. That rules
 >    out comparing E, σ_y, UTS or ε_f — every one of them needs force. What it does NOT rule out is
 >    the comparison that matters most.
->    ▸ **Compare dε/dt, and it validates the strain SCALE.** If our `px_per_mm` or gauge length were
->    wrong, our strain would be wrong by a CONSTANT FACTOR, and the ratio of the two slopes reads
->    that factor off directly. Scale is the single most likely thing to be wrong in a DIC pipeline
->    and the hardest to catch internally, so a slope comparison is worth more here than its modest
->    appearance suggests. Agreement to a few per cent validates 80 mm gauge × 20.9 px/mm.
+>    ▸ **MOT's conditions, confirmed by the operator 2026-08-20: preload 300 N, 0.10 mm/s, a
+>    specimen from the same batch as S25/S26 so geometry and the 80 mm gauge match.** Matching the
+>    preload and the speed removes the two biggest confounds outright — the strain-zero convention,
+>    and any need to normalise for crosshead rate.
+>    ▸ **OUR REFERENCE, measured 2026-08-20 on the loading ramp only, 15–45 % of peak load:**
+>    **S25 3.001e-4 /s** (R² 0.9984) · **S26 3.042e-4 /s** (R² 0.9989) · S29 PETG 4.675e-4 /s.
+>    **S25 and S26 agree to 1.4 %**, which is what makes the comparison worth making at all.
+>    ▸ **HARD CEILING = 1.40e-3 /s** — the measured 0.112 mm/s crosshead over an 80 mm gauge, i.e.
+>    the rate if ALL crosshead motion reached the gauge. **If MOT's number exceeds it, one of the two
+>    records is wrong.** A free sanity check before any interpretation.
+>    ▸ **CORRECTION to what this entry claimed on 2026-08-19.** It said the slope ratio "reads the
+>    scale factor off directly". That is too strong and would produce a WRONG conclusion. Only ~21 %
+>    of crosshead motion reaches our gauge; the rest goes into machine compliance, the grips and the
+>    specimen shoulders. That fraction is a property of the MACHINE — so on MOT's (almost certainly
+>    stiffer) frame a larger share reaches the gauge and their dε/dt reads HIGHER for reasons that
+>    have nothing to do with our calibration. Slope ratio = (their fraction) ÷ (our fraction × our
+>    scale error): scale is CONFOUNDED with compliance, not isolated by it.
+>    ▸ **What survives is a ONE-SIDED test, and it is still worth having.** Their frame cannot be
+>    MORE compliant than ours, so their fraction ≥ ours. If their dε/dt comes out **LOWER than our
+>    3.0e-4 /s, that is evidence we OVER-READ strain** — a stiffer machine yielding less gauge strain
+>    has no other explanation. A HIGHER reading is expected and says nothing about scale.
+>    ▸ **For a true scale check, one more channel is needed.** Simultaneous DIC + extensometer on the
+>    SAME pull is decisive (identical compliance, identical specimen, same instant). Failing that,
+>    their **load** or **crosshead displacement** column would allow strain to be compared at matched
+>    force or matched displacement, which cancels the compliance term.
 >    ▸ **Slope is also the only fair statistic available**, because it is immune to the two things
 >    that certainly differ: the time origin (their acquisition started when it started) and the
 >    strain zero (ours is frozen after a ~300 N preload, theirs is wherever they zeroed). Both drop
