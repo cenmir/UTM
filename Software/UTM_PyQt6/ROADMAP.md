@@ -214,6 +214,32 @@ milestones: 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign (see `TESTIN
 >    ▸ Do NOT just raise the 100 ms window — that hides it by pairing load samples with staler
 >    strain. UTS is unaffected either way; ε_f is the number most at risk (664 ms worst-case gap).
 >
+> **⬜ MOT VIDEO-EXTENSOMETER COMPARISON — STRAIN RATE, not properties. DATA IN HAND 2026-08-20.**
+>    The extensometer record is **strain only, no load**, and stops well before fracture. That rules
+>    out comparing E, σ_y, UTS or ε_f — every one of them needs force. What it does NOT rule out is
+>    the comparison that matters most.
+>    ▸ **Compare dε/dt, and it validates the strain SCALE.** If our `px_per_mm` or gauge length were
+>    wrong, our strain would be wrong by a CONSTANT FACTOR, and the ratio of the two slopes reads
+>    that factor off directly. Scale is the single most likely thing to be wrong in a DIC pipeline
+>    and the hardest to catch internally, so a slope comparison is worth more here than its modest
+>    appearance suggests. Agreement to a few per cent validates 80 mm gauge × 20.9 px/mm.
+>    ▸ **Slope is also the only fair statistic available**, because it is immune to the two things
+>    that certainly differ: the time origin (their acquisition started when it started) and the
+>    strain zero (ours is frozen after a ~300 N preload, theirs is wherever they zeroed). Both drop
+>    out of a derivative. Do NOT compare absolute strain at a given time.
+>    ▸ **Get these from MOT before analysing, or the comparison is meaningless:** (a) their
+>    **crosshead speed** — if it was not 0.10 mm/s the slopes differ by the speed ratio and must be
+>    normalised, or compared against crosshead displacement instead of time; (b) their **gauge
+>    length**, which must be the marker-to-marker 80 mm and not the specimen's parallel length;
+>    (c) their **sampling rate**; (d) whether it was the **same specimen** or another from the batch
+>    — a different specimen adds seating and print scatter to the difference.
+>    ▸ **Method:** take the elastic region only (both records are pre-yield, which is the one part
+>    guaranteed to overlap), resample both onto a common time grid, fit dε/dt by least squares over
+>    a window where each is straight, and report the RATIO with a confidence interval — not the
+>    difference. Plot both traces on one strain-vs-time axis with the fitted slopes overlaid.
+>    ▸ **Be explicit about what this cannot establish:** nothing about strength, ductility or
+>    modulus. It is a calibration check on the strain axis, and should be written up as one.
+>
 > **⬜ NEW CAMPAIGN — PETG and TPU against PLA.** IN PROGRESS: the operator is running the first
 >    PETG specimens now (2026-08-19). Everything on record so far is PLA, so every claim the rig
 >    makes is single-material; a second and third polymer is what turns "the rig measures PLA" into
