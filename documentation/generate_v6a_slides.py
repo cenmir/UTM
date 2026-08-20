@@ -3317,6 +3317,131 @@ footer(s, "S26 chosen as the 100 % comparator because it is the closest run in p
           "Ratios use both-run means at each infill, not S26 alone.")
 pageno(s)
 
+
+# =====================================================================================
+# SEGMENT: MOT VIDEO EXTENSOMETER (XT-205) vs OUR DIC  — p245-247
+# =====================================================================================
+import mot_plots as MP                                                             # noqa: E402
+import mot_compare as MCMP                                                         # noqa: E402
+MP.build_all()
+_mot_t, _mot_e, _mot_gl = MCMP.read_mot()
+_mot_runs = {k: MCMP.read_ours(v) for k, v in
+             (("S25", "Specimen_S25_V2_Spray_Video2/*.csv"),
+              ("S26", "Specimen_S26_V2_Spray_Video3/*.csv"))}
+_MLO, _MHI = MP.LO, MP.HI
+_rate = {"MOT": MCMP.rate_over_strain(_mot_t, _mot_e, _MLO, _MHI)}
+_nz = {"MOT": MCMP.noise_over_strain(_mot_t, _mot_e, _MLO, _MHI)}
+for _k, (_t, _e, _F, _n) in _mot_runs.items():
+    _rate[_k] = MCMP.rate_over_strain(_t, _e, _MLO, _MHI)
+    _nz[_k] = MCMP.noise_over_strain(_t, _e, _MLO, _MHI)
+_ours_rate = 0.5 * (_rate["S25"][0] + _rate["S26"][0])
+_ratio = _rate["MOT"][0] / _ours_rate
+_ours_rms = 0.5 * (_nz["S25"]["rms_ue"] + _nz["S26"]["rms_ue"])
+
+# ---- Slide 245: the MOT setup and the record on its own ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "MOT VIDEO EXTENSOMETER — SETUP, AND THE RECORD ON ITS OWN")
+tb(s, 0.4, 1.13, 12.55, 0.50,
+   "An independent optical measurement of the same quantity our DIC measures. It carries STRAIN "
+   "ONLY — no load channel — and stops at %.3f %% strain, far short of fracture, so this can test "
+   "our STRAIN and nothing else." % (_mot_e.max() * 100),
+   fs=12, italic=True, colour=GREY_TEXT)
+
+table(s, 0.4, 1.72, 5.55, 2.50,
+      [["Parameter", "MOT XT-205", "Ours"],
+       ["Instrument", "XT-205 video ext.", "Basler acA2440-35um, 2 spray dots"],
+       ["Gauge length", "80.0033 mm", "80.0 mm"],
+       ["Sampling", "20.0 Hz", "19.9 Hz"],
+       ["Preload", "300 N", "300 N"],
+       ["Crosshead", "0.10 mm/s", "0.10 mm/s"],
+       ["Specimen", "same batch as S25/S26", "S25, S26"],
+       ["Channels", "strain only", "load + position + strain"],
+       ["Ends at", "0.401 % strain", "fracture, 4–6 %"]],
+      cw=[1.35, 1.85, 2.35], hf=9.5, bf=9.0)
+
+header(s, 6.20, 1.72, 6.75, "What the file actually contains")
+tb(s, 6.20, 2.10, 6.75, 1.30,
+   "•  585 rows, of which 221 read “Invalid” — the tracker had not locked on\n"
+   "•  Then ~13 s at zero strain: the crosshead has not started moving\n"
+   "•  364 usable rows, t = 2.00 → 20.70 s\n"
+   "•  strain %% = 100 × extension ÷ gauge to within 1×10⁻⁶ — a plain ratio, no hidden "
+   "compensation", fs=10.5, colour=BLACK)
+banner(s, 6.20, 3.50, 6.75, 0.72,
+       "TWO CONFOUNDS REMOVED FOR FREE: their gauge is 80.0033 mm, so both instruments measure "
+       "over the SAME length; and their preload and speed match ours, so the strain zero and the "
+       "rate need no correction.", fill=GREEN_PASS, fg=DARK_GREEN, fs=10.5)
+
+img_fit(s, _os.path.join("documentation", "mot_record.png"), 0.40, 4.32, 12.55, 2.48)
+footer(s, "Left: everything delivered, including the parts that are not data. Right: the loading "
+          "ramp used for every comparison that follows, with its residual inset.")
+pageno(s)
+
+# ---- Slide 246: strain rate ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "MOT vs S25 / S26 — STRAIN RATE")
+tb(s, 0.4, 1.13, 12.55, 0.50,
+   "Compared over a MATCHED STRAIN INTERVAL (0.05–0.35 %), not matched time — and the 2.2× gap "
+   "that results is a COMPLIANCE measurement, not a calibration one.",
+   fs=12, italic=True, colour=GREY_TEXT)
+
+img_fit(s, _os.path.join("documentation", "mot_rate.png"), 0.40, 1.68, 12.55, 3.02)
+
+table(s, 0.4, 4.88, 6.15, 1.20,
+      [["", "dε/dt (10⁻⁴/s)", "% of ceiling", "R²", "n"]] +
+      [[k, "%.2f" % (_rate[k][0] / 1e-4), "%.0f %%" % (100 * _rate[k][0] / MCMP.CEILING),
+        "%.4f" % _rate[k][1], str(_rate[k][2])] for k in ("MOT", "S25", "S26")],
+      cw=[1.1, 1.7, 1.35, 1.1, 0.9], hf=9.5, bf=9.5)
+
+header(s, 6.80, 4.88, 6.15, "Reading the 2.2× gap")
+tb(s, 6.80, 5.26, 6.15, 1.35,
+   "Only 19–29 % of OUR crosshead motion reaches the gauge; the rest goes into machine "
+   "compliance, grips and shoulders. That fraction belongs to the MACHINE, so a stiffer frame "
+   "delivering more of it looks exactly like this. The ratio is a COMPLIANCE measurement, not a "
+   "scale one.", fs=10.5, colour=BLACK)
+
+banner(s, 0.4, 6.50, 12.55, 0.50,
+       "Both records sit below the 14.0×10⁻⁴/s ceiling, so neither is physically impossible. Our "
+       "calibration is not contradicted — confirming it needs their load or displacement channel.",
+       fill=YELLOW_WARN, fg=BLACK, fs=10.5)
+footer(s, "Right-hand panel: our local slope CLIMBS as seating slack is used up, theirs is flat "
+          "from the moment it engages — which is why S25 and S26 differ by 52 % here but agree to "
+          "1.4 % in a force-matched window.")
+pageno(s)
+
+# ---- Slide 247: noise — the comparison that survives ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "MOT vs S25 / S26 — NOISE, THE COMPARISON THAT SURVIVES")
+tb(s, 0.4, 1.13, 12.55, 0.50,
+   "Residual scatter about the straight fit does NOT depend on how much crosshead motion reached "
+   "the gauge, so unlike the rate it puts both instruments on the same footing.",
+   fs=12, italic=True, colour=GREY_TEXT)
+
+img_fit(s, _os.path.join("documentation", "mot_noise.png"), 0.40, 1.68, 12.55, 3.02)
+
+table(s, 0.4, 4.88, 7.05, 1.20,
+      [["", "median |r|", "95th pct |r|", "max |r|", "RMS", "pt-to-pt"]] +
+      [[k, "%.0f µε" % _nz[k]["med_ue"], "%.0f µε" % _nz[k]["p95_ue"],
+        "%.0f µε" % _nz[k]["max_ue"], "%.1f µε" % _nz[k]["rms_ue"],
+        "%.0f µε" % _nz[k]["step_ue"]] for k in ("MOT", "S25", "S26")],
+      cw=[1.0, 1.3, 1.4, 1.15, 1.1, 1.1], hf=9.5, bf=9.5)
+
+header(s, 7.70, 4.88, 5.25, "The honest reading")
+tb(s, 7.70, 5.26, 5.25, 1.35,
+   "The XT-205 holds the QUIETEST baseline of the three (median 12 µε vs our 13 and 17). It loses "
+   "on RMS only because of a handful of large excursions — 95ᵗʰ percentile 116 µε against our 45. "
+   "Ours is not finer; it is more CONSISTENT.", fs=10.5, colour=BLACK)
+
+banner(s, 0.4, 6.50, 12.55, 0.50,
+       "Two spray dots hold %.1f× lower RMS strain noise than the commercial extensometer, and our "
+       "two runs agree with each other to %.1f %%. The DIC strain measurement is sound." %
+       (_nz["MOT"]["rms_ue"] / _ours_rms,
+        100 * abs(_nz["S25"]["rms_ue"] - _nz["S26"]["rms_ue"]) / _ours_rms),
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
+footer(s, "Same 0.05–0.35 % strain interval for all three. |r| = absolute residual about each "
+          "record's own straight fit; pt-to-pt is the median sample-to-sample step, immune to slow "
+          "drift.")
+pageno(s)
+
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
     _n = len(prs.slides.__iter__.__self__._sldIdLst)

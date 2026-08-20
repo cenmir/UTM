@@ -104,7 +104,14 @@ def noise_over_strain(t, e, lo, hi):
     r = ee - (sl * tt + ic)
     d = np.diff(np.unique(np.round(ee, 10)))
     d = d[d > 0]
+    # RMS alone would overstate our case. The XT-205 holds the QUIETEST baseline of the three and
+    # loses on RMS only because of a few large excursions, so the median and the 95th percentile
+    # are reported beside it — one describes the quiet running, the other the excursions.
+    a = np.abs(r) * 1e6
     return {"rms_ue": r.std() * 1e6, "pp_ue": (r.max() - r.min()) * 1e6,
+            "med_ue": float(np.median(a)), "p95_ue": float(np.percentile(a, 95)),
+            "max_ue": float(a.max()),
+            "step_ue": float(np.median(np.abs(np.diff(ee)) * 1e6)),
             "quantum_ue": (np.median(d) * 1e6) if len(d) else float("nan"), "n": int(m.sum())}
 
 
