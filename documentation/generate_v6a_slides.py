@@ -802,7 +802,9 @@ tb(s, 0.4, 1.15, 12.55, 0.40,
 # SF numbers are append-only IDs. SF17 was carded and retired the same day — a card has to be
 # something the OPERATOR invokes or that acts on the machine during a run, and a developer-only
 # simulation harness is neither — so the next free numbers are 18 and 19.
-_SF_BUILT = RGBColor(0xD5, 0xEF, 0xE8)      # built, but not yet seen on the rig
+_SF_BUILT = RGBColor(0xCF, 0xE2, 0xF3)      # built, not yet seen on the rig. BLUE, not a
+                                            # near-green teal: at chip size teal and green
+                                            # were the same colour to the eye.
 _sf_cards = [
     (1,  "DIC health HUD", "live 2/2 · jitter", "done"),
     (2,  "Prepare specimen", "1-click tare all", "done"),
@@ -3446,6 +3448,172 @@ banner(s, 0.4, 6.50, 12.55, 0.50,
 footer(s, "Same 0.05–0.35 % strain interval for all three. |r| = absolute residual about each "
           "record's own straight fit; pt-to-pt is the median sample-to-sample step, immune to slow "
           "drift.")
+pageno(s)
+
+
+# =====================================================================================
+# SEGMENT: SMART-FEATURE OVERVIEW — p248-249
+#
+# The SF1-SF19 grid on p167 is a dense index: findable, but not walkable. These two slides carry
+# the same set at a size you can actually present from — one sentence per feature saying what it
+# does and, where it matters, WHY it was built that way.
+# =====================================================================================
+_SF_STATUS = {"done": (GREEN_PASS, DARK_GREEN),
+              "built": (RGBColor(0xCF, 0xE2, 0xF3), FLOW_BLUE),
+              "block": (YELLOW_WARN, BLACK)}
+
+
+def sf_card(slide, x, y, w, h, num, name, what, status):
+    """A white card with a coloured, numbered chip; bold heading, plain sentence under it.
+
+    Two deliberate choices, both learned by rendering the first attempt:
+
+    * NOT `flow()` — it centres one run at one size, which suits the dense index and makes a wall
+      of a slide whose whole point is a readable sentence per feature.
+    * The STATUS COLOUR LIVES ON THE CHIP, not on the card. Filling ten cards green when all ten
+      share a status paints a green wall that carries no information; on the chip the same colour
+      still reads at a glance and the eye gets white space to move through. It also means a mixed
+      slide (done / built / blocked) shows its variety instead of drowning in one hue.
+    """
+    fill, fg = _SF_STATUS[status]
+    box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
+                                 Inches(x), Inches(y), Inches(w), Inches(h))
+    box.fill.solid(); box.fill.fore_color.rgb = WHITE
+    box.line.color.rgb = GREY_BORDER; box.line.width = Pt(0.75)
+    box.shadow.inherit = False
+
+    cw, ch = 0.72, 0.44
+    chip = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
+                                  Inches(x + 0.12), Inches(y + (h - ch) / 2),
+                                  Inches(cw), Inches(ch))
+    chip.fill.solid(); chip.fill.fore_color.rgb = fill
+    chip.line.color.rgb = fg; chip.line.width = Pt(0.9)
+    chip.shadow.inherit = False
+    ctf = chip.text_frame
+    ctf.margin_left = ctf.margin_right = ctf.margin_top = ctf.margin_bottom = 0
+    ctf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    cp = ctf.paragraphs[0]; cp.alignment = PP_ALIGN.CENTER; cp.text = ""
+    cr = cp.add_run(); cr.text = "SF%d" % num
+    cr.font.size = Pt(11.5); cr.font.bold = True; cr.font.color.rgb = fg; cr.font.name = "Calibri"
+
+    tx = x + 0.12 + cw + 0.14
+    tw = w - (tx - x) - 0.12
+    tb(slide, tx, y + 0.07, tw, 0.26, name, fs=11.0, bold=True, colour=fg)
+    tb(slide, tx, y + 0.33, tw, h - 0.40, what, fs=8.6, colour=BLACK)
+    return box
+
+
+_SF_X, _SF_W = (0.40, 6.80), 6.15
+_SF_Y, _SF_H = (1.58, 2.65, 3.72, 4.79, 5.86), 1.00
+
+
+def sf_overview(cards):
+    for _i, (_n, _name, _what, _st) in enumerate(cards):
+        sf_card(s, _SF_X[_i % 2], _SF_Y[_i // 2], _SF_W, _SF_H, _n, _name, _what, _st)
+
+
+# ---- p248: SF1-SF10, the run itself ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SMART FEATURES 1–10 — RUNNING THE TEST")
+tb(s, 0.4, 1.15, 12.55, 0.38,
+   "Everything the operator touches between mounting a specimen and having its data. All ten are "
+   "built and rig-validated.", fs=11.5, italic=True, colour=GREY_TEXT)
+sf_overview([
+    (1, "DIC health HUD",
+     "A live OK / WARN / BAD badge on both test tabs: markers found, tracking %, pixel jitter. "
+     "Grey when the camera is off, so “no data” never reads as “good”.", "done"),
+    (2, "Prepare specimen",
+     "One button tares the DIC readouts, the position and the force, and clears the plots. It does "
+     "NOT touch Px₀ — that belongs to Calibrate Px₀ alone.", "done"),
+    (3, "Settings / recipes",
+     "Save and reload a whole test setup: dimensions, DIC preset, preload, speed, mode and its "
+     "parameters. A Default profile is always present.", "done"),
+    (4, "Generate report",
+     "One click turns the saved CSV into a one-page PDF plus every graph as PDF and PNG, written "
+     "beside the data rather than into a folder you have to find.", "done"),
+    (5, "Auto-stop at fracture",
+     "Feeds every load sample to a load-collapse detector during a manual pull and sends Stop the "
+     "moment the specimen breaks.", "done"),
+    (6, "Strain-rate fracture test",
+     "Closed loop on the DIC: varies crosshead speed to hold a constant GAUGE strain rate — "
+     "measured 0.00051/s against a 0.0005 target while the crosshead moved 0.10 → 0.05 mm/s.",
+     "done"),
+    (7, "Stall guard",
+     "Halts if the crosshead advances < 0.05 mm in 6 s while carrying > 200 N. Stays silent "
+     "through a ductile draw, where force falls while the crosshead still advances.", "done"),
+    (8, "Release load — two depths",
+     "To preload (specimen stays mounted and tensioned) or fully to true zero (so it can be "
+     "unclamped). Named on the button, because the depth decides how far a motor travels.", "done"),
+    (9, "Six closed-loop protocols",
+     "Cyclic · staircase · relaxation · creep · staircase→fracture · progressive-cyclic→fracture, "
+     "all on ONE control engine with one shared safety net.", "done"),
+    (10, "Auto-preload",
+     "Creeps in tension on a 0.2 → 0.1 → 0.02 mm/s schedule and stops at 1.03× target, offsetting "
+     "the ~2 % PLA relaxation that follows.", "done"),
+])
+footer(s, "Green = built and rig-validated. The dense index of all 19 is on p167; SF11–SF19 "
+          "continue on the next slide.")
+pageno(s)
+
+# ---- p249: SF11-SF19, the data and the setup ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SMART FEATURES 11–19 — SETUP, EVIDENCE AND SAFETY")
+tb(s, 0.4, 1.15, 12.55, 0.38,
+   "The features that make a run trustworthy rather than merely possible. Blue = built but not yet "
+   "seen on the rig; amber = blocked by optics, not by code.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+sf_overview([
+    (11, "Auto-metadata link",
+     "Saving writes “# Capture:” into the CSV header and run.json into the capture folder, so "
+     "either half finds the other. Matched by time-window OVERLAP, never by recency.", "done"),
+    (12, "DIC auto-calibration",
+     "Sweeps exposure × threshold and scores each on trackability — contrast margin dominates, "
+     "because it predicts whether tracking SURVIVES a flicker. Proposes; Cancel restores exactly.",
+     "built"),
+    (13, "Guided wizard",
+     "Twelve steps in the order they must be done, read from flags the app already had. Optional "
+     "and off by default — a checklist that cannot be dismissed is just a wider warning.", "done"),
+    (14, "Poisson / true Cauchy",
+     "Blocked by OPTICS, not code: the gauge is too narrow for a transverse pair, and the elastic "
+     "width change is sub-pixel at ~20 px/mm.", "block"),
+    (15, "Test registry",
+     "One queryable index of every run with its computed E, σ_y, UTS, ε_f, toughness and force "
+     "anchor. Killed the hard-coded CSV paths that caused two detector bugs.", "done"),
+    (16, "Dead-DIC guard + backstops",
+     "Freezes commanded speed if strain goes stale for 0.2 s and halts at 1.0 s, behind an "
+     "always-on 10 kN / 30 mm / 900 s backstop.", "done"),
+    (18, "Live Px₀ overlay",
+     "Draws the frozen reference pair and the live pair straight on the camera feed, with a "
+     "caption whose Δ agrees with the strain readout.", "built"),
+    (19, "Video + image capture",
+     "PNG stills plus three AVI views — raw, contrast-boosted and adaptive speckle — recorded "
+     "together. S25/S26: 3 127 stills and 3 × 3 127 frames, 0 dropped, 19.9 fps.", "done"),
+])
+# Row 5 is free on this slide (8 cards, not 10), so it carries the legend and the one sentence
+# that says what the set adds up to — better than leaving a band of white under the cards.
+for _i, (_lab, _st, _txt) in enumerate([
+        ("16", "done", "built AND rig-validated"),
+        ("2", "built", "built, waiting on rig time"),
+        ("1", "block", "blocked by hardware")]):
+    _x = 0.40 + _i * 2.35
+    _f, _fg = _SF_STATUS[_st]
+    _c = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(_x), Inches(6.00),
+                            Inches(0.48), Inches(0.34))
+    _c.fill.solid(); _c.fill.fore_color.rgb = _f
+    _c.line.color.rgb = _fg; _c.line.width = Pt(0.9); _c.shadow.inherit = False
+    _tf = _c.text_frame; _tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    _tf.margin_left = _tf.margin_right = 0
+    _p = _tf.paragraphs[0]; _p.alignment = PP_ALIGN.CENTER; _p.text = ""
+    _r = _p.add_run(); _r.text = _lab
+    _r.font.size = Pt(11); _r.font.bold = True; _r.font.color.rgb = _fg; _r.font.name = "Calibri"
+    tb(s, _x + 0.56, 6.06, 1.75, 0.26, _txt, fs=9.0, colour=GREY_TEXT)
+
+banner(s, 0.4, 6.46, 12.55, 0.50,
+       "The two blue cards wait on RIG TIME, not on code: SF18 needs the lighting fixed to shoot "
+       "the overlay under load, and SF12's sweep could not tune a black specimen until 2026-08-19. "
+       "SF14 is the only one hardware can block.", fill=LIGHT_BLUE, fg=BLACK, fs=10.5)
+footer(s, "SF17 is absent by design: it was carded and retired the same day, because a card has to "
+          "be something the OPERATOR invokes or that acts on the machine during a run.")
 pageno(s)
 
 try:
