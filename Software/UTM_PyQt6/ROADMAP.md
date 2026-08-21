@@ -5,9 +5,10 @@ Living source of truth; the V6a deck's roadmap slides are generated to match thi
 
 **Legend:** ✅ done + **rig-validated** · 🟢 built (offline/sim-validated) · 🟡 partial / in progress · ⬜ planned · 🔴 blocked by hardware
 
-_Last updated: 2026-08-21 — S13 (black) and S27/S28 (50 % video pair) analysed, the E fit window
-decided, SF13 built, and Px₀ given one owner; deck now pages 141-242 (102 slides). Earlier
-milestones: 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign (see `TESTING_TODO.md`)._
+_Last updated: 2026-08-21 — MOT extensometer comparison analysed, the Black preset moved off Otsu
+to a fixed threshold, two pair-plausibility guards added, and the motor "torque ceiling" resolved as
+a misalignment; deck now pages 141-247 (107 slides). Earlier milestones: 2026-08-18 S13 + S27/S28 +
+the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign._
 
 ---
 
