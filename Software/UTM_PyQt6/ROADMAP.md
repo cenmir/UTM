@@ -291,6 +291,29 @@ the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign
 >    double-weighted in an average any more; S27/S28 carry `infill_pct = 50` instead of the 100 the
 >    infill-label defect wrote after a restart; the video runs carry VC1–VC7 labels; and every row
 >    was re-scanned onto the new steepest-run E basis so the file is internally consistent.
+> 9. **⬜ DECK — SLIDES FOR THE SMART FEATURES THAT HAVE NONE.** Agreed 2026-08-21. The SF grid now
+>    runs SF1–SF19 (**16 rig-validated · 2 built · 1 hardware-blocked**), but five features have no
+>    proof slide, and three of them had been sitting on the grid marked "plan" months after
+>    shipping. Structure agreed with the operator:
+>    ▸ **TWO OVERVIEW SLIDES, ~10 cards each** — SF1–SF10 and SF11–SF19 — so the whole feature set
+>    can be walked through without the single dense grid. No images needed; build these first.
+>    ▸ **THEN A COUPLE OF SLIDES PER MISSING FEATURE**, with screenshots the OPERATOR supplies:
+>
+>    | SF | Feature | Status | Screenshots needed from the rig |
+>    |---|---|---|---|
+>    | 11 | Auto-metadata link (capture ↔ CSV) | ✅ | the `# Capture:` CSV header · a `run.json` · the Save dialog with its registry / report tick-boxes |
+>    | 12 | DIC auto-calibration | 🟢 | the auto-calibrate dialog **with its before/after table** · the manual-parameters dialog showing the live trackability readout · ideally a feed at a bad threshold (0 blobs) beside a good one (2/2) |
+>    | 13 | Guided wizard | ✅ | the dock open EARLY (Connect is NEXT) and again LATE (most steps ticked) · the View ▸ Guided wizard menu item |
+>    | 18 | Live Px₀ overlay | 🟢 | the feed at zero strain and again under load, with the frozen cyan pair and the live green pair separated. **⚠ BLOCKED — this is the same lighting problem holding up the overlay's rig validation, so it is the one item that cannot be shot today** |
+>    | 19 | Video + image capture | ✅ | the Capture settings dialog · the CAP / REC indicator lit in the HUD |
+>
+>    ▸ **SF19's frames need no operator time** — one still from each of the three AVI styles
+>    (raw / boost / speckle) can be pulled straight out of the S25/S26/S13 captures already on disk.
+>    ▸ **SF19 is the subtle one.** p219–224 already exists but is a DATA-VALIDATION slide
+>    ("frame capture, checked against the test data"); there is no slide that explains the FEATURE —
+>    PNG + three AVI styles, adaptive speckle, multi-select, 0 dropped at 19.9 fps.
+>    ▸ Estimated **12 slides → p248–259**. Overview pair first; the per-feature slides land as the
+>    screenshots arrive, so the deck is never blocked on one of them.
 >
 > **✅ The E fit window — DECIDED AND IMPLEMENTED 2026-08-18.** `utm_analysis.analyze()` now
 >   reports the **steepest straight run** as `E`, keeping the old fixed-window value beside it as
