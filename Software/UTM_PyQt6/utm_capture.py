@@ -1,4 +1,11 @@
-"""Frame capture for the DIC camera — PNG stills and/or an AVI video, written off the hot path.
+"""Frame capture for the DIC camera — lossless stills and/or an AVI video, written off the hot path.
+
+⚠ THE STILLS ARE THE MEASUREMENT; THE VIDEO IS FOR LOOKING AT. The stills (TIFF by default, PNG on
+request) are bit-exact. The AVI is MJPG, which is LOSSY — measured against the matching still on a
+real S26 frame, only 54 % of pixels come back identical, worst case 12 grey levels out, RMS 1.34 —
+and MJPG also drops the last column of an odd-width frame, so a 419 px ROI returns 418. Re-analyse
+the STILLS. If a lossless video is ever needed, FFV1 was measured at 100.0 % identical, 228 kB per
+frame and 9.7 ms on this machine (pad the width to even first, or the column goes missing anyway).
 
     from utm_capture import CaptureManager
     cap = CaptureManager(root="captures")
@@ -49,6 +56,36 @@ PNG_COMPRESSION = 0          # see module docstring: 0 is the only level that ke
 VIDEO_FOURCC = "MJPG"
 DEFAULT_BUFFER = 90          # ~2.6 s of slack at 35 fps before the oldest frame is dropped
 
+# ---- still-image formats -----------------------------------------------------------------------
+# ALL THREE ARE LOSSLESS. PNG always was — `PNG_COMPRESSION = 0` merely turns off deflate, it does
+# not make PNG "raw", and no level of PNG has ever discarded a pixel. So this choice is about BYTES
+# and CPU, never about image quality.
+#
+# Measured on a real 419x2348 mono frame from S26 (raw frame = 983 812 B):
+#
+#     format              size      of raw   encode
+#     PNG level 0        987 813 B   100 %   7.3 ms   <- what the rig wrote until 2026-08-21
+#     TIFF uncompressed  984 702 B   100 %   1.5 ms   <- default now: same disk, 5x less CPU
+#     TIFF LZW           362 002 B    37 %   7.6 ms   <- same pixels, a third of the disk
+#     PNG level 9        297 871 B    30 %  84.9 ms   <- cannot keep up; here for contrast only
+#
+# TIFF-uncompressed is the default because it is what an uncompressed still actually is, it costs
+# a fifth of the CPU we were spending, and every analysis tool in this workflow reads it. TIFF-LZW
+# is offered for long runs where 2.5 GB per 125 s is the problem.
+#
+# `params` is passed straight to cv2.imwrite. For PNG the level comes from the STYLE instead (a
+# binary speckle frame compresses 23x where a photographic one does not), so it is filled in at
+# write time.
+STILL_FORMATS = {
+    "tiff":     {"ext": ".tif", "params": [cv2.IMWRITE_TIFF_COMPRESSION, 1],   # 1 = COMPRESSION_NONE
+                 "label": "TIFF, uncompressed", "kb": 962},
+    "tiff_lzw": {"ext": ".tif", "params": [cv2.IMWRITE_TIFF_COMPRESSION, 5],   # 5 = LZW, lossless
+                 "label": "TIFF, LZW (lossless, ~1/3 the size)", "kb": 355},
+    "png":      {"ext": ".png", "params": None,                                # per-style level
+                 "label": "PNG (lossless)", "kb": 970},
+}
+STILL_FORMAT = "tiff"
+
 
 class Style:
     """How a frame is processed before it is written. Applied in the WORKER thread.
@@ -74,6 +111,18 @@ class Style:
         self.note = note
         self.png_kb = png_kb
         self.avi_kb = avi_kb
+
+    @property
+    def compressible(self):
+        """Does this VIEW compress hugely — as a two-tone speckle frame does and a photograph does not?
+
+        Historically this fact lived in `png_compression`: the speckle style asked for level 1
+        because on a binary frame it is 23x smaller AND the same speed, where on a photographic
+        frame level 1 costs 3x and saves 31 %. But that is a fact about the IMAGE, not about PNG.
+        Writing a binary frame as uncompressed TIFF throws away exactly the same 23x, so the flag
+        now steers the TIFF choice too and the speckle view stays small in either format.
+        """
+        return self.png_compression > 0
 
     def apply(self, frame):
         return frame if self.transform is None else self.transform(frame)
@@ -232,13 +281,18 @@ class _Sink:
         pass
 
 
-class PngSink(_Sink):
-    """Every frame as a lossless PNG, plus an index that ties each file to a timestamp."""
+class StillSink(_Sink):
+    """Every frame as a LOSSLESS still — TIFF or PNG — plus an index tying each file to a timestamp.
 
-    def __init__(self, directory, buffer=DEFAULT_BUFFER, style=None):
+    Was `PngSink` until 2026-08-21, when TIFF became the default and the name stopped being true.
+    The alias below keeps older callers working.
+    """
+
+    def __init__(self, directory, buffer=DEFAULT_BUFFER, style=None, fmt=None):
         super().__init__(buffer)
         self.path = directory
         self.style = style or style_raw()
+        self.fmt = fmt if fmt in STILL_FORMATS else STILL_FORMAT
         os.makedirs(directory, exist_ok=True)
         self._n = 0
         self._index = open(os.path.join(directory, "index.csv"), "w", newline="", encoding="utf-8")
@@ -248,9 +302,16 @@ class PngSink(_Sink):
 
     def _write(self, item):
         frame, t_mono, iso = item
-        name = f"f{self._n:06d}.png"
-        cv2.imwrite(os.path.join(self.path, name), self.style.apply(frame),
-                    [cv2.IMWRITE_PNG_COMPRESSION, self.style.png_compression])
+        spec = STILL_FORMATS[self.fmt]
+        # A two-tone speckle frame compresses ~23x where a photographic one does not, so a
+        # COMPRESSIBLE view is written compressed whichever format was chosen. Uncompressed TIFF on
+        # a binary frame would waste the same 23x that PNG level 1 was introduced to capture.
+        if self.fmt == "tiff" and self.style.compressible:
+            spec = STILL_FORMATS["tiff_lzw"]
+        # PNG still takes its exact level from the style.
+        params = spec["params"] or [cv2.IMWRITE_PNG_COMPRESSION, self.style.png_compression]
+        name = f"f{self._n:06d}{spec['ext']}"
+        cv2.imwrite(os.path.join(self.path, name), self.style.apply(frame), params)
         self._csv.writerow([self._n, name, iso, f"{t_mono:.4f}"])
         self._n += 1
 
@@ -260,6 +321,9 @@ class PngSink(_Sink):
             self._index.close()
         except Exception:
             pass
+
+
+PngSink = StillSink          # historical name; it no longer only writes PNG
 
 
 class VideoSink(_Sink):
@@ -302,6 +366,9 @@ class CaptureManager:
         # two worker threads rather than two passes over the camera thread.
         self.pngs = []
         self.videos = []
+        # Which lossless still format the next run writes. All choices are lossless; see
+        # STILL_FORMATS for the measured size/CPU trade-off. Set from the capture-settings dialog.
+        self.still_format = STILL_FORMAT
         self._run_dir = None
         self.png_styles = [style_raw()]
         self.video_styles = [style_raw()]
@@ -353,7 +420,8 @@ class CaptureManager:
         self.pngs = []
         for st in (self.png_styles or [style_raw()]):
             sub = "frames" if st.key == "raw" else f"frames_{st.key}"
-            self.pngs.append(PngSink(os.path.join(d, sub), style=st))
+            self.pngs.append(StillSink(os.path.join(d, sub), style=st,
+                                       fmt=self.still_format))
         return [p.path for p in self.pngs]
 
     def start_video(self, size, label=None):

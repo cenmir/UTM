@@ -145,12 +145,20 @@ def main():
     args = ap.parse_args()
 
     root = args.path
-    files = sorted(glob.glob(os.path.join(root, "*.png")))
+
+    def _stills(*parts):
+        """Frames are TIFF since 2026-08-21 and PNG before it; a replay must read both."""
+        out = []
+        for ext in ("*.tif", "*.tiff", "*.png"):
+            out += glob.glob(os.path.join(*(parts + (ext,))))
+        return sorted(out)
+
+    files = _stills(root)
     if not files:
-        files = sorted(glob.glob(os.path.join(root, "frames", "*.png")))
+        files = _stills(root, "frames")
     if not files:
         for sub in sorted(glob.glob(os.path.join(root, "*"))):
-            files = sorted(glob.glob(os.path.join(sub, "frames", "*.png")))
+            files = _stills(sub, "frames")
             if files:
                 break
     if not files:

@@ -18,7 +18,8 @@ import shutil
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QCheckBox,
-                             QGroupBox, QPushButton, QDialogButtonBox, QFileDialog, QLineEdit)
+                             QGroupBox, QPushButton, QDialogButtonBox, QFileDialog, QLineEdit,
+                             QComboBox)
 
 KEYS = ("raw", "speckle", "boost")
 WARN_GB_PER_MIN = 2.5      # amber past this
@@ -87,16 +88,41 @@ class CaptureSetupDialog(QDialog):
         lbl = QLabel(note); lbl.setWordWrap(True); lbl.setStyleSheet("color:#888;")
         g.addWidget(lbl, 1, 0, 1, 2)
         views = {}
+        # Still FORMAT lives here rather than in a settings menu, because it changes what the run
+        # writes and belongs beside the size estimate it moves. All choices are LOSSLESS - this
+        # picks bytes and CPU, never quality.
+        # _sink_box runs TWICE — stills then video — so the video pass must not wipe the combo
+        # and the labels the stills pass created.
+        self.fmt_combo = getattr(self, "fmt_combo", None)
+        self.rate_lbls = getattr(self, "rate_lbls", {})
+        row0 = 2
+        if png:
+            from utm_capture import STILL_FORMATS
+            g.addWidget(QLabel("File format"), 2, 0)
+            self.fmt_combo = QComboBox()
+            for k, spec in STILL_FORMATS.items():
+                self.fmt_combo.addItem(spec["label"], k)
+            cur = getattr(self.cap, "still_format", "tiff")
+            i0 = self.fmt_combo.findData(cur)
+            self.fmt_combo.setCurrentIndex(i0 if i0 >= 0 else 0)
+            self.fmt_combo.setToolTip(
+                "All three keep every pixel. TIFF uncompressed costs a fifth of PNG's CPU for the "
+                "same size on disk; TIFF LZW is the same pixels in about a third of the space.")
+            self.fmt_combo.currentIndexChanged.connect(self._refresh)
+            g.addWidget(self.fmt_combo, 2, 1)
+            row0 = 3
         for i, key in enumerate(KEYS):
             st = self.make_style(key)
             cb = QCheckBox(st.label.split(" (")[0].split(" —")[0])
             cb.setToolTip(st.note)
             cb.setChecked(key in active_keys)
             cb.toggled.connect(self._refresh)
-            g.addWidget(cb, 2 + i, 0)
+            g.addWidget(cb, row0 + i, 0)
             rate = QLabel(f"~{st.gb_per_min(png=png):.2f} GB/min")
             rate.setStyleSheet("color:#888;")
-            g.addWidget(rate, 2 + i, 1)
+            g.addWidget(rate, row0 + i, 1)
+            if png:
+                self.rate_lbls[key] = rate
             views[key] = cb
         parent_layout.addWidget(box)
         return enable, views
@@ -113,10 +139,23 @@ class CaptureSetupDialog(QDialog):
         keys = [k for k in KEYS if views[k].isChecked()]
         return keys or ["raw"]           # never leave a sink with nothing to write
 
+    def _still_factor(self):
+        """Size of the chosen still format relative to PNG, so the estimate follows the dropdown.
+
+        Without this the dialog would promise PNG's 1.9 GB/min while writing TIFF-LZW's 0.7, and a
+        size warning that does not track the setting sitting next to it is worse than none at all.
+        """
+        from utm_capture import STILL_FORMATS, STILL_FORMAT
+        key = self.fmt_combo.currentData() if self.fmt_combo is not None else STILL_FORMAT
+        return STILL_FORMATS.get(key, STILL_FORMATS[STILL_FORMAT])["kb"] / STILL_FORMATS["png"]["kb"]
+
     def _refresh(self):
         png_keys = self.selected(self.png_views)
         avi_keys = self.selected(self.avi_views)
-        png_gb = sum(self.make_style(k).gb_per_min(png=True) for k in png_keys) \
+        _f = self._still_factor()
+        for _k, _lbl in getattr(self, "rate_lbls", {}).items():
+            _lbl.setText(f"~{self.make_style(_k).gb_per_min(png=True) * _f:.2f} GB/min")
+        png_gb = sum(self.make_style(k).gb_per_min(png=True) * _f for k in png_keys) \
             if self.png_on.isChecked() else 0.0
         avi_gb = sum(self.make_style(k).gb_per_min() for k in avi_keys) \
             if self.avi_on.isChecked() else 0.0
@@ -169,6 +208,8 @@ class CaptureSetupDialog(QDialog):
     def apply_to(self, cap):
         """Write the choices back. Returns (png_armed, avi_armed)."""
         cap.png_styles = [self.make_style(k) for k in self.selected(self.png_views)]
+        if self.fmt_combo is not None:
+            cap.still_format = self.fmt_combo.currentData()
         cap.video_styles = [self.make_style(k) for k in self.selected(self.avi_views)]
         if self.folder.text():
             cap.root = self.folder.text()
