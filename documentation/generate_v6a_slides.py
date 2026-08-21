@@ -794,11 +794,15 @@ def pic_or_ph(sl, path, x, y, w, ph_h, note):
 # something the OPERATOR invokes or that acts on the machine during a run; a developer-only
 # simulation harness is neither, and it was the one entry that made "all rig-validated" false.
 s = prs.slides.add_slide(BLANK); ju(s)
-title(s, "SMART-UTM FEATURE SET — SF1 to SF16")
-tb(s, 0.4, 1.18, 12.55, 0.42,
-   "12 built and rig-validated (green) · 3 planned (blue) · 1 hardware-blocked (amber). "
-   "Numeric order, so a card can be found by its SF number; proof slides follow in the same order.",
-   fs=12, italic=True, colour=GREY_TEXT)
+title(s, "SMART-UTM FEATURE SET — SF1 to SF19")
+tb(s, 0.4, 1.15, 12.55, 0.40,
+   "16 built and RIG-VALIDATED (green) · 2 built, offline-verified only (teal) · "
+   "1 hardware-blocked (amber). Numeric order, so a card can be found by its SF number.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+# SF numbers are append-only IDs. SF17 was carded and retired the same day — a card has to be
+# something the OPERATOR invokes or that acts on the machine during a run, and a developer-only
+# simulation harness is neither — so the next free numbers are 18 and 19.
+_SF_BUILT = RGBColor(0xD5, 0xEF, 0xE8)      # built, but not yet seen on the rig
 _sf_cards = [
     (1,  "DIC health HUD", "live 2/2 · jitter", "done"),
     (2,  "Prepare specimen", "1-click tare all", "done"),
@@ -810,22 +814,25 @@ _sf_cards = [
     (8,  "Release load", "safe return to true 0", "done"),
     (9,  "6 closed-loop protocols", "cyclic…prog-cyclic→fracture", "done"),
     (10, "Auto-preload", "0.2→0.1→0.02 mm/s", "done"),
-    (11, "Auto-metadata + foldering", "per-specimen deck", "plan"),
-    (12, "DIC auto-calibrate", "auto-exposure · follow ROI", "plan"),
-    (13, "Guided workflow + overlay", "wizard · live E / UTS", "plan"),
+    (11, "Auto-metadata link", "capture ↔ CSV, by overlap", "done"),
+    (12, "DIC auto-calibrate", "sweeps exposure × threshold", "built"),
+    (13, "Guided wizard", "12 steps, optional, off by default", "done"),
     (14, "Poisson / true Cauchy", "optics-blocked, not code", "block"),
     (15, "Test registry", "every run + force anchor", "done"),
     (16, "Dead-DIC guard + backstops", "0.2 s freeze / 1.0 s halt", "done"),
+    (18, "Live Px₀ overlay", "frozen vs live pair, on the feed", "built"),
+    (19, "Video + image capture", "PNG + 3 AVI styles, 0 dropped", "done"),
 ]
-_fill = {"done": (GREEN_PASS, DARK_GREEN), "plan": (LIGHT_BLUE, BLACK), "block": (YELLOW_WARN, BLACK)}
+_fill = {"done": (GREEN_PASS, DARK_GREEN), "built": (_SF_BUILT, DARK_GREEN),
+         "plan": (LIGHT_BLUE, BLACK), "block": (YELLOW_WARN, BLACK)}
 _cx = [0.40, 3.62, 6.84, 10.06]
-_cy = [1.70, 3.02, 4.34, 5.66]
+_cy = [1.62, 2.70, 3.78, 4.86, 5.94]          # 5 rows now; 19 cards no longer fit in 4
 for _i, (_n, _t, _b, _st) in enumerate(_sf_cards):
     _f, _fg = _fill[_st]
-    flow(s, _cx[_i % 4], _cy[_i // 4], 3.0, 1.20,
-         "SF%d  %s\n%s" % (_n, _t, _b), fill=_f, border=_fg, fs=10.5, bold=True, fg=_fg)
-footer(s, "Four safety layers on every driven test: load-collapse detector · stall guard · 10 kN / 30 mm "
-          "backstop · dead-DIC freeze.  Canonical list: Software/UTM_PyQt6/ROADMAP.md §3c.")
+    flow(s, _cx[_i % 4], _cy[_i // 4], 3.0, 1.00,
+         "SF%d  %s
+%s" % (_n, _t, _b), fill=_f, border=_fg, fs=10.0, bold=True, fg=_fg)
+footer(s, "SF17 retired the day it was carded — a developer-only sim harness is not operator-facing. Four safety layers on every driven test: load-collapse · stall guard · 10 kN / 30 mm · dead-DIC freeze.")
 pageno(s)
 
 # ---- Slide 170: SF 1 · DIC health HUD — modes  [content unchanged, was slide 176] ----
