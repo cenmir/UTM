@@ -5,7 +5,7 @@ Living source of truth; the V6a deck's roadmap slides are generated to match thi
 
 **Legend:** ✅ done + **rig-validated** · 🟢 built (offline/sim-validated) · 🟡 partial / in progress · ⬜ planned · 🔴 blocked by hardware
 
-_Last updated: 2026-08-19 — S13 (black) and S27/S28 (50 % video pair) analysed, the E fit window
+_Last updated: 2026-08-21 — S13 (black) and S27/S28 (50 % video pair) analysed, the E fit window
 decided, SF13 built, and Px₀ given one owner; deck now pages 141-242 (102 slides). Earlier
 milestones: 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign (see `TESTING_TODO.md`)._
 
@@ -202,66 +202,53 @@ milestones: 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign (see `TESTIN
 >    the same rig, the same DIC and now the same E rule. This closes the MOT extensometer
 >    prerequisite.
 >
-> 6. **⬜ WHY DID DIC DELIVERY SLOW? — needs the live badge watched during a pull.** S13 came back
->    at **47 % coverage** and S24 at **27 %**, on specimens of BOTH colours, so it is a pipeline
->    issue and not a marker one. Ruled out offline: the camera (19.9 fps, 0 dropped, identical to a
->    good run), the detector (2 markers on 99.9 % of frames) and detection cost (1.37 ms/frame ≈
->    730 Hz ceiling). What remains is arithmetic — `DIC_STALE_THRESHOLD_MS = 100` and S13's readings
->    arrived **147 ms** apart against 100 ms on the white runs, so half the load rows had nothing
->    inside the matching window. The unknown is why delivery into `dic_history` slowed.
->    ▸ **Cheap next step:** watch the DIC-Hz badge through a whole pull. It read 19.9 Hz at rest on
->    that same specimen, so note what it reads when the ramp starts and when recording arms.
->    ▸ Do NOT just raise the 100 ms window — that hides it by pairing load samples with staler
->    strain. UTS is unaffected either way; ε_f is the number most at risk (664 ms worst-case gap).
+> 6. **⬜ WHY DID DIC DELIVERY SLOW? — NARROWED 2026-08-21, still open.** Measured across three
+>    runs (filtering `L_px > 100 AND DIC_Time_s > 0`; the uncovered rows carry 0.000, not NaN, and
+>    a first pass that missed that produced "7323 s lost in a 95 s run"):
 >
-> **⬜ MOT VIDEO-EXTENSOMETER COMPARISON — STRAIN RATE, not properties. DATA IN HAND 2026-08-20.**
->    The extensometer record is **strain only, no load**, and stops well before fracture. That rules
->    out comparing E, σ_y, UTS or ε_f — every one of them needs force. What it does NOT rule out is
->    the comparison that matters most.
->    ▸ **MOT's conditions, confirmed by the operator 2026-08-20: preload 300 N, 0.10 mm/s, a
->    specimen from the same batch as S25/S26 so geometry and the 80 mm gauge match.** Matching the
->    preload and the speed removes the two biggest confounds outright — the strain-zero convention,
->    and any need to normalise for crosshead rate.
->    ▸ **OUR REFERENCE, measured 2026-08-20 on the loading ramp only, 15–45 % of peak load:**
->    **S25 3.001e-4 /s** (R² 0.9984) · **S26 3.042e-4 /s** (R² 0.9989) · S29 PETG 4.675e-4 /s.
->    **S25 and S26 agree to 1.4 %**, which is what makes the comparison worth making at all.
->    ▸ **HARD CEILING = 1.40e-3 /s** — the measured 0.112 mm/s crosshead over an 80 mm gauge, i.e.
->    the rate if ALL crosshead motion reached the gauge. **If MOT's number exceeds it, one of the two
->    records is wrong.** A free sanity check before any interpretation.
->    ▸ **CORRECTION to what this entry claimed on 2026-08-19.** It said the slope ratio "reads the
->    scale factor off directly". That is too strong and would produce a WRONG conclusion. Only ~21 %
->    of crosshead motion reaches our gauge; the rest goes into machine compliance, the grips and the
->    specimen shoulders. That fraction is a property of the MACHINE — so on MOT's (almost certainly
->    stiffer) frame a larger share reaches the gauge and their dε/dt reads HIGHER for reasons that
->    have nothing to do with our calibration. Slope ratio = (their fraction) ÷ (our fraction × our
->    scale error): scale is CONFOUNDED with compliance, not isolated by it.
->    ▸ **What survives is a ONE-SIDED test, and it is still worth having.** Their frame cannot be
->    MORE compliant than ours, so their fraction ≥ ours. If their dε/dt comes out **LOWER than our
->    3.0e-4 /s, that is evidence we OVER-READ strain** — a stiffer machine yielding less gauge strain
->    has no other explanation. A HIGHER reading is expected and says nothing about scale.
->    ▸ **For a true scale check, one more channel is needed.** Simultaneous DIC + extensometer on the
->    SAME pull is decisive (identical compliance, identical specimen, same instant). Failing that,
->    their **load** or **crosshead displacement** column would allow strain to be compared at matched
->    force or matched displacement, which cancels the compliance term.
->    ▸ **Slope is also the only fair statistic available**, because it is immune to the two things
->    that certainly differ: the time origin (their acquisition started when it started) and the
->    strain zero (ours is frozen after a ~300 N preload, theirs is wherever they zeroed). Both drop
->    out of a derivative. Do NOT compare absolute strain at a given time.
->    ▸ **Get these from MOT before analysing, or the comparison is meaningless:** (a) their
->    **crosshead speed** — if it was not 0.10 mm/s the slopes differ by the speed ratio and must be
->    normalised, or compared against crosshead displacement instead of time; (b) their **gauge
->    length**, which must be the marker-to-marker 80 mm and not the specimen's parallel length;
->    (c) their **sampling rate**; (d) whether it was the **same specimen** or another from the batch
->    — a different specimen adds seating and print scatter to the difference.
->    ▸ **Method:** take the elastic region only (both records are pre-yield, which is the one part
->    guaranteed to overlap), resample both onto a common time grid, fit dε/dt by least squares over
->    a window where each is straight, and report the RATIO with a confidence interval — not the
->    difference. Plot both traces on one strain-vs-time axis with the fitted slopes overlaid.
->    ▸ **Be explicit about what this cannot establish:** nothing about strength, ductility or
->    modulus. It is a calibration check on the strain axis, and should be written up as one.
+>    | run | mode | tracked 2/2 | DISTINCT readings reaching a load row | median gap | gaps > 250 ms | coverage |
+>    |---|---|---|---|---|---|---|
+>    | S26 | White | 99.9 % | **11.1 Hz** | 100 ms | 0 | **99.9 %** |
+>    | S29 | Black | 100 % | 8.9 Hz | 101 ms | 33 (10 % of run) | 78.8 % |
+>    | S13 | Black | 99.9 % | **5.3 Hz** | 147 ms | 175 (**51 % of run**) | 47.4 % |
 >
-> **⬜ NEW CAMPAIGN — PETG and TPU against PLA.** IN PROGRESS: the operator is running the first
->    PETG specimens now (2026-08-19). Everything on record so far is PLA, so every claim the rig
+>    ▸ **Coverage tracks delivery rate almost exactly**, so the 100 ms matching window is NOT the
+>    fault — it is doing its job on readings that never arrive. S26 sits at the ceiling the load
+>    sampling allows (~11.4 Hz); the other two are genuinely below it.
+>    ▸ **The loss is DOWNSTREAM OF DETECTION.** Camera 19.9 fps with 0 dropped, detector finds two
+>    markers on ~100 % of frames, and S29's own `# DIC Loop` header line reads TOTAL 50.2 ms
+>    (19.9 Hz) with detect at 1.0 ms. Frames are found and strain is computed; the readings do not
+>    reach the consumer.
+>    ▸ **Both degraded runs are BLACK-mode, the healthy one is White.** That is the strongest lead
+>    and it is only n = 3 — worth confirming on the next Black run before believing it.
+>    ▸ Do NOT widen the 100 ms window: it would pair load samples with staler strain and hide this.
+
+> **✅ MOT VIDEO-EXTENSOMETER COMPARISON — ANALYSED 2026-08-20. Deck p245–247.**
+>    XT-205, gauge 80.0033 mm, 20 Hz, strain only, stops at 0.401 %. MOT matched our 300 N preload
+>    and 0.10 mm/s, and their gauge equals ours, so the strain zero and the rate needed no correction.
+>    ▸ **THE RESULT: our DIC is more CONSISTENT.** Residual scatter over the same 0.05–0.35 %
+>    interval — RMS **23.5 / 23.6 µε** against the XT-205's **44.9**. But quote it carefully: the
+>    XT-205 holds the QUIETEST baseline of the three (median |r| 12 µε vs our 13 and 17) and loses
+>    on RMS only through a few large excursions (p95 116 µε vs our 45). Ours is not finer, it is
+>    more consistent. Our two runs agree with each other to 0.4 %.
+>    ▸ **The rate ratio does NOT test our scale**, and the deck says so: MOT reads 2.21× faster
+>    (7.42 vs 2.67/4.06 ×10⁻⁴/s), which is the expected direction because only **19–29 % of our
+>    crosshead motion reaches the gauge** and that fraction belongs to the MACHINE.
+>    ▸ **⬜ STILL OPEN — ask MOT for their LOAD or CROSSHEAD-DISPLACEMENT channel.** With either,
+>    strain can be compared at matched force or matched displacement, which cancels the compliance
+>    term and turns this into a real scale check. Cheap to ask, and the only thing left.
+>    ▸ Side finding, and the clearest evidence yet on the seating question: **our local strain rate
+>    CLIMBS through the ramp while theirs is flat from the moment it engages.** That is why S25 and
+>    S26 differ by 52 % on early-strain rate but agree to 1.4 % force-matched. The residual
+>    low-strain compliance is the RIG, not PLA non-linearity.
+>
+> **⬜ NEW CAMPAIGN — PETG and TPU against PLA.** IN PROGRESS.
+>    ▸ **REDO S29 FIRST — it produced NO valid properties.** Two tracking faults, both now fixed:
+>    attempt 1 tracked at 17 % (Otsu below PETG's window → fixed threshold 149), attempt 2 tracked
+>    at 100 % and was still lost when ONE frame in 1222 read the mount holder as a marker and the
+>    bogus strain jump tripped the fracture detector AT PEAK LOAD, auto-stopping an intact
+>    specimen at 2931 N / 36.6 MPa. Its registry row has the fracture-derived fields nulled.
+>    Black tape on the mount edge is still worth adding as belt-and-braces. Everything on record so far is PLA, so every claim the rig
 >    makes is single-material; a second and third polymer is what turns "the rig measures PLA" into
 >    "the rig measures polymers".
 >    ▸ **The question is whether the TREND comes out right**, not just whether the numbers do.
