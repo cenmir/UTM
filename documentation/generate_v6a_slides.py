@@ -830,8 +830,7 @@ _cy = [1.62, 2.70, 3.78, 4.86, 5.94]          # 5 rows now; 19 cards no longer f
 for _i, (_n, _t, _b, _st) in enumerate(_sf_cards):
     _f, _fg = _fill[_st]
     flow(s, _cx[_i % 4], _cy[_i // 4], 3.0, 1.00,
-         "SF%d  %s
-%s" % (_n, _t, _b), fill=_f, border=_fg, fs=10.0, bold=True, fg=_fg)
+         "SF%d  %s\n%s" % (_n, _t, _b), fill=_f, border=_fg, fs=10.0, bold=True, fg=_fg)
 footer(s, "SF17 retired the day it was carded — a developer-only sim harness is not operator-facing. Four safety layers on every driven test: load-collapse · stall guard · 10 kN / 30 mm · dead-DIC freeze.")
 pageno(s)
 
