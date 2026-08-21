@@ -285,7 +285,7 @@ the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign
 >    instruction rather than a value, each optional step saying **WHERE** it lives
 >    (Settings ▸ Capture settings), and the run step naming all three routes — fracture test, a
 >    manual pull, or an advanced mode. Twelve rows, nine of them blocking.
->    ▸ Not yet seen on the rig; the panel is offscreen-verified only.
+>    ▸ **✅ RIG-VALIDATED 2026-08-21** — the operator confirms the panel works on the machine.
 > 8. **✅ Registry hygiene — DONE 2026-08-18**, as part of the S27/S28 analysis. **28 → 24 rows**:
 >    the duplicate saves of one run (S27 ×2, S28 ×3, S12 ×2) are gone, so no specimen is
 >    double-weighted in an average any more; S27/S28 carry `infill_pct = 50` instead of the 100 the
