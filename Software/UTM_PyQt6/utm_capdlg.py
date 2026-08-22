@@ -94,7 +94,9 @@ class CaptureSetupDialog(QDialog):
         # _sink_box runs TWICE — stills then video — so the video pass must not wipe the combo
         # and the labels the stills pass created.
         self.fmt_combo = getattr(self, "fmt_combo", None)
+        self.codec_combo = getattr(self, "codec_combo", None)
         self.rate_lbls = getattr(self, "rate_lbls", {})
+        self.avi_rate_lbls = getattr(self, "avi_rate_lbls", {})
         row0 = 2
         if png:
             from utm_capture import STILL_FORMATS
@@ -111,6 +113,22 @@ class CaptureSetupDialog(QDialog):
             self.fmt_combo.currentIndexChanged.connect(self._refresh)
             g.addWidget(self.fmt_combo, 2, 1)
             row0 = 3
+        else:
+            from utm_capture import VIDEO_CODECS
+            g.addWidget(QLabel("Codec"), 2, 0)
+            self.codec_combo = QComboBox()
+            for k, spec in VIDEO_CODECS.items():
+                self.codec_combo.addItem(spec["label"], k)
+            cur = getattr(self.cap, "video_codec", "ffv1")
+            i0 = self.codec_combo.findData(cur)
+            self.codec_combo.setCurrentIndex(i0 if i0 >= 0 else 0)
+            self.codec_combo.setToolTip(
+                "FFV1 and Y800 are LOSSLESS — verified pixel-identical on this machine. MJPG is "
+                "lossy: only about half the pixels survive it, so use it for review, never for "
+                "re-analysis.")
+            self.codec_combo.currentIndexChanged.connect(self._refresh)
+            g.addWidget(self.codec_combo, 2, 1)
+            row0 = 3
         for i, key in enumerate(KEYS):
             st = self.make_style(key)
             cb = QCheckBox(st.label.split(" (")[0].split(" —")[0])
@@ -121,8 +139,7 @@ class CaptureSetupDialog(QDialog):
             rate = QLabel(f"~{st.gb_per_min(png=png):.2f} GB/min")
             rate.setStyleSheet("color:#888;")
             g.addWidget(rate, row0 + i, 1)
-            if png:
-                self.rate_lbls[key] = rate
+            (self.rate_lbls if png else self.avi_rate_lbls)[key] = rate
             views[key] = cb
         parent_layout.addWidget(box)
         return enable, views
@@ -149,6 +166,12 @@ class CaptureSetupDialog(QDialog):
         key = self.fmt_combo.currentData() if self.fmt_combo is not None else STILL_FORMAT
         return STILL_FORMATS.get(key, STILL_FORMATS[STILL_FORMAT])["kb"] / STILL_FORMATS["png"]["kb"]
 
+    def _codec_factor(self):
+        """Chosen codec's size relative to MJPG, whose bytes the Style estimates were built on."""
+        from utm_capture import VIDEO_CODECS, VIDEO_CODEC
+        key = self.codec_combo.currentData() if self.codec_combo is not None else VIDEO_CODEC
+        return VIDEO_CODECS.get(key, VIDEO_CODECS[VIDEO_CODEC])["kb"] / VIDEO_CODECS["mjpg"]["kb"]
+
     def _refresh(self):
         png_keys = self.selected(self.png_views)
         avi_keys = self.selected(self.avi_views)
@@ -157,7 +180,10 @@ class CaptureSetupDialog(QDialog):
             _lbl.setText(f"~{self.make_style(_k).gb_per_min(png=True) * _f:.2f} GB/min")
         png_gb = sum(self.make_style(k).gb_per_min(png=True) * _f for k in png_keys) \
             if self.png_on.isChecked() else 0.0
-        avi_gb = sum(self.make_style(k).gb_per_min() for k in avi_keys) \
+        _v = self._codec_factor()
+        for _k, _lbl in getattr(self, "avi_rate_lbls", {}).items():
+            _lbl.setText(f"~{self.make_style(_k).gb_per_min() * _v:.2f} GB/min")
+        avi_gb = sum(self.make_style(k).gb_per_min() * _v for k in avi_keys) \
             if self.avi_on.isChecked() else 0.0
         total = png_gb + avi_gb
         col = "#2f9e44" if total < WARN_GB_PER_MIN else (
@@ -210,6 +236,8 @@ class CaptureSetupDialog(QDialog):
         cap.png_styles = [self.make_style(k) for k in self.selected(self.png_views)]
         if self.fmt_combo is not None:
             cap.still_format = self.fmt_combo.currentData()
+        if self.codec_combo is not None:
+            cap.video_codec = self.codec_combo.currentData()
         cap.video_styles = [self.make_style(k) for k in self.selected(self.avi_views)]
         if self.folder.text():
             cap.root = self.folder.text()

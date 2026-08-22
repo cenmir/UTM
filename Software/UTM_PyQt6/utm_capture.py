@@ -86,6 +86,33 @@ STILL_FORMATS = {
 }
 STILL_FORMAT = "tiff"
 
+# ---- video codecs ------------------------------------------------------------------------------
+# Measured on this machine over 30 real S26 frames, width padded to even so nothing is cropped.
+# "identical" is the share of pixels that survive a write/read round trip unchanged:
+#
+#     codec   identical   kB/frame   encode    per 125 s run
+#     FFV1      100.0 %       228     9.7 ms       0.6 GB     <- default: lossless
+#     Y800      100.0 %       964     0.8 ms       2.4 GB     <- lossless, raw, cheapest CPU
+#     MJPG       51.8 %        38     2.6 ms       0.1 GB     <- lossy; small, for review only
+#
+# Everything else that claims lossless FAILED here and is deliberately not offered: HuffYUV,
+# FFVHuff and both Ut Video variants all returned 72.4 % (they round-trip through YUV and lose
+# greyscale precision in this build), lossless JPEG silently fell back to MJPG, and Lagarith and
+# raw DIB would not open at all. A codec that says lossless and is not is worse than an honest
+# lossy one, so only the two verified at 100.0 % are listed as lossless.
+#
+# FFV1 goes in MKV rather than AVI: same bytes and the same 100.0 %, but AVI has no standard way
+# to carry FFV1 and some players refuse it.
+VIDEO_CODECS = {
+    "ffv1": {"fourcc": "FFV1", "ext": ".mkv", "lossless": True,  "kb": 228,
+             "label": "FFV1 (lossless)"},
+    "y800": {"fourcc": "Y800", "ext": ".avi", "lossless": True,  "kb": 964,
+             "label": "Raw Y800 (lossless, no encoding)"},
+    "mjpg": {"fourcc": "MJPG", "ext": ".avi", "lossless": False, "kb": 38,
+             "label": "MJPG (lossy — for review only)"},
+}
+VIDEO_CODEC = "ffv1"
+
 
 class Style:
     """How a frame is processed before it is written. Applied in the WORKER thread.
@@ -327,23 +354,42 @@ PngSink = StillSink          # historical name; it no longer only writes PNG
 
 
 class VideoSink(_Sink):
-    """The whole run as one AVI. Grayscale in, isColor=False — no needless BGR expansion."""
+    """The whole run as one video. Grayscale in, isColor=False — no needless BGR expansion.
 
-    def __init__(self, path, size, fps, buffer=DEFAULT_BUFFER, style=None):
+    ODD WIDTHS ARE PADDED, NOT CROPPED. Every codec here works in even-width blocks, so a 419 px
+    ROI came back 418 and the outermost column was silently gone. Padding to 420 with a copy of the
+    last column keeps the frame whole; `true_width` records what to crop back to, and the manager
+    writes it into run.json so a reader can recover the exact frame without guessing.
+    """
+
+    def __init__(self, path, size, fps, buffer=DEFAULT_BUFFER, style=None, codec=None):
         super().__init__(buffer)
         self.path = path
         self.style = style or style_raw()
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        self._vw = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*VIDEO_FOURCC), fps, size, False)
+        self.codec = codec if codec in VIDEO_CODECS else VIDEO_CODEC
+        spec = VIDEO_CODECS[self.codec]
+        w, h = size
+        self.true_width = w
+        self._pad = w % 2                       # 0 or 1 extra column
+        base, ext = os.path.splitext(path)
+        self.path = base + spec["ext"]
+        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+        self._vw = cv2.VideoWriter(self.path, cv2.VideoWriter_fourcc(*spec["fourcc"]),
+                                   fps, (w + self._pad, h), False)
         if not self._vw.isOpened():
-            self.error = f"could not open {VIDEO_FOURCC} writer for {path}"
+            self.error = (f"could not open a {spec['label']} writer for {self.path} — "
+                          f"this OpenCV build may lack the codec")
             self._vw = None
             return
         self._start()
 
     def _write(self, item):
-        if self._vw is not None:
-            self._vw.write(self.style.apply(item[0]))
+        if self._vw is None:
+            return
+        f = self.style.apply(item[0])
+        if self._pad:
+            f = cv2.copyMakeBorder(f, 0, 0, 0, self._pad, cv2.BORDER_REPLICATE)
+        self._vw.write(f)
 
     def _close(self):
         if self._vw is not None:
@@ -369,6 +415,9 @@ class CaptureManager:
         # Which lossless still format the next run writes. All choices are lossless; see
         # STILL_FORMATS for the measured size/CPU trade-off. Set from the capture-settings dialog.
         self.still_format = STILL_FORMAT
+        # Which video codec. FFV1 by default so the video is a MEASUREMENT and not just a preview;
+        # MJPG remains available for a small review copy. See VIDEO_CODECS.
+        self.video_codec = VIDEO_CODEC
         self._run_dir = None
         self.png_styles = [style_raw()]
         self.video_styles = [style_raw()]
@@ -422,6 +471,7 @@ class CaptureManager:
             sub = "frames" if st.key == "raw" else f"frames_{st.key}"
             self.pngs.append(StillSink(os.path.join(d, sub), style=st,
                                        fmt=self.still_format))
+        write_manifest(d, {"still_format": self.still_format, "still_lossless": True})
         return [p.path for p in self.pngs]
 
     def start_video(self, size, label=None):
@@ -431,8 +481,29 @@ class CaptureManager:
         d = self.run_dir(label)
         self.videos = []
         for st in (self.video_styles or [style_raw()]):
-            name = "video.avi" if st.key == "raw" else f"video_{st.key}.avi"
-            self.videos.append(VideoSink(os.path.join(d, name), size, self.fps, style=st))
+            name = "video" if st.key == "raw" else f"video_{st.key}"
+            v = VideoSink(os.path.join(d, name), size, self.fps, style=st,
+                          codec=self.video_codec)
+            # A missing codec must not silently cost the operator the recording. Fall back to
+            # MJPG, which every build has, and leave the error on the sink so the UI can say the
+            # video is LOSSY — a lossy recording the operator knows about is recoverable, one
+            # they believe is lossless is not.
+            if v.error and self.video_codec != "mjpg":
+                msg = v.error
+                v = VideoSink(os.path.join(d, name), size, self.fps, style=st, codec="mjpg")
+                v.error = f"{msg}; fell back to MJPG, which is LOSSY"
+            self.videos.append(v)
+        # Make the folder self-describing. `true_width` is the one a reader cannot guess: the file
+        # is an even number of pixels wide and the last column is padding, so without this someone
+        # re-analysing the video months from now would measure a column that was never real.
+        used = {v.codec for v in self.videos}
+        write_manifest(d, {
+            "video_codec": sorted(used),
+            "video_lossless": all(VIDEO_CODECS[c]["lossless"] for c in used),
+            "video_true_width": self.videos[0].true_width if self.videos else None,
+            "video_padded_width": (self.videos[0].true_width + self.videos[0]._pad)
+                                  if self.videos else None,
+        })
         return [v.path for v in self.videos]
 
     def stop_png(self):
