@@ -3616,6 +3616,82 @@ footer(s, "SF17 is absent by design: it was carded and retired the same day, bec
           "be something the OPERATOR invokes or that acts on the machine during a run.")
 pageno(s)
 
+
+# =====================================================================================
+# SEGMENT: WHAT THE CAPTURE WRITES — p250-251
+# =====================================================================================
+import capture_format_plots as CFP                                                 # noqa: E402
+import utm_capture as UCAP                                                         # noqa: E402
+CFP.fig_stills(); CFP.fig_video()
+_SFMT, _VCOD = UCAP.STILL_FORMATS, UCAP.VIDEO_CODECS
+
+# ---- p250: still image formats ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "WHAT THE CAPTURE WRITES — STILL IMAGES")
+tb(s, 0.4, 1.13, 12.55, 0.44,
+   "Three formats, and EVERY ONE OF THEM IS LOSSLESS — none changes a pixel. The choice is bytes "
+   "against CPU, never image quality. PNG in particular was never lossy; that is the "
+   "misconception this slide exists to kill.", fs=12, italic=True, colour=GREY_TEXT)
+
+img_fit(s, _os.path.join("documentation", "cap_still_formats.png"), 0.40, 1.66, 12.55, 2.62)
+
+table(s, 0.4, 4.46, 12.55, 1.30,
+      [["Format", "Size / frame", "CPU to write", "Lossless", "When to pick it"],
+       ["TIFF, uncompressed  ← default", "%.2f MB" % (_SFMT["tiff"]["kb"] / 1024),
+        "%.1f ms" % _SFMT["tiff"]["ms"], "yes",
+        "Default. The file IS the sensor bytes, and it is the cheapest to write by far."],
+       ["TIFF, LZW", "%.2f MB" % (_SFMT["tiff_lzw"]["kb"] / 1024),
+        "%.1f ms" % _SFMT["tiff_lzw"]["ms"], "yes",
+        "Long runs, or when a session has to fit on a stick — same pixels, a third of the disk."],
+       ["PNG", "%.2f MB" % (_SFMT["png"]["kb"] / 1024),
+        "%.1f ms" % _SFMT["png"]["ms"], "yes",
+        "What the rig wrote until 2026-08-21. Kept for tools that will not read TIFF."]],
+      cw=[2.5, 1.3, 1.3, 1.0, 6.45], hf=10, bf=9.5)
+
+banner(s, 0.4, 5.94, 12.55, 0.55,
+       "Switching the default from PNG to uncompressed TIFF cost nothing and saved four fifths of "
+       "the CPU: same pixels, same size on disk, %.1f ms instead of %.1f."
+       % (_SFMT["tiff"]["ms"], _SFMT["png"]["ms"]),
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
+footer(s, "Measured on a real 419×2348 frame from S26. A binary speckle view is written compressed "
+          "whichever format is chosen — uncompressed TIFF on a two-tone frame would waste the same "
+          "23× that PNG level 1 was introduced to capture.")
+pageno(s)
+
+# ---- p251: video codecs ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "WHAT THE CAPTURE WRITES — VIDEO")
+tb(s, 0.4, 1.13, 12.55, 0.44,
+   "Here the choice DOES change the pixels. The video was MJPG until 2026-08-21, and MJPG is "
+   "lossy — the panel below shows exactly where it loses the image, and it is not a subtle place.",
+   fs=12, italic=True, colour=GREY_TEXT)
+
+img_fit(s, _os.path.join("documentation", "cap_video_codecs.png"), 0.40, 1.62, 12.55, 2.72)
+
+table(s, 0.4, 4.52, 12.55, 1.30,
+      [["Codec", "Pixels kept", "Size / frame", "CPU", "File", "When to pick it"],
+       ["FFV1  ← default", "%.1f %%" % _VCOD["ffv1"]["identical"],
+        "%.2f MB" % (_VCOD["ffv1"]["kb"] / 1024), "%.1f ms" % _VCOD["ffv1"]["ms"], ".mkv",
+        "Default. The only codec that is both lossless AND small — use it if the video will be "
+        "re-analysed."],
+       ["Raw Y800", "%.1f %%" % _VCOD["y800"]["identical"],
+        "%.2f MB" % (_VCOD["y800"]["kb"] / 1024), "%.1f ms" % _VCOD["y800"]["ms"], ".avi",
+        "No encoding at all. Pixel-perfect and cheapest on CPU, but 4× the size."],
+       ["MJPG", "%.1f %%" % _VCOD["mjpg"]["identical"],
+        "%.2f MB" % (_VCOD["mjpg"]["kb"] / 1024), "%.1f ms" % _VCOD["mjpg"]["ms"], ".avi",
+        "Tiny and seeks well, so it is fine to WATCH — but never measure from it."]],
+      cw=[1.9, 1.2, 1.3, 0.9, 0.8, 6.45], hf=10, bf=9.5)
+
+banner(s, 0.4, 6.00, 12.55, 0.55,
+       "ALSO FIXED: every codec works in even-width blocks, so the rig's 419 px ROI came back 418 "
+       "and the outermost column was gone for good. Frames are now PADDED to even and run.json "
+       "records the true width, so a reader can crop it back exactly.",
+       fill=YELLOW_WARN, fg=BLACK, fs=11)
+footer(s, "HuffYUV, FFVHuff and both Ut Video variants claim lossless and returned only 72 % "
+          "identical on this build; lossless JPEG silently fell back to MJPG. Only the two "
+          "verified at 100.0 % are offered as lossless.")
+pageno(s)
+
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
     _n = len(prs.slides.__iter__.__self__._sldIdLst)
