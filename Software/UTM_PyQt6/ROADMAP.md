@@ -315,6 +315,26 @@ the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign
 >    ▸ Estimated **12 slides → p248–259**. Overview pair first; the per-feature slides land as the
 >    screenshots arrive, so the deck is never blocked on one of them.
 >
+> 10. **🟡 REVERT `min_circularity` 0.40 → 0.50 WHEN PETG/TPU ENDS.** Loosened 2026-08-22 for the
+>    campaign, in `camera_manager.py` (the Black preset AND the class default, which mirrors it).
+>    ▸ **Why it was loosened.** The PETG dots have a crescent of overspray FUSED to the rim. The dot
+>    is round; dot-plus-crescent is not. On capture `20260822_174204` marker 2 measures 17 131 px²
+>    against a clean dot's 11 140 and scores **0.49–0.51 circularity across the run** — straddling a
+>    0.50 gate, so noise flipped it either side frame by frame and 18 % of frames lost it.
+>    ▸ **Threshold could not fix it:** NO fixed threshold yields exactly two blobs on those frames.
+>    The failure is SHAPE, not brightness. Swept on the real capture, the 2-blob rate went
+>    **0.50 → 81.8 %, 0.45 → 100 %, 0.40 → 100 %, 0.25 → 100 %**, with 3+ blobs staying at 0.0 %
+>    throughout — so 0.40 is mid-plateau, not a cliff, and admits nothing extra.
+>    ▸ **This is a real loosening and must not become permanent.** 0.50 exists to keep grips and
+>    fixture edges out, and it earned its place. It is safe here only because the run is short, Px₀
+>    is set, and the pair-plausibility guards catch a wrong pair anyway.
+>    ▸ **The proper fix is the SPECIMEN, and it should be done before the next batch:** mask around
+>    each dot so overspray cannot land touching it, spray lighter from further back, and use MATTE
+>    white — marker 2's core blows out to 255 from a specular sheen while its rim stays mid-grey. A
+>    clean dot scores **0.76** and needs none of this.
+>    ▸ Revert together with the note in `camera_manager.py`, and re-run `black_preset_check` and
+>    `petg_tracking_check`.
+>
 > **✅ The E fit window — DECIDED AND IMPLEMENTED 2026-08-18.** `utm_analysis.analyze()` now
 >   reports the **steepest straight run** as `E`, keeping the old fixed-window value beside it as
 >   `E_fixed` so no historical number is lost. Registry re-scanned; deck **p223–224** (evidence) and

@@ -99,9 +99,25 @@ class CameraManager(QObject):
             "mask_x": None,
             "min_area": 2000,
             "max_area": 200000,
-            # 0.5, matching White. It was 0.3 to be forgiving on a narrow crop; on the full ROI more
-            # background is in frame, so the looser test is now a liability rather than a help.
-            "min_circularity": 0.5,
+            # ⚠ TEMPORARY 0.40 FOR THE PETG/TPU CAMPAIGN — put back to 0.50 when it ends.
+            # Roadmap item 10 carries the revert.
+            #
+            # The PETG specimens sprayed on 2026-08-22 have a crescent of overspray fused to the rim
+            # of each dot. The dot itself is round; the dot-plus-crescent is not. Measured on the
+            # capture at 20260822_174204: marker 2 is 17 131 px² against a clean dot's 11 140, and
+            # scores circularity 0.49-0.51 across the run — straddling a 0.50 gate, so sensor noise
+            # flipped it either side frame by frame and 18 % of frames lost it.
+            #
+            # Threshold cannot fix this: NO fixed threshold yields exactly two blobs on those
+            # frames, because the failure is shape and not brightness. Swept on the real capture,
+            # 2-blob rate against min_circularity:
+            #     0.50 -> 81.8 %   0.45 -> 100 %   0.40 -> 100 %   0.25 -> 100 %
+            # and NOTHING extra is admitted anywhere in that range (3+ blobs stays at 0.0 %), so
+            # 0.40 sits mid-plateau rather than on a cliff.
+            #
+            # This is a REAL loosening and the right long-term fix is the specimen: mask around each
+            # dot so overspray cannot land touching it, and use matte paint. A clean dot scores 0.76.
+            "min_circularity": 0.40,
         },
     }
 
@@ -138,7 +154,7 @@ class CameraManager(QObject):
     PAIR_STEP_FLOOR_PX = 30.0        # always allow this much, so noise alone can never lock it out
     MIN_AREA = 2000
     MAX_AREA = 200000
-    MIN_CIRCULARITY = 0.5
+    MIN_CIRCULARITY = 0.40      # ⚠ temporary, matches SPECIMEN_PRESETS["Black"] — see the note there
 
     def __init__(self):
         super().__init__()
