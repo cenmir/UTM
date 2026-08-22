@@ -83,6 +83,27 @@ def steps(app):
                 f"currently {mode} — pick this BEFORE arming capture, the speckle video "
                 f"follows it. White = dark dots on light PLA, Black = the reverse."])
 
+    # Auto-calibrate. OPTIONAL, and placed here because it needs the camera live and the specimen
+    # mode already chosen, but nothing later depends on it. It is worth offering rather than
+    # leaving in a menu: exposure and threshold carry over from whatever ran last, and a value
+    # measured on a different specimen looks exactly like one measured on this one.
+    exp = getattr(cm, "EXPOSURE_TIME", None)
+    thr = getattr(cm, "THRESHOLD", None)
+    otsu = False
+    try:
+        import cv2 as _cv2
+        otsu = bool(getattr(cm, "THRESHOLD_TYPE", 0) & _cv2.THRESH_OTSU)
+    except Exception:
+        pass
+    now = f"{exp/1000:.0f} ms, thr {'auto (Otsu)' if otsu else thr}" if exp else "camera off"
+    if getattr(app, "_autocal_t", None) is not None:
+        detail = f"run for this specimen — now {now}"
+    else:
+        detail = (f"optional · Settings ▸ DIC camera setup ▸ Auto-calibrate. Currently {now}, "
+                  f"carried over from the last run — worth a sweep on a new material or after the "
+                  f"lighting changes")
+    out.append(["autocal", "Auto-calibrate DIC", INFO, detail])
+
     # Preload. After Prepare test the reading is tared to ~0, so the durable evidence that a
     # preload was applied is the load Px₀ was captured at, not the live reading.
     load_now = abs(getattr(app, "current_load", 0.0) or 0.0)

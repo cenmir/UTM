@@ -286,6 +286,12 @@ the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign
 >    (Settings ▸ Capture settings), and the run step naming all three routes — fracture test, a
 >    manual pull, or an advanced mode. Twelve rows, nine of them blocking.
 >    ▸ **✅ RIG-VALIDATED 2026-08-21** — the operator confirms the panel works on the machine.
+>    ▸ **Auto-calibrate added as an OPTIONAL step 2026-08-22**, between choosing the specimen
+>    mode and applying the preload — it needs the camera live and the mode chosen, and nothing
+>    after it depends on it. INFO, so it can never gate a test. It reads the live exposure and
+>    threshold and says they were **carried over from the last run** until it has been used,
+>    because a value measured on a different specimen looks exactly like one measured on this
+>    one. `_autocal_t` is stamped on apply, the same durable-trace trick as `_prepared_t`.
 > 8. **✅ Registry hygiene — DONE 2026-08-18**, as part of the S27/S28 analysis. **28 → 24 rows**:
 >    the duplicate saves of one run (S27 ×2, S28 ×3, S12 ×2) are gone, so no specimen is
 >    double-weighted in an average any more; S27/S28 carry `infill_pct = 50` instead of the 100 the

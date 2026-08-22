@@ -5230,6 +5230,11 @@ class UTMApplication(QMainWindow):
         # applied the number to a field cv2.threshold ignores — the calibration reported a change it
         # had not made.
         cm.THRESHOLD_TYPE = (base_type | cv2.THRESH_OTSU) if keep_otsu else base_type
+        # Stamped so the guided wizard can tell "calibrated for THIS specimen" from "still on
+        # whatever the last one left behind". Same pattern as _prepared_t: the calibration changes
+        # camera state that has no other durable trace, since a threshold looks identical whether
+        # it was measured a minute ago or typed in last month.
+        self._autocal_t = time.monotonic()
         _rule = "auto (Otsu)" if keep_otsu else f"fixed {new_thr:.0f}"
         self.append_to_console(
             f"[Camera auto-cal] applied: exposure {start_exp/1000:.1f} → {new_exp/1000:.1f} ms, "
