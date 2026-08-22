@@ -19,7 +19,7 @@ import shutil
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QCheckBox,
                              QGroupBox, QPushButton, QDialogButtonBox, QFileDialog, QLineEdit,
-                             QComboBox)
+                             QComboBox, QTextBrowser)
 
 KEYS = ("raw", "speckle", "boost")
 WARN_GB_PER_MIN = 2.5      # amber past this
@@ -42,13 +42,15 @@ class CaptureSetupDialog(QDialog):
 
         cols = QHBoxLayout()
         self.png_on, self.png_views = self._sink_box(
-            cols, "PNG stills", armed[0],
+            cols, "Still images", armed[0],
             [s.key for s in cap.png_styles], png=True,
-            note="Lossless. The archival record — every other view can be derived from Raw offline.")
+            note="Always lossless. The archival record — every other view can be derived from "
+                 "Raw offline. Press ? for the trade-offs.")
         self.avi_on, self.avi_views = self._sink_box(
-            cols, "AVI video", armed[1],
+            cols, "Video", armed[1],
             [s.key for s in cap.video_styles], png=False,
-            note="MJPG, intra-frame, so extensometer software can seek it.")
+            note="FFV1 by default — lossless, so the video can be measured from, not just "
+                 "watched. Press ? for the trade-offs.")
         lay.addLayout(cols)
 
         # ---- where -----------------------------------------------------------------------------
@@ -81,7 +83,7 @@ class CaptureSetupDialog(QDialog):
     def _sink_box(self, parent_layout, title, on, active_keys, *, png, note):
         box = QGroupBox(title)
         g = QGridLayout(box)
-        enable = QCheckBox(f"Auto-start {title.split()[0]} with each test")
+        enable = QCheckBox("Auto-start " + ("stills" if png else "video") + " with each test")
         enable.setChecked(on)
         enable.toggled.connect(self._refresh)
         g.addWidget(enable, 0, 0, 1, 2)
@@ -104,6 +106,10 @@ class CaptureSetupDialog(QDialog):
             self.fmt_combo = QComboBox()
             for k, spec in STILL_FORMATS.items():
                 self.fmt_combo.addItem(spec["label"], k)
+                # per-ITEM tooltip: the list is where the choice is actually made, so the
+                # explanation has to be reachable without closing it again
+                self.fmt_combo.setItemData(self.fmt_combo.count() - 1,
+                                           spec["why"], Qt.ItemDataRole.ToolTipRole)
             cur = getattr(self.cap, "still_format", "tiff")
             i0 = self.fmt_combo.findData(cur)
             self.fmt_combo.setCurrentIndex(i0 if i0 >= 0 else 0)
@@ -111,7 +117,9 @@ class CaptureSetupDialog(QDialog):
                 "All three keep every pixel. TIFF uncompressed costs a fifth of PNG's CPU for the "
                 "same size on disk; TIFF LZW is the same pixels in about a third of the space.")
             self.fmt_combo.currentIndexChanged.connect(self._refresh)
-            g.addWidget(self.fmt_combo, 2, 1)
+            _fr = QHBoxLayout(); _fr.addWidget(self.fmt_combo, 1)
+            _fr.addWidget(self._help_button("still"))
+            g.addLayout(_fr, 2, 1)
             row0 = 3
         else:
             from utm_capture import VIDEO_CODECS
@@ -119,6 +127,8 @@ class CaptureSetupDialog(QDialog):
             self.codec_combo = QComboBox()
             for k, spec in VIDEO_CODECS.items():
                 self.codec_combo.addItem(spec["label"], k)
+                self.codec_combo.setItemData(self.codec_combo.count() - 1,
+                                             spec["why"], Qt.ItemDataRole.ToolTipRole)
             cur = getattr(self.cap, "video_codec", "ffv1")
             i0 = self.codec_combo.findData(cur)
             self.codec_combo.setCurrentIndex(i0 if i0 >= 0 else 0)
@@ -127,7 +137,9 @@ class CaptureSetupDialog(QDialog):
                 "lossy: only about half the pixels survive it, so use it for review, never for "
                 "re-analysis.")
             self.codec_combo.currentIndexChanged.connect(self._refresh)
-            g.addWidget(self.codec_combo, 2, 1)
+            _cr = QHBoxLayout(); _cr.addWidget(self.codec_combo, 1)
+            _cr.addWidget(self._help_button("video"))
+            g.addLayout(_cr, 2, 1)
             row0 = 3
         for i, key in enumerate(KEYS):
             st = self.make_style(key)
@@ -165,6 +177,71 @@ class CaptureSetupDialog(QDialog):
         from utm_capture import STILL_FORMATS, STILL_FORMAT
         key = self.fmt_combo.currentData() if self.fmt_combo is not None else STILL_FORMAT
         return STILL_FORMATS.get(key, STILL_FORMATS[STILL_FORMAT])["kb"] / STILL_FORMATS["png"]["kb"]
+
+    def _help_button(self, kind):
+        """A '?' beside the dropdown. The tooltips say which to pick; this says WHY, with numbers.
+
+        Both exist on purpose. A tooltip has to be short enough to read while the mouse is moving,
+        and none of these choices can be justified in one line — the whole point is a trade between
+        bytes, CPU and whether the file can be measured from. The numbers come from the format
+        tables, so the help cannot drift from what the code actually does.
+        """
+        b = QPushButton("?")
+        b.setFixedWidth(24)
+        b.setToolTip("What do these mean?")
+        b.clicked.connect(lambda: self._show_help(kind))
+        return b
+
+    def _show_help(self, kind):
+        from utm_capture import STILL_FORMATS, VIDEO_CODECS, STILL_FORMAT, VIDEO_CODEC
+        if kind == "still":
+            table, default, title = STILL_FORMATS, STILL_FORMAT, "Still image formats"
+            head = ("<p><b>Every option here is LOSSLESS.</b> None of them changes a pixel, so this "
+                    "is a choice about file size and CPU cost — never about image quality. "
+                    "PNG in particular was never lossy.</p>")
+            cols = "<th>Size / frame</th><th>To write</th>"
+        else:
+            table, default, title = VIDEO_CODECS, VIDEO_CODEC, "Video codecs"
+            head = ("<p><b>Only FFV1 and Y800 are lossless</b> — both verified pixel-identical on "
+                    "this machine. MJPG loses about half the pixels, so a measurement must never be "
+                    "taken from an MJPG file.<br>Other 'lossless' codecs were tested and rejected: "
+                    "HuffYUV, FFVHuff and Ut Video all returned only 72 % identical here.</p>")
+            cols = "<th>Size / frame</th><th>To write</th><th>Pixels kept</th>"
+
+        rows = ""
+        for key, spec in table.items():
+            star = " &nbsp;<i>(default)</i>" if key == default else ""
+            ident = ("<td align=center><b>%.1f %%</b></td>" % spec["identical"]
+                     if "identical" in spec else "")
+            if "identical" in spec and not spec["lossless"]:
+                ident = "<td align=center style='color:#c0392b'><b>%.1f %%</b></td>" % spec["identical"]
+            rows += (f"<tr><td valign=top><b>{spec['label']}</b>{star}<br>"
+                     f"<span style='color:#777'>{spec['why']}</span></td>"
+                     f"<td align=center valign=top>{spec['kb']} kB</td>"
+                     f"<td align=center valign=top>{spec['ms']} ms</td>{ident}</tr>"
+                     "<tr><td colspan=4><hr style='border:0;border-top:1px solid #ddd'></td></tr>")
+
+        # A QDialog with a QTextBrowser, not QMessageBox: the message box sizes itself to its text
+        # and ignores a width hint, which squeezed the description column to about fifteen lines
+        # per row. Here the width is set once and the table gets room to breathe.
+        dlg = QDialog(self)
+        dlg.setWindowTitle(title)
+        dlg.resize(720, 520)
+        v = QVBoxLayout(dlg)
+        view = QTextBrowser()
+        view.setOpenExternalLinks(False)
+        view.setHtml(
+            f"{head}"
+            f"<table cellspacing=8 width='100%'><tr><th align=left>Option</th>{cols}</tr>"
+            f"{rows}</table>"
+            "<p style='color:#777'>Measured on a real 419&times;2348 frame from S26. Size is per "
+            "frame; the rig grabs about 20 of them a second, so a 2-minute test writes roughly "
+            "2 400 of them.</p>")
+        v.addWidget(view)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        bb.rejected.connect(dlg.reject); bb.accepted.connect(dlg.accept)
+        v.addWidget(bb)
+        dlg.exec()
 
     def _codec_factor(self):
         """Chosen codec's size relative to MJPG, whose bytes the Style estimates were built on."""

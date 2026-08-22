@@ -78,11 +78,21 @@ DEFAULT_BUFFER = 90          # ~2.6 s of slack at 35 fps before the oldest frame
 # write time.
 STILL_FORMATS = {
     "tiff":     {"ext": ".tif", "params": [cv2.IMWRITE_TIFF_COMPRESSION, 1],   # 1 = COMPRESSION_NONE
-                 "label": "TIFF, uncompressed", "kb": 962},
+                 "label": "TIFF, uncompressed", "kb": 962, "ms": 1.5,
+                 "why": "No compression at all, so the file IS the sensor bytes. Cheapest to "
+                        "write by a wide margin — a fifth of PNG’s cost — for the same size on "
+                        "disk. The default, and the right choice unless disk space is the "
+                        "problem."},
     "tiff_lzw": {"ext": ".tif", "params": [cv2.IMWRITE_TIFF_COMPRESSION, 5],   # 5 = LZW, lossless
-                 "label": "TIFF, LZW (lossless, ~1/3 the size)", "kb": 355},
+                 "label": "TIFF, LZW (lossless, ~1/3 the size)", "kb": 355, "ms": 7.6,
+                 "why": "Identical pixels in about a third of the space. Costs the same as PNG "
+                        "to write. Pick this for long runs, or when a session has to fit on a "
+                        "stick."},
     "png":      {"ext": ".png", "params": None,                                # per-style level
-                 "label": "PNG (lossless)", "kb": 970},
+                 "label": "PNG (lossless)", "kb": 970, "ms": 7.3,
+                 "why": "What the rig wrote until 2026-08-21. Also lossless — PNG never "
+                        "discarded a pixel — but five times the CPU of TIFF for the same file "
+                        "size. Kept for tools that will not read TIFF."},
 }
 STILL_FORMAT = "tiff"
 
@@ -104,12 +114,22 @@ STILL_FORMAT = "tiff"
 # FFV1 goes in MKV rather than AVI: same bytes and the same 100.0 %, but AVI has no standard way
 # to carry FFV1 and some players refuse it.
 VIDEO_CODECS = {
-    "ffv1": {"fourcc": "FFV1", "ext": ".mkv", "lossless": True,  "kb": 228,
-             "label": "FFV1 (lossless)"},
-    "y800": {"fourcc": "Y800", "ext": ".avi", "lossless": True,  "kb": 964,
-             "label": "Raw Y800 (lossless, no encoding)"},
-    "mjpg": {"fourcc": "MJPG", "ext": ".avi", "lossless": False, "kb": 38,
-             "label": "MJPG (lossy — for review only)"},
+    "ffv1": {"fourcc": "FFV1", "ext": ".mkv", "lossless": True,  "kb": 228, "ms": 9.7,
+             "identical": 100.0, "label": "FFV1 (lossless)",
+             "why": "Every pixel survives, at a quarter the size of raw. The only codec here "
+                    "that is both lossless and small, so it is the default and the one to use "
+                    "if the video will be re-analysed. Writes .mkv, because AVI has no standard "
+                    "way to carry FFV1."},
+    "y800": {"fourcc": "Y800", "ext": ".avi", "lossless": True,  "kb": 964, "ms": 0.8,
+             "identical": 100.0, "label": "Raw Y800 (lossless, no encoding)",
+             "why": "No encoding at all — the frames go straight to disk. Also pixel-perfect, "
+                    "and by far the cheapest on CPU, but four times the size of FFV1. Choose it "
+                    "only if the machine cannot keep up."},
+    "mjpg": {"fourcc": "MJPG", "ext": ".avi", "lossless": False, "kb": 38, "ms": 2.6,
+             "identical": 51.8, "label": "MJPG (lossy — for review only)",
+             "why": "Tiny, and every frame seeks independently, which is what review software "
+                    "expects. But only about half the pixels survive it and hard edges ring, so "
+                    "never measure from an MJPG file. What the rig wrote until 2026-08-21."},
 }
 VIDEO_CODEC = "ffv1"
 
@@ -126,11 +146,14 @@ class Style:
     level for both would either throw away that 23x or halve the achievable frame rate.
     """
 
-    # Rough bytes-per-frame, MEASURED at the rig's 419x2348 ROI on a representative speckle frame
-    # and rounded UP. They exist so the UI can warn about disk before a run rather than after, so
-    # erring high is the safe direction. Real size moves with speckle density and sensor noise.
+    # Bytes per frame at the rig's 419x2348 ROI. `avi_kb` is the MJPG size, which is also the
+    # baseline the codec estimates scale from, so it has to be REAL: the earlier values (raw 320,
+    # speckle 105, boost 380) were guesses rounded up and came out ~9x high, which made the
+    # dialog quote 3.85 GB/min for an FFV1 stream that actually costs 0.47. Re-measured 2026-08-22
+    # from the S26 run on disk: raw 36.1, speckle 35.0, boost 83.5 kB/frame over 1 682 frames.
+    # Rounded up a little, because erring high is the safe direction for a disk warning.
     def __init__(self, key, label, transform=None, png_compression=PNG_COMPRESSION, note="",
-                 png_kb=970, avi_kb=320):
+                 png_kb=970, avi_kb=38):
         self.key = key
         self.label = label
         self.transform = transform
@@ -161,7 +184,7 @@ class Style:
 def style_raw():
     return Style("raw", "Raw (as the sensor sees it)", None, 0,
                  "everything is kept; the only view you can re-derive the others from",
-                 png_kb=970, avi_kb=320)
+                 png_kb=970, avi_kb=38)
 
 
 def style_speckle(threshold=150, thresh_type=None, adaptive=True, ema=0.15):
@@ -201,7 +224,7 @@ def style_speckle(threshold=150, thresh_type=None, adaptive=True, ema=0.15):
                  _adaptive if adaptive else _fixed, 1,
                  "markers only, cut level follows the lighting; ~20x smaller on disk, "
                  "but grey detail is gone for good",
-                 png_kb=45, avi_kb=105)
+                 png_kb=45, avi_kb=36)
 
 
 def style_boost(clip=2.5, tile=8):
@@ -210,7 +233,7 @@ def style_boost(clip=2.5, tile=8):
     _c = _cv2.createCLAHE(clipLimit=clip, tileGridSize=(tile, tile))
     return Style("boost", "Boosted contrast (CLAHE)", lambda f: _c.apply(f), 0,
                  "helps when the LEDs are uneven; keeps greys, so still re-analysable",
-                 png_kb=970, avi_kb=380)
+                 png_kb=970, avi_kb=85)
 
 
 STYLES = ("raw", "speckle", "boost")
