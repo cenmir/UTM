@@ -535,5 +535,22 @@
     "ef": 0.0525,
     "tough_kJm3": 2184,
     "anchor_N": 318
+  },
+  {
+    "csv": "Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/Specimen_S35_V5_TPU_Spray_Video14/UTM_Test_20260824_151910.csv",
+    "specimen": "S35",
+    "test": null,
+    "date": "2026-08-24 15:15:56",
+    "material": "TPU",
+    "infill_pct": 100.0,
+    "area_mm2": 80.0,
+    "gauge_mm": 80.0,
+    "comment": null,
+    "UTS_MPa": 2.25,
+    "sy_MPa": 0.98,
+    "E_GPa": 0.025,
+    "ef": 0.1262,
+    "tough_kJm3": 178,
+    "anchor_N": 20
   }
 ]

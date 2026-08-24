@@ -69,6 +69,12 @@ def read_meta(path):
                         meta["material"] = s.split("Material:", 1)[1].split(",")[0].strip()
                     if "infill:" in low:                       # recorded label only (not used in any calc)
                         meta["infill"] = s.split("Infill:", 1)[1].split("%")[0].strip()
+                elif "px0 reference" in low and "captured at" in low:
+                    # "# DIC Px0 reference: AFTER preload (captured at 20 N)". This is the
+                    # preload that Prepare test then tared away, so it IS the force anchor for
+                    # any run that has no post-fracture tail to derive one from.
+                    meta["px0_load"] = float(s.split("captured at", 1)[1].split("N")[0].strip())
+                    meta["px0_after_preload"] = "after preload" in low
                 elif low.startswith("calibration"):
                     meta["scale"] = s.split("Scale:", 1)[1].split(",")[0].strip()
                     meta["offset"] = s.split("Offset:", 1)[1].strip()
@@ -231,7 +237,11 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
     """Full tensile analysis of one test. `source` is a CSV path OR an already-read list
     of sample dicts. Returns a dict of engineering properties:
 
-        anchor    N     force-anchor self-calibration (= -mean post-fracture force)
+        anchor    N     force-anchor self-calibration. -mean(post-fracture force) when the
+                        specimen broke; otherwise the preload Px0 was frozen at, read from
+                        the CSV header (see anchor_src). Both recover the same quantity:
+                        the preload that Prepare test tared away.
+        anchor_src -    where the anchor came from
         E         GPa   elastic modulus (linfit over ec in [0.0005, 0.004])
         E_R2      -     R^2 of the elastic fit
         sy        MPa   0.2 %-offset yield stress
@@ -260,7 +270,18 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
     post = [d for d in data[fr_i + 1:] if d["t"] > t_fr + 2.0 and d["lpx"] > 100]
     if not post:                                   # DIC dropped out post-fracture -> force only
         post = [d for d in data[fr_i + 1:] if d["t"] > t_fr + 2.0]
-    anchor = -mean(d["F"] for d in post) if post else 0.0
+    if post:
+        anchor = -mean(d["F"] for d in post)
+        anchor_src = "post-fracture tail"
+    else:
+        # No fracture, so no unloaded tail — the case for every elastomer and every
+        # non-destructive run. The preload is still known: Px0 records the load it was frozen
+        # at, and Prepare test tared exactly that away, so it is the same number the tail would
+        # have given. Without this the reported stress is short by preload/area for the whole
+        # curve — 0.25 MPa on TPU at 20 N, which is 12 % of its 2.1 MPa peak.
+        _m = read_meta(source) if isinstance(source, str) else {}
+        anchor = float(_m.get("px0_load") or 0.0) if _m.get("px0_after_preload") else 0.0
+        anchor_src = "Px0 preload (no fracture)" if anchor else "none"
 
     for d in data:
         d["sig"] = (d["F"] + anchor) / area
@@ -322,7 +343,7 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
     curve = [(d["ecz"] * 100, d["sig"]) for d in test if d["ecz"] > -0.002]   # (strain %, stress) for plots
 
     return {
-        "anchor": anchor, "E": E / 1000, "E_R2": r1, "sy": sy["sig"],
+        "anchor": anchor, "anchor_src": anchor_src, "E": E / 1000, "E_R2": r1, "sy": sy["sig"],
         # The fixed-window value is kept so every historical number stays recoverable from the
         # same call, and so a run can be re-stated on the old basis without re-deriving it.
         "E_fixed": E_fixed / 1000, "E_fixed_R2": r1_fixed,

@@ -7232,6 +7232,36 @@ class UTMApplication(QMainWindow):
                              else QMessageBox.StandardButton.Yes)
         return msg.exec() == QMessageBox.StandardButton.Yes
 
+    def _report_frame_headroom(self):
+        """At Px0, say whether the markers can stay in frame for the whole planned pull."""
+        target = getattr(self, "_stop_travel_mm", None) or self.POLICY_MAX_TRAVEL_MM
+        # Crosshead travel is not all gauge strain - some goes into the shoulders and the grips.
+        # Measured on S35: the gauge took 65 % of the travel. Using the FULL travel here is the
+        # safe direction, since it over-states the strain the markers must survive.
+        eps = target / max(1e-6, self.gauge_length)
+        h = self.camera_manager.frame_headroom(eps)
+        if h is None:
+            return
+        head = (f"[DIC] Framing for a {target:.0f} mm pull ({eps * 100:.0f} % strain): the pair "
+                f"must separate by {h['need']:.0f} px more, and has {h['gap_lo']:.0f} px of frame "
+                f"on one side and {h['gap_hi']:.0f} px on the other.")
+        if h["verdict"] == "ok":
+            self.append_to_console(head + " Both ends can take it — OK whichever end moves.")
+        elif h["verdict"] == "check":
+            tight = "the low" if h["gap_lo"] < h["gap_hi"] else "the high"
+            self.append_to_console(
+                head + f" ⚠ Only ONE side can take it, so this aim works only if the marker at "
+                f"{tight} end is the FIXED one. If the CROSSHEAD end is there, the marker will "
+                f"leave the frame part-way through and the strain trace will simply stop — "
+                f"shift the camera along the specimen until both sides read at least "
+                f"{h['need']:.0f} px, then press Calibrate Px₀ again.")
+        else:
+            self.append_to_console(
+                head + f" ❌ The pair CANNOT fit at that strain at any aim — it needs "
+                f"{h['px0'] + h['need'] + 2 * self.camera_manager.MARKER_R_PX:.0f} px and the frame is "
+                f"{h['span']:.0f} px. Zoom out (move the camera back) so Px₀ is smaller, or lower "
+                f"the travel target.")
+
     def on_tare_dic(self, confirm=False):
         """Freeze Px₀ — the marker separation in pixels that every strain is measured against.
 
@@ -7260,6 +7290,7 @@ class UTMApplication(QMainWindow):
         self.append_to_console(
             f"[DIC] Px₀ = {px0:.1f} px  (gauge {self.gauge_length:.1f} mm → "
             f"{self.camera_manager.px_per_mm:.2f} px/mm), captured at {load:.1f} N")
+        self._report_frame_headroom()
         if self.px0_after_preload():
             area = getattr(self, "cross_sectional_area", 0.0) or 0.0
             self.append_to_console(

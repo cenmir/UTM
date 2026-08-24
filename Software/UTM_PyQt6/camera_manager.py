@@ -245,6 +245,39 @@ class CameraManager(QObject):
                 pass
         print(f"[Camera] Specimen mode set to: {mode}")
 
+    # Radius of a clean marker, measured: a good dot runs ~11 140 px2, so ~60 px. Used only to
+    # decide how close a centroid may get to the frame edge before the blob is clipped.
+    MARKER_R_PX = 60.0
+
+    def frame_headroom(self, target_strain):
+        """Can the marker pair stay in frame all the way to `target_strain`?
+
+        S35 (TPU, 2026-08-24) is why this exists. The pair was frozen 309 px from the edge it
+        would travel toward, and the run lost tracking at 12.6 % strain with 305 px of frame
+        sitting unused at the OTHER end. The frame was long enough; it was aimed wrong, and
+        nothing said so until the specimen had been pulled.
+
+        Returns None if there is nothing to judge yet, else a dict with the two edge gaps, the
+        separation growth the target needs, and a verdict:
+          "ok"    - both gaps hold the growth, so it is safe whichever end turns out to move
+          "check" - the pair FITS but only one gap holds it, so the aim only works if the
+                    marker at the tight end is the stationary one
+          "fail"  - the pair cannot fit at this strain at any aim; the view must be zoomed out
+        """
+        c = getattr(self, "initial_centroids", None)
+        f = getattr(self, "latest_frame", None)
+        if not c or len(c) != 2 or f is None or not self.initial_distance:
+            return None
+        span = float(f.shape[0])                 # rotated: rows run along the specimen axis
+        lo, hi = sorted(float(p[1]) for p in c)
+        gap_lo = lo - self.MARKER_R_PX
+        gap_hi = span - hi - self.MARKER_R_PX
+        need = self.initial_distance * float(target_strain)
+        verdict = ("ok" if min(gap_lo, gap_hi) >= need
+                   else "check" if gap_lo + gap_hi >= need else "fail")
+        return {"span": span, "gap_lo": gap_lo, "gap_hi": gap_hi, "need": need,
+                "verdict": verdict, "px0": self.initial_distance}
+
     def set_roi(self, roi):
         """Override the sensor crop for this specimen.
 

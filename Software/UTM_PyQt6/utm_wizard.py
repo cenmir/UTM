@@ -18,7 +18,31 @@ so the panel cannot disagree with the app or get stuck out of sync. It is a view
 DONE, NEXT, TODO, INFO = "done", "next", "todo", "info"
 
 # Enough load to call a preload "applied". Well above noise, well below any real preload target.
+# A CEILING, not the threshold itself: see preload_floor().
 PRELOAD_MIN_N = 50.0
+
+# The load cell reads 0.27 N sd with 0.75 N quantisation, so 2 N is unmistakably "loaded" while
+# still being reachable by an elastomer that is barely being held.
+PRELOAD_NOISE_N = 2.0
+
+
+def preload_floor(app):
+    """How much load counts as "preloaded" FOR THIS PROFILE.
+
+    A flat 50 N was wrong the moment a material arrived whose whole preload is 20 N. TPU is
+    preloaded to 20 N deliberately - at PLA's 300 N it would already be pulled through a large
+    part of its elastic range before the tare - so a fixed 50 N floor declared every correctly
+    prepared TPU specimen un-preloaded, and then warned that Px0 had been frozen unloaded when
+    it had been frozen exactly where the operator was told to freeze it.
+
+    Half the target, capped at the old 50 N so nothing changes for a 300 N preload, and floored
+    just above the load cell noise.
+    """
+    try:
+        target = float(app.preloadTargetSpinBox.value())
+    except Exception:
+        return PRELOAD_MIN_N
+    return max(PRELOAD_NOISE_N, min(PRELOAD_MIN_N, 0.5 * target))
 
 
 def _blobs(app):
@@ -107,10 +131,11 @@ def steps(app):
     # Preload. After Prepare test the reading is tared to ~0, so the durable evidence that a
     # preload was applied is the load Px₀ was captured at, not the live reading.
     load_now = abs(getattr(app, "current_load", 0.0) or 0.0)
-    preloaded = load_now >= PRELOAD_MIN_N or (px0_load or 0.0) >= PRELOAD_MIN_N
+    floor = preload_floor(app)
+    preloaded = load_now >= floor or (px0_load or 0.0) >= floor
     add("preload", "Apply preload", preloaded,
-        f"{load_now:.0f} N now" if load_now >= PRELOAD_MIN_N else
-        (f"Px₀ was taken at {px0_load:.0f} N" if (px0_load or 0) >= PRELOAD_MIN_N
+        f"{load_now:.0f} N now" if load_now >= floor else
+        (f"Px₀ was taken at {px0_load:.0f} N" if (px0_load or 0) >= floor
          else "Preload tension — seat the specimen first"))
 
     # Px₀. Under the after-preload convention, freezing it unloaded is the mistake worth naming.
@@ -120,7 +145,7 @@ def steps(app):
     # Prepare test (below) tares the FORCE immediately after, at which point the load it was
     # captured at is gone.
     px0_ok = px0 is not None
-    if px0_ok and after_preload and (px0_load or 0.0) < PRELOAD_MIN_N:
+    if px0_ok and after_preload and (px0_load or 0.0) < floor:
         out.append(["px0", "Calibrate Px₀ — freeze the strain reference", NEXT,
                     f"⚠ frozen at {px0_load or 0:.0f} N — the convention is AFTER preload; "
                     f"press Calibrate Px₀ again"])
