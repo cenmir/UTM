@@ -3914,6 +3914,9 @@ footer(s, "Left: each run fitted over its OWN steepest straight run (shaded) —
           "removes the fit rule from the comparison.")
 pageno(s)
 
+# ---- TPU and the three-material comparison (own file, kept out of this one for length)
+exec(open("documentation/tpu_slides_block.py", encoding="utf-8").read())
+
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
     _n = len(prs.slides.__iter__.__self__._sldIdLst)

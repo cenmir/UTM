@@ -73,3 +73,6 @@ Software/UTM_PyQt6/captures/
 # tracked or generated); the operator drops multi-GB videos in here before travelling, which
 # must never reach git.
 Validation docs/
+
+# PowerPoint slide renders used only to proof-read the deck
+documentation/deck_png_tpu/
