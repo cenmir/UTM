@@ -23,6 +23,14 @@ class TestRecipe:
     gauge_mm: float = 80.0
     preload_N: float = 300.0               # matches the GUI default and recipes/Default.json
     test_speed_mm_s: float = 0.1
+    # How far the DIC will believe the markers travelled before it calls the separation a LOST
+    # MARKER rather than strain, as a percentage. It rides with the profile rather than being a
+    # control of its own because it is not an independent choice - it follows from the material,
+    # exactly like the preload and the speed beside it. 25 % suits PLA and PETG (they fracture
+    # at 4-8 %); an elastomer needs 60 %, which is what recipes/TPU.json carries.
+    #
+    # Recipes written before this field default to 25 %, which is what they all ran at.
+    strain_cap_pct: float = 25.0
     # "manual", or the EXACT advanced-test-mode dropdown label ("Cyclic", "Staircase",
     # "Relaxation", "Creep", "Staircase → FRACTURE", "Progressive cyclic → FRACTURE").
     # Storing the label verbatim keeps load/save a straight lookup with no translation table.

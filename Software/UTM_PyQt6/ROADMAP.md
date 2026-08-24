@@ -321,53 +321,38 @@ the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign
 >    ▸ Estimated **12 slides → p248–259**. Overview pair first; the per-feature slides land as the
 >    screenshots arrive, so the deck is never blocked on one of them.
 >
-> 11. **✅ A MATERIAL SETTING OWNS THE STRAIN WINDOW — no per-test edit, nothing to revert.** Added
->    2026-08-24 at the operator's suggestion, twice: first that TPU should not need a constant
->    edited before every run, then — the sharper point — that it did not belong in the DIC
->    camera's specimen-mode dropdown either. **Specimen mode selects optical POLARITY and a TPU
->    specimen can be printed black or white**; bundling the two would have forced every elastomer
->    to be black. So the window moved to a **Material dropdown in Settings, beside Infill**:
->    PLA and PETG keep the tight 0.85–1.25 × Px₀ and TPU carries 0.85–1.60.
->    ▸ **The dropdown is EDITABLE and there is no `Other`.** The operator’s point: a fixed list
->    cannot name every material this rig will see, and `Other` recorded nothing useful in a
->    header whose whole job is to say what was pulled. Type “Aluminium 6061”, press Enter, and
->    it is a material from then on — remembered, with its own cap, in the list next launch.
->    ▸ **A typed material starts at 25 %, never at the previous material’s value.** The two
->    failure directions are not symmetric. Too tight aborts the run with a visible lost-marker
->    error and costs one specimen. Too loose accepts a marker that jumped to a grip edge as
->    real strain, and that reaches a slide as a wrong ε_f with nothing to show it was wrong.
->    ▸ **The cap is a visible spin box beside the name**, so 25 % is no longer a hidden default,
->    and it is written into the CSV as `# DIC Strain Cap` — a run that aborted mid-pull is only
->    diagnosable afterwards if the ceiling it hit is in the file. Only OVERRIDES are persisted,
->    so editing `MATERIALS` in a later version is not shadowed forever by a stale stored copy.
->    ▸ **Two bugs the checks caught, both invisible in the source.** (a) `currentTextChanged`
->    fires per KEYSTROKE on an editable combo — typing “Aluminium” would have registered nine
->    materials; it is wired to `textActivated` + `editingFinished` instead. (b) `__init__`
->    builds the settings row BEFORE it creates the `CameraManager`, so the restore set the
->    widgets and pushed nothing: the box read 60 % while the DIC sat on 25 %. Now applied again
->    by `_apply_material_to_dic()` the moment the camera exists.
->    ▸ **It fixed a second bug the operator had already paid for by hand.** `utm_registry.py`
->    hard-coded `"material": "PLA"` on every record ever written, and nothing in the UI ever set
+> 11. **✅ THE MATERIAL RIDES WITH THE SETTINGS PROFILE — no per-test edit, nothing to revert.**
+>    Landed 2026-08-24 after the operator rejected two earlier designs, each time for a better
+>    reason than the last. **(a)** A third entry in the DIC specimen-mode dropdown — wrong,
+>    because that dropdown selects optical POLARITY and a TPU specimen can be printed black or
+>    white. **(b)** A Material combo plus a strain-cap box in the settings row — also wrong, and
+>    not merely cluttered: **the material is not an independent choice.** It implies a preload,
+>    a speed, and whether auto-stop makes any sense at all, and every one of those was still a
+>    separate control the operator had to remember to change in step. Two set and one forgotten
+>    is a wasted specimen. **(c)** So `Default` and `TPU` are now SETTINGS PROFILES, pinned to
+>    the top of the Settings dropdown, and picking one moves everything the material implies at
+>    once. `TestRecipe` gained `strain_cap_pct`; recipes written before it default to 25 %,
+>    which is what every test on record actually ran at.
+>    ▸ **What the TPU profile carries, and why each one.** Strain cap **60 %** — TPU reaches the
+>    rig's ~34 % travel limit as REAL strain, and at the default 25 % the DIC would reject every
+>    frame past that as a lost marker, silently, mid-pull. Preload **20 N**, not 300 — TPU is
+>    orders of magnitude less stiff, so 300 N would tare away a large part of the elastic range
+>    the comparison against PLA depends on. Auto-stop **OFF** — the detector watches for a
+>    brittle load collapse and a drawing elastomer never produces one, so it can only misfire.
+>    Gauge and section **unchanged at 80 mm / 80 mm²**, so the curves stay directly comparable.
+>    ▸ **It fixed a bug the operator had already paid for by hand.** `utm_registry.py`
+>    hard-coded `"material": "PLA"` on every record ever written and nothing in the UI ever set
 >    it — which is how S30, S31 and S32, all PETG, entered the registry labelled PLA. The
->    material now travels CSV header → `read_meta` → registry. Old headers carry no `Material:`
->    line and fall back to PLA, which is what they actually were.
->    ▸ The remembered material is re-applied at startup, so a restart cannot leave an elastomer
->    on PLA's window while the dropdown reads TPU — that failure would have surfaced mid-pull,
->    as a lost-marker abort, on a specimen that was tracking perfectly.
->    ▸ **Why an elastomer needs it:** 1.25 means 25 % strain. PLA breaks at 4–6 % and PETG at
->    8 %, so the window never sees anything but a genuinely impossible pair. TPU reaches the
->    rig's ~34 % travel limit as REAL strain and would have every frame past 25 % rejected as
->    "a marker has been lost" — silently, with the readout simply ceasing to update mid-pull.
->    ▸ **The window is now ASYMMETRIC, which made it stricter as well as looser.** Tension only
->    pulls markers apart, so a separation far BELOW Px₀ is not something a tensile test can
->    produce. Measured over every frame of S13: the LOWER bound fired once (a post-fracture
->    frame at 0.063 × Px₀) and the UPPER bound fired NEVER — and S29's mount swap, the
->    incident these guards exist for, sat at 1.11 × Px₀, inside the old window, caught by the
->    RATE guard instead. So the old symmetric ±25 % implied a 0.75 floor where 0.85 is right.
->    ▸ Both specimen dropdowns now build from `SPECIMEN_PRESETS` instead of two hand-written
->    `["White", "Black"]` lists, so the next preset needs one edit rather than three.
->    ▸ `PAIR_MAX_STEP_PX_PER_S` is untouched and needs no per-material value: an elastomer
->    strains enormously but not instantaneously.
+>    material now travels profile → `CameraManager` → CSV header → `read_meta` → registry, with
+>    the cap alongside it as `# DIC Strain Cap` so a run that aborted mid-pull is diagnosable
+>    from the file. Headers with no `Material:` line fall back to PLA, which is what they were.
+>    ▸ **Two bugs the checks caught in design (b) before it was discarded**, both of which read
+>    perfectly in the source, and both worth remembering: `currentTextChanged` fires per
+>    KEYSTROKE on an editable combo (typing "Aluminium" registered nine materials); and
+>    `__init__` builds the settings row BEFORE it creates the `CameraManager`, so a restore that
+>    looked correct set the widgets and pushed nothing — the box read 60 % while the DIC sat on
+>    25 %, and a `hasattr` guard swallowed it silently. **Neither was visible without a check
+>    that drives the widgets and then asserts on the CAMERA, not on the widget.**
 >
 > 10. **🟡 REVERT `min_circularity` 0.40 → 0.50 WHEN PETG/TPU ENDS.** Loosened 2026-08-22 for the
 >    campaign, in `camera_manager.py` (the Black preset AND the class default, which mirrors it).
