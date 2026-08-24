@@ -45,6 +45,17 @@ def preload_floor(app):
     return max(PRELOAD_NOISE_N, min(PRELOAD_MIN_N, 0.5 * target))
 
 
+def _stop_mm(f):
+    """Crosshead travel at which the moving marker reaches the frame edge.
+
+    room px of marker travel -> room/drift px of SEPARATION growth -> /Px0 = strain ->
+    x gauge / share = crosshead mm, since only ~65 % of the travel reaches the gauge.
+    """
+    growth = f["room"] / max(1e-6, f.get("drift") or 1.264)
+    strain = growth / max(1e-6, f.get("px0") or 1.0)
+    return strain * (f.get("gauge") or 80.0) / max(1e-6, f.get("share") or 0.65)
+
+
 def _blobs(app):
     fn = getattr(app, "_live_blob_count", None)
     try:
@@ -154,6 +165,28 @@ def steps(app):
             f"{px0:.1f} px @ {px0_load or 0:.0f} N  (nothing else moves it)"
             if px0_ok else
             "strain has no reference until this is set — Tare DIC does NOT set it")
+
+    # FRAMING. Whether the markers can physically stay in frame for the planned pull. This
+    # lives here, in the panel the operator actually watches, because it existed only as a
+    # console line before and S36 was lost at 15.8 mm to a warning that had been printed and
+    # never seen.
+    f = getattr(app, "_framing", None)
+    if f:
+        room, need = f.get("room", 0.0), f.get("need", 0.0)
+        short_mm = (need - room) / max(1e-6, f.get("pxmm") or 1.0)
+        if f.get("mover") is None:
+            out.append(["framing", "Marker travel room", INFO,
+                        "apply the preload, then Calibrate Px₀ again — which marker moves "
+                        "cannot be told until something has"])
+        elif room >= need:
+            out.append(["framing", "Marker travel room", DONE,
+                        f"{room:.0f} px ahead of the moving marker, {need:.0f} needed for the "
+                        f"{f['target']:.0f} mm pull"])
+        else:
+            out.append(["framing", "Marker travel room", NEXT,
+                        f"⚠ ONLY {room:.0f} px ahead of the moving marker, {need:.0f} needed — "
+                        f"tracking will stop at about {_stop_mm(f):.0f} mm. "
+                        f"Shift the CAMERA ~{short_mm:.0f} mm, then Calibrate Px₀ again"])
 
     prepared = getattr(app, "_prepared_t", None) is not None
     add("prepare", "Prepare test (tares DIC readouts, position, force)", prepared,

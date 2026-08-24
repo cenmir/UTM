@@ -7283,6 +7283,9 @@ class UTMApplication(QMainWindow):
         return msg.exec() == QMessageBox.StandardButton.Yes
 
     MOVER_MIN_TRAVEL_MM = 0.30           # enough crosshead motion to tell the markers apart
+    # px the travelling marker moves per px of separation growth. >1 because the "fixed" marker
+    # creeps too - grip slip and specimen sliding. Measured 1.264 over the whole S35 TPU pull.
+    MARKER_DRIFT_PER_GROWTH = 1.264
 
     def _which_marker_moves(self):
         """("low"|"high", mm seen) - which marker the crosshead carries, or (None, mm).
@@ -7326,6 +7329,16 @@ class UTMApplication(QMainWindow):
                 f"one side, {h['tight']:.0f} px on the other.")
         pxmm = pxmm or 1.0
         mover, seen = self._which_marker_moves()
+        # Stash it for the guided wizard. S36 lost tracking at 15.8 mm for exactly the reason
+        # this check had already computed and printed - into a console nobody was looking at,
+        # because during a pull the operator is on the Load Plot tab. A warning that only exists
+        # in a log is a warning that does not exist.
+        self._framing = {"verdict": h["verdict"], "need": h["need"], "mover": mover,
+                         "room": (h["gap_lo"] if mover == "low" else h["gap_hi"])
+                                 if mover else max(h["gap_lo"], h["gap_hi"]),
+                         "pxmm": pxmm, "target": target, "px0": h["px0"],
+                         "gauge": self.gauge_length, "share": GAUGE_SHARE_OF_TRAVEL,
+                         "drift": self.MARKER_DRIFT_PER_GROWTH}
         if mover is not None:
             # We KNOW which end travels, so the verdict is definitive: the only gap that
             # matters is the one ahead of that marker. This is the whole point - the "roomier
