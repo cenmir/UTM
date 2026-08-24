@@ -321,10 +321,21 @@ the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign
 >    ▸ Estimated **12 slides → p248–259**. Overview pair first; the per-feature slides land as the
 >    screenshots arrive, so the deck is never blocked on one of them.
 >
-> 11. **✅ TPU GETS ITS OWN SPECIMEN PRESET — no per-test edit, nothing to revert.** Added
->    2026-08-24 at the operator's suggestion, which was the better design. The marker-pair
->    window is now PER PRESET rather than one global constant, so **White and Black keep the
->    tight 0.85–1.25 × Px₀ and `TPU (elastomer)` carries 0.85–1.60**.
+> 11. **✅ A MATERIAL SETTING OWNS THE STRAIN WINDOW — no per-test edit, nothing to revert.** Added
+>    2026-08-24 at the operator's suggestion, twice: first that TPU should not need a constant
+>    edited before every run, then — the sharper point — that it did not belong in the DIC
+>    camera's specimen-mode dropdown either. **Specimen mode selects optical POLARITY and a TPU
+>    specimen can be printed black or white**; bundling the two would have forced every elastomer
+>    to be black. So the window moved to a **Material dropdown in Settings, beside Infill**:
+>    PLA and PETG keep the tight 0.85–1.25 × Px₀, TPU and `Other` carry 0.85–1.60.
+>    ▸ **It fixed a second bug the operator had already paid for by hand.** `utm_registry.py`
+>    hard-coded `"material": "PLA"` on every record ever written, and nothing in the UI ever set
+>    it — which is how S30, S31 and S32, all PETG, entered the registry labelled PLA. The
+>    material now travels CSV header → `read_meta` → registry. Old headers carry no `Material:`
+>    line and fall back to PLA, which is what they actually were.
+>    ▸ The remembered material is re-applied at startup, so a restart cannot leave an elastomer
+>    on PLA's window while the dropdown reads TPU — that failure would have surfaced mid-pull,
+>    as a lost-marker abort, on a specimen that was tracking perfectly.
 >    ▸ **Why an elastomer needs it:** 1.25 means 25 % strain. PLA breaks at 4–6 % and PETG at
 >    8 %, so the window never sees anything but a genuinely impossible pair. TPU reaches the
 >    rig's ~34 % travel limit as REAL strain and would have every frame past 25 % rejected as

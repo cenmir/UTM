@@ -31,6 +31,22 @@ from matplotlib.figure import Figure
 import matplotlib.dates as mdates
 # Camera and DIC imports
 from camera_manager import CameraManager
+
+# The specimen's polymer, and the one thing about it the DIC needs to know: how far the marker pair
+# may legitimately travel before a separation is better explained by a lost marker than by strain.
+#
+# This is deliberately NOT part of the White/Black specimen mode. That selects optical polarity, and
+# a TPU specimen can be printed in either colour — bundling them would force elastomers to be black.
+#
+# `max_frac` is a multiple of Px0, so 1.25 means "believe strain up to 25 %". PLA fractures at 4-6 %
+# and PETG at 8 %, so 1.25 never sees anything but an impossible pair. TPU reaches the rig's ~34 %
+# travel limit as REAL strain and would have every frame past 25 % rejected, silently, mid-pull.
+MATERIALS = {
+    "PLA":   {"max_frac": 1.25, "note": "fractures at 4-6 % strain"},
+    "PETG":  {"max_frac": 1.25, "note": "fractures at ~8 % strain"},
+    "TPU":   {"max_frac": 1.60, "note": "elastomer - reaches the rig's ~34 % travel limit unbroken"},
+    "Other": {"max_frac": 1.60, "note": "unknown elongation - the permissive window"},
+}
 import numpy as np
 import cv2
 from PyQt6.QtGui import QImage, QPixmap
@@ -3520,6 +3536,29 @@ class UTMApplication(QMainWindow):
         self.recipeSaveButton.setToolTip("Save… — store the current inputs as a named settings profile you can reload later.")
         r1.addWidget(self.recipeCombo); r1.addWidget(self.recipeLoadButton); r1.addWidget(self.recipeSaveButton)
         r1.addSpacing(16)
+
+        # MATERIAL sits here, beside infill, because it is a property of the SPECIMEN — not of the
+        # camera. It was briefly a third entry in the DIC specimen-mode dropdown, which was wrong on
+        # two counts: that dropdown selects optical POLARITY (dark dots on light, or the reverse),
+        # and a TPU specimen can be either colour. Bundling them forced TPU to be black.
+        #
+        # It also fills a real gap. utm_registry hard-coded material="PLA" and nothing in the app
+        # ever set it, which is why S30, S31 and S32 all went into the registry labelled PLA and had
+        # to be corrected by hand.
+        r1.addWidget(QLabel("Material:"))
+        self.materialCombo = QComboBox()
+        self.materialCombo.addItems(list(MATERIALS))
+        self.materialCombo.setToolTip(
+            "The specimen's polymer. Two effects:\n"
+            "  • it is recorded in the CSV header and the registry, which had no way to know it\n"
+            "  • it sets how far the DIC will believe the markers can travel before calling it a\n"
+            "    lost marker — 25 % for PLA and PETG, 60 % for an elastomer\n"
+            "Independent of the White/Black specimen mode, which is about optics: a TPU specimen\n"
+            "can be either colour.")
+        self.materialCombo.setCurrentText(str(self._recall("specimen/material", "PLA")))
+        self.materialCombo.currentTextChanged.connect(self.on_material_changed)
+        r1.addWidget(self.materialCombo)
+        r1.addSpacing(16)
         r1.addWidget(QLabel("Infill %:"))
         self.infillSpinBox = QSpinBox()
         self.infillSpinBox.setRange(0, 100)
@@ -3533,6 +3572,11 @@ class UTMApplication(QMainWindow):
         # "Infill: 100 %" on 50 % specimens while T7.3, a destructive run, came out right.
         # Fix: remember it across restarts so it is set once per SPECIMEN, not once per session.
         self._restore_infill()
+        # Push the remembered material into the DIC now. Without this a restart leaves an elastomer
+        # on PLA's tight 25 % window while the dropdown reads TPU — the failure would appear
+        # mid-pull, as a lost-marker abort, on a specimen that was tracking perfectly.
+        if hasattr(self, "camera_manager"):
+            self.on_material_changed(self.materialCombo.currentText())
         self.infillSpinBox.valueChanged.connect(
             lambda v: self._remember("specimen/infill_pct", int(v)))
         r1.addWidget(self.infillSpinBox)
@@ -4346,7 +4390,9 @@ class UTMApplication(QMainWindow):
             f.write("#\n")
             f.write(f"# Calibration - Scale: {self.force_scale}, Offset: {self.force_offset}\n")
             infill_val = self.infillSpinBox.value() if getattr(self, 'infillSpinBox', None) is not None else ''
-            f.write(f"# Specimen - Area: {self.cross_sectional_area} mm², Gauge Length: {self.gauge_length} mm, Infill: {infill_val} %\n")
+            _mat = self.materialCombo.currentText() if hasattr(self, "materialCombo") else "PLA"
+            f.write(f"# Specimen - Area: {self.cross_sectional_area} mm², Gauge Length: "
+                    f"{self.gauge_length} mm, Material: {_mat}, Infill: {infill_val} %\n")
             px_per_mm = getattr(self.camera_manager, 'px_per_mm', 0.0)
             f.write(f"# DIC Calibration - px_per_mm: {px_per_mm:.4f}\n")
             _bl = self.load_plot_dic_blobs
@@ -6836,6 +6882,15 @@ class UTMApplication(QMainWindow):
         for combo in (self.specimenModeCombo, getattr(self, "specimenModeComboLP", None)):
             if combo is not None:
                 combo.setEnabled(not running)
+
+    def on_material_changed(self, name):
+        """Record the material and push its strain window to the DIC."""
+        spec = MATERIALS.get(name, MATERIALS["Other"])
+        self._remember("specimen/material", name)
+        self.camera_manager.set_material(name, spec["max_frac"])
+        self.append_to_console(
+            f"[Specimen] Material: {name} — {spec['note']}; DIC will believe strain up to "
+            f"{(spec['max_frac'] - 1) * 100:.0f} %")
 
     def on_specimen_mode_changed(self, mode):
         # Keep both tab combos in sync without re-triggering this handler.

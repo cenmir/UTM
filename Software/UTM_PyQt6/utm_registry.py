@@ -77,7 +77,10 @@ def _record(csv_path, extra=None):
     rec = {
         "csv": _rel(csv_path),
         "specimen": ids["specimen"], "test": ids["test"], "date": ids["date"] or meta.get("date"),
-        "material": "PLA", "infill_pct": infill,
+        # From the CSV header, not hard-coded. This field read "PLA" for every test ever recorded,
+        # which is how S30, S31 and S32 — all PETG — entered the registry labelled PLA and had to be
+        # corrected by hand. Older CSVs carry no Material: line, and those really were PLA.
+        "material": (extra.get("material") or meta.get("material") or "PLA"), "infill_pct": infill,
         "area_mm2": area, "gauge_mm": gauge, "comment": meta.get("comment"),
         "UTS_MPa": round(r["uts"], 2), "sy_MPa": round(r["sy"], 2), "E_GPa": round(r["E"], 3),
         "ef": round(r["ef"], 4), "tough_kJm3": int(round(r["tough"])), "anchor_N": int(round(r["anchor"])),

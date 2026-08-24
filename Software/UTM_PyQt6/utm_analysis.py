@@ -65,6 +65,8 @@ def read_meta(path):
                     meta["area"] = float(s.split("Area:", 1)[1].split("mm")[0].strip())
                     if "gauge length:" in low:
                         meta["gauge"] = float(s.split("Gauge Length:", 1)[1].split("mm")[0].strip())
+                    if "material:" in low:                     # PLA / PETG / TPU — label + DIC window
+                        meta["material"] = s.split("Material:", 1)[1].split(",")[0].strip()
                     if "infill:" in low:                       # recorded label only (not used in any calc)
                         meta["infill"] = s.split("Infill:", 1)[1].split("%")[0].strip()
                 elif low.startswith("calibration"):
