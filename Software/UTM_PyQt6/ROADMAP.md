@@ -367,6 +367,21 @@ the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign
 >    it: `set_specimen_mode` is what reloads the preset ROI and it only runs when the mode
 >    changes, so TPU → Default (both White) left the camera on TPU’s crop while Default’s own
 >    field claimed it was following the preset. Caught by the round-trip assertion.
+>    ▸ **A TPU pull now ENDS ITSELF at 25 mm** (`stop_travel_mm`, a new profile field).
+>    Before this, a specimen that never fractures had only two ways to finish: the operator
+>    judging the moment by eye, or the 30 mm backstop — which fires **Stop AND EStop** and is an
+>    emergency halt, not a way to end a test. The target is a clean `Stop`, checked BEFORE the
+>    backstop, and independent of the auto-stop checkbox because it is not fracture detection.
+>    25 mm is 31 % nominal strain on an 80 mm gauge and sits clear of BOTH ceilings rather than
+>    against either — the 30 mm backstop and the ROI’s 39 % — with 5 mm of headroom for the fact
+>    that crosshead travel is not all gauge strain (some goes into the shoulders and grips).
+>    A value at or beyond the backstop is refused with a console notice rather than accepted,
+>    since it could never fire and the run would end on the emergency path instead.
+>    ▸ The SETTING and the one-shot LATCH had to be separate. Clearing the setting on firing
+>    would make `Save…` write `None` after a run and force a profile reload before the next
+>    pull; not latching at all would re-fire on every sample, because the crosshead is still
+>    sitting past the target. The latch resets on a direction change — the same hook that
+>    re-arms the fracture detector for a new pull.
 >    ▸ **What the TPU profile carries, and why each one.** Strain cap **60 %** — TPU reaches the
 >    rig's ~34 % travel limit as REAL strain, and at the default 25 % the DIC would reject every
 >    frame past that as a lost marker, silently, mid-pull. Preload **20 N**, not 300 — TPU is

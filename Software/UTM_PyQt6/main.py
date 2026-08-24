@@ -1138,6 +1138,8 @@ class UTMApplication(QMainWindow):
         self._policy_start_label = "Start mode"
         self._policy_dic_watch = (0.0, 0.0)
         self._autostop_detector = None       # live fracture detector for manual-pull auto-stop
+        self._stop_travel_mm = None          # profile travel target; set by _arm_stop_travel
+        self._stop_travel_fired = False
         self._stall_hist = []                # (t, pos) samples for the stall guard
         self._preload_last_speed = 0.0   # last commanded approach speed (mm/s) for throttling
         self._preload_last_speed_t = 0.0
@@ -2321,6 +2323,7 @@ class UTMApplication(QMainWindow):
             if getattr(self, '_policy_button', None) is not None:
                 self._policy_button.setText(getattr(self, '_policy_start_label', 'Start mode'))
         self._autostop_detector = None                      # reset the fracture detector on any direction change
+        self._stop_travel_fired = False                     # and re-arm the travel target
         self._stall_hist = []                               # reset the stall guard on any direction change
 
         if not self.connected:
@@ -3772,6 +3775,7 @@ class UTMApplication(QMainWindow):
         # all PETG - went into the registry labelled PLA and had to be corrected by hand.
         self._apply_material(getattr(r, "material", "PLA"),
                              getattr(r, "strain_cap_pct", DEFAULT_STRAIN_CAP_PCT))
+        self._arm_stop_travel(getattr(r, "stop_travel_mm", None), r.name)
         # None means "follow the specimen preset", and that has to be applied, not merely skipped.
         # set_specimen_mode is what restores the preset's ROI, and it only runs when the mode
         # actually CHANGES — so TPU -> Default, both on White, left the camera on TPU's 2448 px crop
@@ -3838,6 +3842,7 @@ class UTMApplication(QMainWindow):
             # Only when it DIFFERS from the specimen preset, so an ordinary profile stays silent
             # about the ROI and keeps following the preset if that is ever recalibrated.
             roi=self._roi_override(),
+            stop_travel_mm=getattr(self, "_stop_travel_mm", None),
         )
         try:
             path = r.save()
@@ -3955,6 +3960,7 @@ class UTMApplication(QMainWindow):
         if not self._capture_ask_folder_before_test():      # still before ANY motor command
             return
         self._autostop_detector = None                     # fresh detector for this run
+        self._stop_travel_fired = False                    # and a fresh travel target
         self._stall_hist = []
         # start the tension pull at the current Set speed (Up = tension; firmware "Down")
         speed_mm_s = self.get_speed_rpm() * self.MM_PER_S_PER_RPM
@@ -3973,7 +3979,33 @@ class UTMApplication(QMainWindow):
                         else "Pulling — auto-stop OFF, stop it by hand")
 
     def _autostop_check(self):
-        """Manual-pull fracture auto-halt: a hard force/travel backstop, then the live fracture detector."""
+        """Manual-pull auto-halt: the profile's travel target, a hard force/travel backstop, then
+        the live fracture detector."""
+        # TRAVEL TARGET — a TEST SETTING, not a safety limit, so it comes first and it is a clean
+        # Stop with no EStop. It is what ends a run on a specimen that never fractures: without it
+        # the only two outcomes are the operator judging the moment by eye, or the 30 mm backstop,
+        # which fires Stop+EStop and is an emergency halt rather than a way to finish a test.
+        # Independent of the auto-stop checkbox: this is not fracture detection.
+        _target = getattr(self, '_stop_travel_mm', None)
+        if (_target and not getattr(self, '_stop_travel_fired', False)
+                and abs(self.motor_displacement_mm) >= _target):
+            if self.connected:
+                self.serial_manager.send_command("Stop")
+            self.stopRadioButton.blockSignals(True); self.stopRadioButton.setChecked(True); self.stopRadioButton.blockSignals(False)
+            self._autostop_detector = None
+            # Latched, NOT cleared: the setting belongs to the profile and Save... reads it, and
+            # a second run must not need a reload. Clearing it is also unsafe in the other
+            # direction — the crosshead is still past the target, so without a latch the next
+            # tension command would re-fire instantly. Reset when a new pull starts.
+            self._stop_travel_fired = True
+            _strain = abs(self.motor_displacement_mm) / max(1e-6, self.gauge_length) * 100.0
+            self.append_to_console(
+                f"[Auto-stop] TRAVEL TARGET — stopped cleanly at {abs(self.motor_displacement_mm):.2f} mm "
+                f"(~{_strain:.0f} % nominal strain on a {self.gauge_length:.0f} mm gauge), short of the "
+                f"{self.POLICY_MAX_TRAVEL_MM:.0f} mm backstop. The specimen is INTACT.")
+            self.set_status(f"Auto-stopped at {abs(self.motor_displacement_mm):.1f} mm travel")
+            self._capture_stop_after(self.CAPTURE_POST_FRACTURE_S, "travel target + hold")
+            return
         # BACKSTOP (independent of the detector): hard Stop + EStop on force / travel limit,
         # so a manual auto-stop pull can't run away even if fracture detection misses.
         if self.current_load >= self.POLICY_MAX_FORCE_N or abs(self.motor_displacement_mm) >= self.POLICY_MAX_TRAVEL_MM:
@@ -6942,6 +6974,29 @@ class UTMApplication(QMainWindow):
         live = list(getattr(cm, "ROI", []) or [])
         preset = CameraManager.SPECIMEN_PRESETS.get(getattr(cm, "specimen_mode", ""), {})
         return None if live == list(preset.get("roi", [])) else (live or None)
+
+    def _arm_stop_travel(self, mm, profile_name=""):
+        """Arm (or clear) the travel at which a pull ends itself."""
+        if not mm:
+            self._stop_travel_mm = None
+            return
+        mm = float(mm)
+        # Above the hard backstop it would never fire, and the run would end on Stop+EStop
+        # instead — the emergency path, on a profile that asked for a clean finish.
+        if mm >= self.POLICY_MAX_TRAVEL_MM:
+            self.append_to_console(
+                f"[Settings] {profile_name}: travel target {mm:.1f} mm is at or beyond the "
+                f"{self.POLICY_MAX_TRAVEL_MM:.0f} mm safety backstop, so it could never fire. "
+                f"Ignored — fix the profile.")
+            self._stop_travel_mm = None
+            return
+        self._stop_travel_mm = mm
+        self._stop_travel_fired = False
+        self.append_to_console(
+            f"[Settings] the pull will STOP ITSELF at {mm:.1f} mm of travel "
+            f"(~{mm / max(1e-6, self.gauge_length) * 100:.0f} % nominal strain on the current "
+            f"{self.gauge_length:.0f} mm gauge), well short of the "
+            f"{self.POLICY_MAX_TRAVEL_MM:.0f} mm backstop.")
 
     def _apply_material(self, name, cap_pct):
         """Tell the DIC what is mounted and how far it may believe the markers travelled.

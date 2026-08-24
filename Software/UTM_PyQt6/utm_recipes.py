@@ -37,6 +37,12 @@ class TestRecipe:
     # marker reaches the edge, and the rig's 30 mm travel backstop is 37.5 % on an 80 mm gauge.
     # On an elastomer the markers therefore leave the frame BEFORE anything stops the test.
     roi: list = None
+    # Travel at which the pull ends ITSELF, in mm, or None to run until fracture / by hand.
+    # This is a TEST SETTING, not a safety limit: it is a clean Stop at a chosen extension, and
+    # it must sit below POLICY_MAX_TRAVEL_MM (30 mm), which is the hard Stop+EStop backstop and
+    # is not a nice way to end a run. For a specimen that never fractures it is the only thing
+    # that ends the test other than the operator watching for the right moment.
+    stop_travel_mm: float = None
     # "manual", or the EXACT advanced-test-mode dropdown label ("Cyclic", "Staircase",
     # "Relaxation", "Creep", "Staircase → FRACTURE", "Progressive cyclic → FRACTURE").
     # Storing the label verbatim keeps load/save a straight lookup with no translation table.
@@ -172,6 +178,12 @@ def _starter_recipes():
             # difference between the strain trace ending mid-pull and it running to the backstop.
             # Height is unchanged: as TPU necks the markers move toward the centreline, inward.
             roi=[0, 988, 2448, 419],
+            # 25 mm = 31 % nominal strain on an 80 mm gauge. Chosen to land clear of BOTH ceilings
+            # rather than against either: the hard backstop is 30 mm (Stop + EStop, which is an
+            # emergency halt and not a way to finish a test), and the ROI above runs out at 39 %.
+            # 5 mm of headroom also absorbs the fact that crosshead travel is not all gauge strain
+            # - some goes into the shoulders and the grips.
+            stop_travel_mm=25.0,
             # OFF. The detector watches for the load COLLAPSE of a brittle break; a TPU specimen
             # draws without ever collapsing, so armed it can only misfire on a fluctuation.
             auto_stop_fracture=False,
