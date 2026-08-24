@@ -181,6 +181,8 @@ class CameraManager(QObject):
         # to make the ROI take effect. None = follow the preset.
         self._roi_override = None
         self._circ_override = None
+        self._thr_override = None
+        self._exp_override = None
         self.mask_x = None
         self.camera = None
         self.initial_distance = None
@@ -245,6 +247,10 @@ class CameraManager(QObject):
             self.ROI = list(self._roi_override)
         if self._circ_override:
             self.MIN_CIRCULARITY = float(self._circ_override)
+        if self._thr_override is not None:
+            self.THRESHOLD = self._thr_override
+        if self._exp_override is not None:
+            self.EXPOSURE_TIME = self._exp_override
         # The pair window is deliberately NOT touched here. How far a marker pair may legitimately
         # travel is a property of the MATERIAL; White/Black is a property of the OPTICS. Resetting
         # it here would silently re-tighten an elastomer's window the moment the operator switched
@@ -327,6 +333,31 @@ class CameraManager(QObject):
         self.ROI = roi
         print(f"[Camera] ROI set to {roi} (OffsetX, OffsetY, Width, Height)")
         return changed and self.camera is not None and self.camera.IsOpen()
+
+    def set_optics(self, threshold=None, exposure=None):
+        """Pin the threshold and exposure, surviving set_specimen_mode.
+
+        These decide whether the GRIPS are as bright as the markers, and the roundness gate is
+        what stops a bright grip being read as one. Loosening that gate for a smudged dot is
+        only safe alongside optics that keep the grips dark, so the two belong together in a
+        profile rather than one being pinned and the other left to drift.
+
+        S36 is the case: at the validated 50 ms / 165 the pair tracked 100 %; at 98 ms / 100
+        with the same 0.25 gate a grip edge was frozen as Px0, 2118 px against a true ~1700.
+        """
+        if threshold is not None:
+            self._thr_override = int(threshold)
+            self.THRESHOLD = int(threshold)
+        if exposure is not None:
+            self._exp_override = int(exposure)
+            self.EXPOSURE_TIME = int(exposure)
+            if self.camera and self.camera.IsOpen():
+                try:
+                    self.camera.ExposureTime.Value = float(exposure)
+                except Exception:
+                    pass
+        print(f"[Camera] Optics pinned: threshold {self.THRESHOLD}, "
+              f"exposure {self.EXPOSURE_TIME / 1000:.0f} ms")
 
     def set_min_circularity(self, value):
         """Marker roundness gate. None restores the specimen preset's.

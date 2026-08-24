@@ -48,6 +48,13 @@ class TestRecipe:
     # edit made for the PETG campaign has been sitting in the preset for days with a roadmap
     # item to undo it, which is exactly the failure mode this avoids.
     min_circularity: float = None
+    # Threshold and exposure (microseconds), or None to keep whatever is live. They belong
+    # beside min_circularity because they are the SAME decision: the roundness gate is what
+    # keeps a bright grip from being read as a marker, so loosening it is only safe with optics
+    # that keep the grips dark. Pinning one and leaving the other to drift is how S36 froze Px0
+    # on a grip edge at 2118 px against a true ~1700.
+    threshold: int = None
+    exposure_us: int = None
     # "manual", or the EXACT advanced-test-mode dropdown label ("Cyclic", "Staircase",
     # "Relaxation", "Creep", "Staircase → FRACTURE", "Progressive cyclic → FRACTURE").
     # Storing the label verbatim keeps load/save a straight lookup with no translation table.
@@ -202,6 +209,12 @@ def _starter_recipes():
             # admitted in that range. The pair-plausibility window, the rate guard and the area
             # gates are what actually keep a grip edge out; circularity is the weakest of them.
             min_circularity=0.25,
+            # The optical state the 0.25 gate was actually validated at: on this specimen it gave
+            # DIC OK 2/2 and 100 % tracking with the smudged dot passing cleanly. Auto-calibrate
+            # had drifted to 98 ms / 100, which is ~2x the exposure and 65 levels lower, and at
+            # that setting the grips are as bright as the dots.
+            threshold=165,
+            exposure_us=50000,
             # OFF. The detector watches for the load COLLAPSE of a brittle break; a TPU specimen
             # draws without ever collapsing, so armed it can only misfire on a fluctuation.
             auto_stop_fracture=False,

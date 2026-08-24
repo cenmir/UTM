@@ -3813,6 +3813,15 @@ class UTMApplication(QMainWindow):
         _preset = _mode_preset.get("min_circularity")
         _circ = getattr(r, "min_circularity", None)
         self.camera_manager.set_min_circularity(_circ or _preset)
+        # Optics go with it: the roundness gate is only as safe as the exposure and threshold
+        # that keep the grips dark, so a profile that loosens one must be able to pin the other.
+        _thr, _exp = getattr(r, "threshold", None), getattr(r, "exposure_us", None)
+        if _thr is not None or _exp is not None:
+            self.camera_manager.set_optics(_thr, _exp)
+            self.append_to_console(
+                f"[Settings] {r.name}: threshold {self.camera_manager.THRESHOLD}, exposure "
+                f"{self.camera_manager.EXPOSURE_TIME / 1000:.0f} ms — pinned, so Start Camera "
+                "cannot reset them. Auto-calibrate afterwards still overrides if you want.")
         if _circ and _preset and float(_circ) < float(_preset):
                 self.append_to_console(
                     f"[Settings] {r.name}: marker roundness gate LOOSENED to {float(_circ):.2f} "
@@ -7384,6 +7393,25 @@ class UTMApplication(QMainWindow):
         self.append_to_console(
             f"[DIC] Px₀ = {px0:.1f} px  (gauge {self.gauge_length:.1f} mm → "
             f"{self.camera_manager.px_per_mm:.2f} px/mm), captured at {load:.1f} N")
+        # Sanity-check the SCALE before anything else. Px0 over the gauge gives px/mm, and that
+        # is a property of the OPTICS, not the specimen - it barely moves between runs on the
+        # same setup. S36 froze Px0 at 2118 px on a grip edge, implying 26.5 px/mm against the
+        # ~21 this rig has, and nothing said a word.
+        _last = self._recall("dic/px_per_mm", None)
+        _now_pxmm = self.camera_manager.px_per_mm
+        try:
+            _last = float(_last) if _last else None
+        except (TypeError, ValueError):
+            _last = None
+        if _last and _now_pxmm and abs(_now_pxmm - _last) / _last > 0.08:
+            self.append_to_console(
+                f"[DIC] ⚠ SCALE CHANGED — {_now_pxmm:.2f} px/mm now against {_last:.2f} last "
+                f"time ({(_now_pxmm / _last - 1) * 100:+.0f} %). If the camera has not been moved "
+                "or re-zoomed, this is NOT your markers — check the overlay actually joins the "
+                "two dots, and that a grip edge has not been picked up. Px₀ is wrong if it has.")
+        elif _now_pxmm:
+            self._remember("dic/px_per_mm", round(float(_now_pxmm), 3))
+
         self._report_frame_headroom()
         if self.px0_after_preload():
             area = getattr(self, "cross_sectional_area", 0.0) or 0.0
