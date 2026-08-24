@@ -321,6 +321,25 @@ the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign
 >    ▸ Estimated **12 slides → p248–259**. Overview pair first; the per-feature slides land as the
 >    screenshots arrive, so the deck is never blocked on one of them.
 >
+> 11. **✅ TPU GETS ITS OWN SPECIMEN PRESET — no per-test edit, nothing to revert.** Added
+>    2026-08-24 at the operator's suggestion, which was the better design. The marker-pair
+>    window is now PER PRESET rather than one global constant, so **White and Black keep the
+>    tight 0.85–1.25 × Px₀ and `TPU (elastomer)` carries 0.85–1.60**.
+>    ▸ **Why an elastomer needs it:** 1.25 means 25 % strain. PLA breaks at 4–6 % and PETG at
+>    8 %, so the window never sees anything but a genuinely impossible pair. TPU reaches the
+>    rig's ~34 % travel limit as REAL strain and would have every frame past 25 % rejected as
+>    "a marker has been lost" — silently, with the readout simply ceasing to update mid-pull.
+>    ▸ **The window is now ASYMMETRIC, which made it stricter as well as looser.** Tension only
+>    pulls markers apart, so a separation far BELOW Px₀ is not something a tensile test can
+>    produce. Measured over every frame of S13: the LOWER bound fired once (a post-fracture
+>    frame at 0.063 × Px₀) and the UPPER bound fired NEVER — and S29's mount swap, the
+>    incident these guards exist for, sat at 1.11 × Px₀, inside the old window, caught by the
+>    RATE guard instead. So the old symmetric ±25 % implied a 0.75 floor where 0.85 is right.
+>    ▸ Both specimen dropdowns now build from `SPECIMEN_PRESETS` instead of two hand-written
+>    `["White", "Black"]` lists, so the next preset needs one edit rather than three.
+>    ▸ `PAIR_MAX_STEP_PX_PER_S` is untouched and needs no per-material value: an elastomer
+>    strains enormously but not instantaneously.
+>
 > 10. **🟡 REVERT `min_circularity` 0.40 → 0.50 WHEN PETG/TPU ENDS.** Loosened 2026-08-22 for the
 >    campaign, in `camera_manager.py` (the Black preset AND the class default, which mirrors it).
 >    ▸ **Why it was loosened.** The PETG dots have a crescent of overspray FUSED to the rim. The dot

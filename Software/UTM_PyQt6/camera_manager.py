@@ -63,6 +63,8 @@ class CameraManager(QObject):
             "min_area": 2000,
             "max_area": 200000,
             "min_circularity": 0.5,
+            "pair_min_frac": 0.85,
+            "pair_max_frac": 1.25,
         },
         "Black": {
             # FIXED, not Otsu. Measured over two full runs of saved frames (dic_replay.py):
@@ -118,6 +120,33 @@ class CameraManager(QObject):
             # This is a REAL loosening and the right long-term fix is the specimen: mask around each
             # dot so overspray cannot land touching it, and use matte paint. A clean dot scores 0.76.
             "min_circularity": 0.40,
+            "pair_min_frac": 0.85,
+            "pair_max_frac": 1.25,
+        },
+        # An ELASTOMER is not a tuning variant of the Black preset — it is a different measurement
+        # problem wearing the same optics. TPU reaches the rig's ~34 % travel limit as REAL strain,
+        # where a 1.25 pair window would reject every frame past 25 % as "a marker has been lost"
+        # and the strain readout would simply stop updating, silently, mid-pull.
+        #
+        # It gets its own entry so the DEFAULTS STAY TIGHT. Editing a shared constant before every
+        # elastomer run is a step that gets forgotten in one direction or the other; a preset is
+        # chosen once from the dropdown and is visible in the CSV header afterwards.
+        #
+        # Optically identical to Black (white dots on a dark specimen), so threshold, ROI and the
+        # area gates are inherited unchanged. Only the strain window it must tolerate differs.
+        "TPU (elastomer)": {
+            "threshold": 149,
+            "threshold_type": cv2.THRESH_BINARY,
+            "exposure": 50000,
+            "roi": [0, 988, 2348, 419],
+            "mask_x": None,
+            "min_area": 2000,
+            "max_area": 200000,
+            "min_circularity": 0.40,
+            "pair_min_frac": 0.85,
+            # 1.60 covers the ~33 % the ROI can show with margin. Beyond that the markers leave the
+            # frame, so the ROI is the binding limit and not this — which is the right order.
+            "pair_max_frac": 1.60,
         },
     }
 
@@ -127,13 +156,26 @@ class CameraManager(QObject):
     THRESHOLD_TYPE = cv2.THRESH_BINARY
 
     # How far a marker pair may sit from Px₀ before it is treated as a lost marker rather than as
-    # strain. The same 25 % the pair-CHOOSING path already used, now also applied when there are
-    # exactly two candidates and nothing to choose between.
+    # strain — applied when there are exactly two candidates and nothing to choose between.
     #
-    # ⚠ TPU: a specimen that strains in the HUNDREDS of per cent will breach this legitimately and
-    # every frame past +25 % would be discarded. Raise it before the first elastomer run — see the
-    # PETG/TPU campaign notes.
-    PAIR_MAX_DEV = 0.25
+    # ASYMMETRIC, because tension only pulls the markers APART. A separation far ABOVE Px₀ is what
+    # a stretching specimen looks like; a separation far BELOW it is not something a tensile test
+    # can produce, so the two directions deserve different limits and the old symmetric ±25 % gave
+    # them the same one.
+    #
+    # Measured over every frame of S13 and S26 before changing this: the LOWER bound fired once (a
+    # post-fracture frame at 0.063 × Px₀ — the markers had gone) and the UPPER bound fired NEVER.
+    # S29's mount-holder swap, the incident these guards were added for, sat at 1.11 × Px₀ — well
+    # inside the old window, and was caught by the RATE guard below, not by this one.
+    #
+    # So the upper bound has never demonstrably caught anything, and raising it costs nothing;
+    # the lower bound is where the value is, and 0.85 is TIGHTER than the 0.75 the symmetric
+    # version implied. This change is stricter where the guard works and looser where it does not.
+    PAIR_MIN_FRAC = 0.85     # 15 % compressive strain — far beyond the ~1 % the rig's V3 series did
+    # Upper bound as a MULTIPLE of Px₀, i.e. 1 + the largest strain worth believing.
+    # 1.25 is the DEFAULT and stays tight. An elastomer needs more, and gets it from its own
+    # preset rather than from an edit here — see SPECIMEN_PRESETS["TPU (elastomer)"].
+    PAIR_MAX_FRAC = 1.25
 
     # How fast the separation may CHANGE. This is the guard that catches a grip or mount edge being
     # picked up in place of a marker, which the ±25 % window cannot: on S29 the swap moved L_px by
@@ -148,7 +190,7 @@ class CameraManager(QObject):
     #
     # Rate, not a flat step, because dropouts create gaps: after 10 s with no reading the specimen
     # really has moved, and a flat limit would reject the recovery frame and never re-acquire.
-    # Unlike PAIR_MAX_DEV this needs no change for TPU — an elastomer strains enormously but not
+    # Unlike the PAIR_MIN/MAX_FRAC window this needs no change for TPU — an elastomer strains enormously but not
     # instantaneously, and at 0.10 mm/s it moves the markers no faster than PLA does.
     PAIR_MAX_STEP_PX_PER_S = 30.0
     PAIR_STEP_FLOOR_PX = 30.0        # always allow this much, so noise alone can never lock it out
@@ -204,7 +246,7 @@ class CameraManager(QObject):
         self._rate_dic = deque(maxlen=140)
 
     def set_specimen_mode(self, mode: str):
-        """Switch between 'White' and 'Black' specimen presets."""
+        """Switch specimen preset. Applies optics AND the strain window that preset tolerates."""
         if mode not in self.SPECIMEN_PRESETS:
             return
         preset = self.SPECIMEN_PRESETS[mode]
@@ -217,6 +259,10 @@ class CameraManager(QObject):
         self.MIN_AREA = preset["min_area"]
         self.MAX_AREA = preset["max_area"]
         self.MIN_CIRCULARITY = preset["min_circularity"]
+        # Per-preset, because how far a pair may legitimately travel is a property of the MATERIAL,
+        # not of the camera. `.get` so a hand-written preset without them still works.
+        self.PAIR_MIN_FRAC = preset.get("pair_min_frac", CameraManager.PAIR_MIN_FRAC)
+        self.PAIR_MAX_FRAC = preset.get("pair_max_frac", CameraManager.PAIR_MAX_FRAC)
         # Update exposure on live camera if connected
         if self.camera and self.camera.IsOpen():
             try:
@@ -499,10 +545,14 @@ class CameraManager(QObject):
             # a confident wrong strain.
             if len(valid) == 2 and self.initial_distance:
                 sep = abs(valid[1][1] - valid[0][1])
-                if abs(sep - self.initial_distance) > self.PAIR_MAX_DEV * self.initial_distance:
+                lo = self.PAIR_MIN_FRAC * self.initial_distance
+                hi = self.PAIR_MAX_FRAC * self.initial_distance
+                if not (lo <= sep <= hi):
+                    why = ("collapsed — a marker has been lost" if sep < lo else
+                           "beyond any strain worth believing")
                     self.error_occurred.emit(
                         f"Pair rejected — {sep:.0f} px vs Px₀ {self.initial_distance:.0f} px "
-                        f"(more than {self.PAIR_MAX_DEV:.0%} off; a marker has probably been lost)"
+                        f"(outside {self.PAIR_MIN_FRAC:.2f}–{self.PAIR_MAX_FRAC:.2f} × Px₀; {why})"
                     )
                     return []
                 # ...and it has to have got there at a physical SPEED. A mount edge picked up in

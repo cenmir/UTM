@@ -6158,9 +6158,15 @@ class UTMApplication(QMainWindow):
         from PyQt6.QtWidgets import QComboBox
         button_row = QHBoxLayout()
         self.specimenModeCombo = QComboBox()
-        self.specimenModeCombo.addItems(["White", "Black"])
-        self.specimenModeCombo.setFixedWidth(80)
-        self.specimenModeCombo.setToolTip("White = black dots on white specimen\nBlack = white dots on black specimen")
+        # From the PRESETS, not a hand-written list. Two copies of ["White", "Black"] lived here and
+        # in the load-plot panel, so adding a preset meant remembering three separate places.
+        self.specimenModeCombo.addItems(list(CameraManager.SPECIMEN_PRESETS))
+        self.specimenModeCombo.setFixedWidth(120)
+        self.specimenModeCombo.setToolTip(
+            "White = dark dots on a light specimen\n"
+            "Black = white dots on a dark specimen\n"
+            "TPU (elastomer) = same optics as Black, but tolerates strain to +60 % —\n"
+            "a 25 % window would reject an elastomer's REAL strain as a lost marker")
         self.startCameraButton = QPushButton("Start Camera")
         self.stopCameraButton = QPushButton("Stop Camera")
         # Both names for the same operation, side by side. "Tare DIC" is what this was called
@@ -6393,10 +6399,12 @@ class UTMApplication(QMainWindow):
         # --- Control row (mirrors the Stress/Strain controls) ---
         btn_row = QHBoxLayout()
         self.specimenModeComboLP = QComboBox()
-        self.specimenModeComboLP.addItems(["White", "Black"])
-        self.specimenModeComboLP.setFixedWidth(80)
+        self.specimenModeComboLP.addItems(list(CameraManager.SPECIMEN_PRESETS))
+        self.specimenModeComboLP.setFixedWidth(120)
         self.specimenModeComboLP.setToolTip(
-            "White = black dots on white specimen\nBlack = white dots on black specimen")
+            "White = dark dots on a light specimen\n"
+            "Black = white dots on a dark specimen\n"
+            "TPU (elastomer) = same optics as Black, but tolerates strain to +60 %")
         self.startCameraButtonLP = QPushButton("Start Camera")
         self.stopCameraButtonLP = QPushButton("Stop Camera")
         self.tareDICButtonLP = QPushButton("Calibrate Px₀")
