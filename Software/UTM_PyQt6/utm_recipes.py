@@ -43,6 +43,11 @@ class TestRecipe:
     # is not a nice way to end a run. For a specimen that never fractures it is the only thing
     # that ends the test other than the operator watching for the right moment.
     stop_travel_mm: float = None
+    # Blob roundness gate, or None to keep the specimen preset's. A LOOSENING lives here rather
+    # than in camera_manager so it reverts by itself when the profile changes - the 0.50 -> 0.40
+    # edit made for the PETG campaign has been sitting in the preset for days with a roadmap
+    # item to undo it, which is exactly the failure mode this avoids.
+    min_circularity: float = None
     # "manual", or the EXACT advanced-test-mode dropdown label ("Cyclic", "Staircase",
     # "Relaxation", "Creep", "Staircase → FRACTURE", "Progressive cyclic → FRACTURE").
     # Storing the label verbatim keeps load/save a straight lookup with no translation table.
@@ -184,6 +189,13 @@ def _starter_recipes():
             # 5 mm of headroom also absorbs the fact that crosshead travel is not all gauge strain
             # - some goes into the shoulders and the grips.
             stop_travel_mm=25.0,
+            # 0.25. The sprayed TPU dots score 0.50-0.65 against 0.76 for a clean dot, and dip
+            # below 0.50 as they approach the frame edge. Swept on the PETG capture at
+            # 20260822_174204, 2-blob rate was already 100 % at 0.45 and stayed 100 % down to
+            # 0.25, with 3-or-more-blob frames flat at 0.0 % throughout - so nothing extra is
+            # admitted in that range. The pair-plausibility window, the rate guard and the area
+            # gates are what actually keep a grip edge out; circularity is the weakest of them.
+            min_circularity=0.25,
             # OFF. The detector watches for the load COLLAPSE of a brittle break; a TPU specimen
             # draws without ever collapsing, so armed it can only misfire on a fluctuation.
             auto_stop_fracture=False,

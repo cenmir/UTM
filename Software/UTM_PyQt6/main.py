@@ -3797,6 +3797,20 @@ class UTMApplication(QMainWindow):
             else:
                 self.append_to_console(f"[Settings] ROI {list(_roi)} "
                                        "(OffsetX, OffsetY, Width, Height).")
+        # Blob roundness, same shape as the ROI: None = follow the specimen preset, and that
+        # has to be APPLIED, not merely skipped, or a loosened profile leaks into the next one.
+        # Keyed off the RECIPE's specimen mode, not the combo — this runs inside the same
+        # handler that sets the combo, and reading it back gave the PREVIOUS profile's preset.
+        _preset = CameraManager.SPECIMEN_PRESETS.get(
+            getattr(r, "specimen_mode", ""), {}).get("min_circularity")
+        _circ = getattr(r, "min_circularity", None) or _preset
+        if _circ:
+            self.camera_manager.MIN_CIRCULARITY = float(_circ)
+            if _preset and float(_circ) < float(_preset):
+                self.append_to_console(
+                    f"[Settings] {r.name}: marker roundness gate LOOSENED to {float(_circ):.2f} "
+                    f"(preset {float(_preset):.2f}) — for smudged or oversprayed dots. Recorded "
+                    "in the CSV header, and it reverts when you load another profile.")
         # --- advanced test mode: per-mode params, then the selected mode itself ---
         self._apply_mode_params(getattr(r, "mode_params", None))
         mode_txt = ""
@@ -4479,6 +4493,9 @@ class UTMApplication(QMainWindow):
             # it hit is in the file. It changes no value here - it gates what was believed.
             _cap = getattr(self.camera_manager, "PAIR_MAX_FRAC", 1.25)
             f.write(f"# DIC Strain Cap - {(_cap - 1) * 100:.0f} % (beyond this a separation was read as a lost marker)\n")
+            _circ = getattr(self.camera_manager, "MIN_CIRCULARITY", None)
+            if _circ is not None:
+                f.write(f"# DIC Marker Roundness - min circularity {_circ:.2f} (1.00 = a perfect circle)\n")
             _bl = self.load_plot_dic_blobs
             _ok = sum(1 for b in _bl if b == 2)
             f.write(f"# DIC Health - {100.0*_ok/len(_bl):.0f}% frames tracked 2/2 ({_ok}/{len(_bl)})\n" if _bl else "# DIC Health - n/a\n")
