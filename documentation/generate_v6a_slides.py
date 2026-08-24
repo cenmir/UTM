@@ -3867,6 +3867,53 @@ footer(s, "Fitted between 15 % and 85 % of the way from the UTS strain to fractu
           "turnover at the peak nor the last dying samples enter the fit.")
 pageno(s)
 
+# ---- p257: the ELASTIC slope, specimen to specimen ----
+PGP.fig_elastic()
+_EC = {k: PGP.elastic_common(k) for k in ("S30", "S31", "S32")}
+_own = [PG.get(k)["E"] for k in ("S30", "S31", "S32")]
+_com = [_EC[k]["E"] for k in ("S30", "S31", "S32")]
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "PETG — THE ELASTIC SLOPE, SPECIMEN TO SPECIMEN")
+tb(s, 0.4, 1.13, 12.55, 0.44,
+   "The straight run at the very start of the curve. Compared over the SAME 0.05–0.35 % strain "
+   "interval the MOT extensometer analysis used on p245–247, so the two sit on one basis instead "
+   "of each inventing its own region.", fs=12, italic=True, colour=GREY_TEXT)
+
+img_fit(s, _os.path.join("documentation", "petg_elastic.png"), 0.40, 1.64, 12.55, 2.90)
+
+table(s, 0.4, 4.70, 7.9, 1.30,
+      [["Run", "Tracked in E window", "E — own steepest run", "E — 0.05–0.35 %", "R²"],
+       ["S30", "100 %", "%.3f GPa  (%.2f–%.2f %%)" % (_own[0], PG.get("S30")["E_lo"],
+                                                      PG.get("S30")["E_hi"]),
+        "%.3f GPa" % _com[0], "%.4f" % _EC["S30"]["r2"]],
+       ["S31", "100 %", "%.3f GPa  (%.2f–%.2f %%)" % (_own[1], PG.get("S31")["E_lo"],
+                                                      PG.get("S31")["E_hi"]),
+        "%.3f GPa" % _com[1], "%.4f" % _EC["S31"]["r2"]],
+       ["S32", "100 %", "%.3f GPa  (%.2f–%.2f %%)" % (_own[2], PG.get("S32")["E_lo"],
+                                                      PG.get("S32")["E_hi"]),
+        "%.3f GPa" % _com[2], "%.4f" % _EC["S32"]["r2"]]],
+      cw=[0.9, 1.9, 2.7, 1.6, 0.9], hf=9.5, bf=9.5)
+
+header(s, 8.55, 4.70, 4.4, "Two things this settles")
+tb(s, 8.55, 5.06, 4.4, 1.5,
+   "S31's STIFFNESS IS SOUND even though its run is not — all three tracked 100 % of the samples "
+   "inside their elastic window, because its dropouts came later. It carries E as well as "
+   "strength; only ε_f and toughness are lost.\n"
+   "And the fit WINDOW is not what separates them: S31 reads the same 2.12 either way.",
+   fs=9.6, colour=BLACK)
+
+banner(s, 0.4, 6.36, 12.55, 0.52,
+       "S30 AND S32 AGREE TO %.1f %% (%.3f vs %.3f GPa) AND LIE ON TOP OF ONE ANOTHER. S31 sits "
+       "%.0f %% stiffer than both — a real specimen difference, not a fit artefact. Quoting a "
+       "single 19 %% spread would have hidden a clean pair and one outlier."
+       % (100 * abs(_com[2] / _com[0] - 1), _com[0], _com[2],
+          100 * (_com[1] / ((_com[0] + _com[2]) / 2) - 1)),
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=10.5)
+footer(s, "Left: each run fitted over its OWN steepest straight run (shaded) — S32's sits later "
+          "because its toe is longer. Right: the same three refitted over one common window, which "
+          "removes the fit rule from the comparison.")
+pageno(s)
+
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
     _n = len(prs.slides.__iter__.__self__._sldIdLst)

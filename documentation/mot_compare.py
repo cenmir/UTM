@@ -32,7 +32,22 @@ import matplotlib.pyplot as plt                                       # noqa: E4
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 DATA = os.path.join(REPO, "Software", "UTM_PyQt6", "8.6.20 - Tensile test to Failure")
-MOT = os.path.join(DATA, "videoextesometer", "strain.csv")
+def _find_mot():
+    """Locate the extensometer export by CONTENT, not by a folder name someone might tidy.
+
+    It was under `videoextesometer/` and is now under `Videoextesometer MOT/`. A rename like that is
+    ordinary housekeeping, and it should not be able to take a 117-slide build down — which it did,
+    once.
+    """
+    import glob as _g
+    for pat in ("videoextesometer/strain.csv", "*ideoexte*/strain.csv", "*/strain.csv"):
+        hits = _g.glob(os.path.join(DATA, pat))
+        if hits:
+            return hits[0]
+    return os.path.join(DATA, "videoextesometer", "strain.csv")     # for the error message
+
+
+MOT = _find_mot()
 
 CROSSHEAD_MM_S = 0.112          # measured from Position_mm, not the commanded 0.100
 GAUGE_MM = 80.0

@@ -254,3 +254,75 @@ if __name__ == "__main__":
               % (k, ps["slope"], ps["r2"], ps["lo"], ps["hi"], ps["n"]))
     for f in (fig_trio(), fig_limits(), fig_vs_pla(), fig_expect(), fig_plastic()):
         print("wrote", os.path.basename(f))
+
+
+def elastic_common(key, lo=0.05, hi=0.35):
+    """E over a FIXED strain window, so the window rule is not part of the difference.
+
+    0.05-0.35 % deliberately: it is the SAME interval the MOT extensometer comparison used on
+    p245-247, so the two analyses in this deck can be read against each other instead of each
+    inventing its own region.
+    """
+    c = _curve(key)
+    e, s = c[:, 0], c[:, 1]
+    m = (e >= lo) & (e <= hi)
+    if m.sum() < 10:
+        return None
+    sl, ic = np.polyfit(e[m], s[m], 1)
+    r2 = np.corrcoef(e[m], s[m])[0, 1] ** 2
+    return {"E": sl * 100 / 1000.0, "slope": sl, "ic": ic, "r2": r2, "n": int(m.sum())}
+
+
+def fig_elastic(out="petg_elastic.png"):
+    """The ELASTIC slope for the three PETG runs — and why the three numbers differ.
+
+    Two panels because there are two questions. What is each specimen's stiffness, and how much of
+    the spread between them is the SPECIMEN rather than the fit rule? `analyze()` picks the steepest
+    straight run per specimen, which is right for a single number but means the three E values are
+    not measured over the same strain. The right-hand panel refits all three over one fixed window
+    so that variable is removed.
+    """
+    keys = ("S30", "S31", "S32")
+    cols = {"S30": C_PETG, "S31": C_PETG2, "S32": "#e8590c"}
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(13.6, 3.4),
+                                 gridspec_kw={"width_ratios": [1.4, 1]})
+    for k in keys:
+        d = PD.get(k); c = _curve(k); off = _shift(k)
+        m = c[:, 0] <= 1.15
+        a1.plot(c[m, 0], c[m, 1] + off, color=cols[k], lw=2.0,
+                label="%s — E %.2f GPa over %.2f–%.2f %%" % (k, d["E"], d["E_lo"], d["E_hi"]))
+        w = (c[:, 0] >= d["E_lo"]) & (c[:, 0] <= d["E_hi"])
+        sl, ic = np.polyfit(c[w, 0], c[w, 1], 1)
+        xs = np.linspace(d["E_lo"], d["E_hi"], 5)
+        a1.plot(xs, sl * xs + ic + off, color="#111", lw=1.2, ls="--")
+        a1.axvspan(d["E_lo"], d["E_hi"], color=cols[k], alpha=0.09)
+    a1.set_xlim(0, 1.15)
+    a1.set_xlabel("DIC gauge strain ε (%)"); a1.set_ylabel("engineering stress σ (MPa)")
+    a1.set_title("The elastic region, magnified — each run fitted over ITS OWN\n"
+                 "steepest straight run (shaded), which is not the same strain", fontsize=10.5)
+    a1.legend(fontsize=8.4, loc="upper left")
+    _style(a1)
+
+    x = np.arange(len(keys))
+    own = [PD.get(k)["E"] for k in keys]
+    com = [elastic_common(k)["E"] if elastic_common(k) else np.nan for k in keys]
+    a2.bar(x - 0.19, own, width=0.36, color=[cols[k] for k in keys], label="own steepest run")
+    a2.bar(x + 0.19, com, width=0.36, color=[cols[k] for k in keys], alpha=0.45,
+           hatch="//", edgecolor="white", label="common window 0.05–0.35 % (as MOT)")
+    for i, (o, c_) in enumerate(zip(own, com)):
+        a2.text(i - 0.19, o + 0.05, "%.2f" % o, ha="center", fontsize=8.6, weight="bold")
+        if np.isfinite(c_):
+            a2.text(i + 0.19, c_ + 0.05, "%.2f" % c_, ha="center", fontsize=8.6)
+    a2.set_xticks(x); a2.set_xticklabels(keys, fontsize=10)
+    a2.set_ylabel("elastic modulus E (GPa)")
+    a2.set_ylim(0, max(own + [v for v in com if np.isfinite(v)]) * 1.30)
+    sp_own = 100 * (max(own) / min(own) - 1)
+    fin = [v for v in com if np.isfinite(v)]
+    sp_com = 100 * (max(fin) / min(fin) - 1) if len(fin) > 1 else float("nan")
+    a2.set_title("Spread %.0f %% on each run's own window,\n%.0f %% over one common window"
+                 % (sp_own, sp_com), fontsize=10.5)
+    a2.legend(fontsize=8)
+    _style(a2)
+    fig.tight_layout()
+    p = os.path.join(HERE, out); fig.savefig(p, dpi=170); plt.close(fig)
+    return p
