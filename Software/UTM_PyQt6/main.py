@@ -3786,27 +3786,33 @@ class UTMApplication(QMainWindow):
         # set_specimen_mode is what restores the preset's ROI, and it only runs when the mode
         # actually CHANGES — so TPU -> Default, both on White, left the camera on TPU's 2448 px crop
         # while Default's own field said it was following the preset.
-        _roi = getattr(r, "roi", None) or CameraManager.SPECIMEN_PRESETS.get(
-            self.specimenModeCombo.currentText(), {}).get("roi")
-        if _roi:
-            if self.camera_manager.set_roi(_roi):
-                self.append_to_console(
-                    f"[Settings] ROI for {r.name} is {list(_roi)} — the camera is RUNNING, and "
-                    "Basler applies a crop only on connect. Stop Camera and Start Camera again, "
-                    "then Calibrate Px₀, before this run.")
-            else:
-                self.append_to_console(f"[Settings] ROI {list(_roi)} "
-                                       "(OffsetX, OffsetY, Width, Height).")
+        # Pass the override THROUGH, including None: set_roi stores it and re-asserts it after
+        # every set_specimen_mode, which on_start_camera calls on every start. Applying it here
+        # only was not enough - Stop/Start Camera, the very step needed to make a ROI take
+        # effect, reloaded the preset and discarded it.
+        # Resolve "follow the preset" HERE, against the recipe's own specimen mode. Letting the
+        # camera resolve it against self.specimen_mode is a race: this handler is what changes
+        # that, and when the mode happens to be unchanged the signal never fires, so the camera
+        # would fall back to the PREVIOUS profile's preset.
+        _mode_preset = CameraManager.SPECIMEN_PRESETS.get(getattr(r, "specimen_mode", ""), {})
+        _roi = getattr(r, "roi", None) or _mode_preset.get("roi")
+        _live = self.camera_manager.set_roi(_roi)
+        _now = list(getattr(self.camera_manager, "ROI", []))
+        if _live:
+            self.append_to_console(
+                f"[Settings] ROI for {r.name} is {_now} — the camera is RUNNING, and Basler "
+                "applies a crop only on connect. Stop Camera and Start Camera again, then "
+                "Calibrate Px₀, before this run.")
+        else:
+            self.append_to_console(f"[Settings] ROI {_now} (OffsetX, OffsetY, Width, Height).")
         # Blob roundness, same shape as the ROI: None = follow the specimen preset, and that
         # has to be APPLIED, not merely skipped, or a loosened profile leaks into the next one.
         # Keyed off the RECIPE's specimen mode, not the combo — this runs inside the same
         # handler that sets the combo, and reading it back gave the PREVIOUS profile's preset.
-        _preset = CameraManager.SPECIMEN_PRESETS.get(
-            getattr(r, "specimen_mode", ""), {}).get("min_circularity")
-        _circ = getattr(r, "min_circularity", None) or _preset
-        if _circ:
-            self.camera_manager.MIN_CIRCULARITY = float(_circ)
-            if _preset and float(_circ) < float(_preset):
+        _preset = _mode_preset.get("min_circularity")
+        _circ = getattr(r, "min_circularity", None)
+        self.camera_manager.set_min_circularity(_circ or _preset)
+        if _circ and _preset and float(_circ) < float(_preset):
                 self.append_to_console(
                     f"[Settings] {r.name}: marker roundness gate LOOSENED to {float(_circ):.2f} "
                     f"(preset {float(_preset):.2f}) — for smudged or oversprayed dots. Recorded "

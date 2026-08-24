@@ -175,6 +175,12 @@ class CameraManager(QObject):
         super().__init__()
         self.specimen_mode = "Black"
         self.material = "PLA"
+        # Settings a PROFILE owns, which must survive set_specimen_mode. on_start_camera calls
+        # that on every start, so without this the ROI and the roundness gate a profile had
+        # just applied were silently reset by the very Stop/Start the operator was told to do
+        # to make the ROI take effect. None = follow the preset.
+        self._roi_override = None
+        self._circ_override = None
         self.mask_x = None
         self.camera = None
         self.initial_distance = None
@@ -233,6 +239,12 @@ class CameraManager(QObject):
         self.MIN_AREA = preset["min_area"]
         self.MAX_AREA = preset["max_area"]
         self.MIN_CIRCULARITY = preset["min_circularity"]
+        # Re-assert whatever the loaded profile asked for. The preset is the FALLBACK here, not
+        # the authority: a profile is chosen deliberately and a mode change must not undo it.
+        if self._roi_override:
+            self.ROI = list(self._roi_override)
+        if self._circ_override:
+            self.MIN_CIRCULARITY = float(self._circ_override)
         # The pair window is deliberately NOT touched here. How far a marker pair may legitimately
         # travel is a property of the MATERIAL; White/Black is a property of the OPTICS. Resetting
         # it here would silently re-tighten an elastomer's window the moment the operator switched
@@ -307,11 +319,26 @@ class CameraManager(QObject):
         Takes effect on the next connect: Basler ROI is applied in connect_camera, and Width /
         OffsetX cannot be changed on a streaming camera.
         """
-        roi = [int(v) for v in roi]
+        roi = [int(v) for v in roi] if roi else None
+        self._roi_override = roi
+        if roi is None:                       # back to whatever the specimen preset asks for
+            roi = list(self.SPECIMEN_PRESETS.get(self.specimen_mode, {}).get("roi", self.ROI))
         changed = roi != list(self.ROI)
         self.ROI = roi
         print(f"[Camera] ROI set to {roi} (OffsetX, OffsetY, Width, Height)")
         return changed and self.camera is not None and self.camera.IsOpen()
+
+    def set_min_circularity(self, value):
+        """Marker roundness gate. None restores the specimen preset's.
+
+        Sticky for the same reason as the ROI: set_specimen_mode reloads it from the preset,
+        and on_start_camera calls set_specimen_mode every time.
+        """
+        self._circ_override = float(value) if value else None
+        self.MIN_CIRCULARITY = (self._circ_override if self._circ_override else
+                                self.SPECIMEN_PRESETS.get(self.specimen_mode, {})
+                                .get("min_circularity", self.MIN_CIRCULARITY))
+        print(f"[Camera] Marker roundness gate: {self.MIN_CIRCULARITY:.2f}")
 
     def set_material(self, name, max_frac):
         """How far a marker pair may travel before it is called a lost marker.
