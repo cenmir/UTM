@@ -183,12 +183,18 @@ def _starter_recipes():
             # difference between the strain trace ending mid-pull and it running to the backstop.
             # Height is unchanged: as TPU necks the markers move toward the centreline, inward.
             roi=[0, 988, 2448, 419],
-            # 25 mm = 31 % nominal strain on an 80 mm gauge. Chosen to land clear of BOTH ceilings
-            # rather than against either: the hard backstop is 30 mm (Stop + EStop, which is an
-            # emergency halt and not a way to finish a test), and the ROI above runs out at 39 %.
-            # 5 mm of headroom also absorbs the fact that crosshead travel is not all gauge strain
-            # - some goes into the shoulders and the grips.
-            stop_travel_mm=25.0,
+            # 28 mm, up from 25. The frame is no longer what limits this: at the current zoom,
+            # with the pair aimed correctly, it supports ~37 mm of travel, so the 30 mm safety
+            # backstop became the binding limit. 28 mm keeps 2 mm clear of that backstop (which
+            # fires Stop + EStop and is an emergency halt, not a way to finish a test) and buys
+            # ~23 % gauge strain instead of 20 %.
+            #
+            # The cost is aiming tolerance, and it is worth knowing: the moving marker must
+            # start between 543 and 696 px from the edge it travels toward, a 153 px window
+            # against 205 px at 25 mm - about 7 mm of camera position either way. Calibrate Px0
+            # measures which marker moves and says GOOD or NO, so this is checkable before the
+            # pull rather than discovered during it.
+            stop_travel_mm=28.0,
             # 0.25. The sprayed TPU dots score 0.50-0.65 against 0.76 for a clean dot, and dip
             # below 0.50 as they approach the frame edge. Swept on the PETG capture at
             # 20260822_174204, 2-blob rate was already 100 % at 0.45 and stayed 100 % down to
