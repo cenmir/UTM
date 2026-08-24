@@ -1144,6 +1144,7 @@ class UTMApplication(QMainWindow):
         self._policy_start_label = "Start mode"
         self._policy_dic_watch = (0.0, 0.0)
         self._autostop_detector = None       # live fracture detector for manual-pull auto-stop
+        self._mover_hist = []                # (crosshead mm, low, high) - _which_marker_moves
         self._stop_travel_mm = None          # profile travel target; set by _arm_stop_travel
         self._stop_travel_fired = False
         self._stall_hist = []                # (t, pos) samples for the stall guard
@@ -6844,6 +6845,17 @@ class UTMApplication(QMainWindow):
         self._dic_blob_history.append(n)
         if len(self._dic_blob_history) > 60:
             del self._dic_blob_history[:-60]
+        # WHICH marker moves. Only one really does — the crosshead end — and the framing check
+        # cannot otherwise tell which, so it has to ask the operator to judge. On S36 that judgement
+        # would have gone the wrong way: the roomier side was the FIXED end, so a check reporting
+        # "safe if the moving marker is the roomier one" reads as a pass on a framing that fails.
+        # The preload moves the crosshead several mm, which is plenty of signal, so record the pair
+        # against the crosshead position and read it off instead of asking.
+        if n == 2:
+            lo, hi = sorted(b[1] for b in blobs)
+            self._mover_hist.append((self.motor_displacement_mm, lo, hi))
+            if len(self._mover_hist) > 400:
+                del self._mover_hist[:-400]
 
     def _on_dic_error_count(self, msg):
         """A dropped frame ('...found N'): record it so tracking% reflects the dropout."""
@@ -7261,6 +7273,28 @@ class UTMApplication(QMainWindow):
                              else QMessageBox.StandardButton.Yes)
         return msg.exec() == QMessageBox.StandardButton.Yes
 
+    MOVER_MIN_TRAVEL_MM = 0.30           # enough crosshead motion to tell the markers apart
+
+    def _which_marker_moves(self):
+        """("low"|"high", mm seen) - which marker the crosshead carries, or (None, mm).
+
+        Read from the preload, which moves the crosshead several mm. Returns None rather than
+        guessing when there is too little motion, or when neither marker moved measurably.
+        """
+        h = list(getattr(self, "_mover_hist", []) or [])
+        if len(h) < 2:
+            return None, 0.0
+        pos = [x[0] for x in h]
+        span = max(pos) - min(pos)
+        if span < self.MOVER_MIN_TRAVEL_MM:
+            return None, span
+        a = h[min(range(len(h)), key=lambda i: pos[i])]
+        b = h[max(range(len(h)), key=lambda i: pos[i])]
+        d_lo, d_hi = abs(b[1] - a[1]), abs(b[2] - a[2])
+        if max(d_lo, d_hi) < 2.0:                       # nothing moved - do not guess
+            return None, span
+        return ("low" if d_lo > d_hi else "high"), span
+
     def _report_frame_headroom(self):
         """At Px0, say whether the markers can stay in frame for the whole planned pull.
 
@@ -7282,25 +7316,46 @@ class UTMApplication(QMainWindow):
                 f"pair must separate by {h['need']:.0f} px more. Frame left: {h['wide']:.0f} px on "
                 f"one side, {h['tight']:.0f} px on the other.")
         pxmm = pxmm or 1.0
+        mover, seen = self._which_marker_moves()
+        if mover is not None:
+            # We KNOW which end travels, so the verdict is definitive: the only gap that
+            # matters is the one ahead of that marker. This is the whole point - the "roomier
+            # side" test passes on a framing that fails whenever the room is at the fixed end.
+            room = h["gap_lo"] if mover == "low" else h["gap_hi"]
+            side = "low" if mover == "low" else "high"
+            if room >= h["need"]:
+                self.append_to_console(
+                    head + f" ✓ GOOD — the crosshead carries the {side}-y marker and it has "
+                    f"{room:.0f} px ahead of it, against the {h['need']:.0f} px it needs. "
+                    f"(Measured over {seen:.1f} mm of preload travel, not assumed.)")
+            else:
+                self.append_to_console(
+                    head + f" ❌ NO — the crosshead carries the {side}-y marker, and that one has "
+                    f"only {room:.0f} px ahead of it against {h['need']:.0f} px needed. The spare "
+                    f"room is at the FIXED end, where it is useless. Shift the CAMERA about "
+                    f"{(h['need'] - room) / pxmm:.1f} mm so the moving marker gains that room, "
+                    f"then press Calibrate Px₀ again. Tracking will otherwise stop at about "
+                    f"{(room / max(1e-6, h['px0'])) * 100 * 0.8:.0f} % strain, as it did on S35.")
+            return
+        # No preload motion yet, so which end moves is still unknown - fall back to the
+        # geometry-only verdict and say plainly that it is conditional.
         if h["verdict"] == "safe":
             self.append_to_console(
-                head + f" ✓ SAFE — both ends can absorb it, so it does not matter which grip "
-                f"is the moving one. Go.")
+                head + " ✓ SAFE — both ends can absorb it, so it does not matter which grip "
+                "is the moving one.")
         elif h["verdict"] == "ok":
             self.append_to_console(
-                head + f" ⚠ CONDITIONAL — only the {h['wide']:.0f} px side can absorb it, so this "
-                f"works ONLY if the crosshead marker is the one with that room ahead of it. To "
-                f"remove the doubt: move the camera BACK a little until Px₀ reads about "
-                f"{h['px0_for_safe']:.0f} px (now {h['px0']:.0f}), centre the pair, and press "
-                f"Calibrate Px₀ again — that makes it safe either way.")
+                head + f" ⚠ CONDITIONAL — only the {h['wide']:.0f} px side can absorb it, and "
+                f"nothing has moved yet, so I cannot tell whether that is the crosshead end. "
+                f"Apply the preload first, then press Calibrate Px₀ again and this will be "
+                f"a straight yes or no.")
         else:
             self.append_to_console(
                 head + f" ❌ NOT ENOUGH — short by {h['short_by']:.0f} px "
-                f"({h['short_by'] / pxmm:.1f} mm) even on the roomier side. Shift the camera along "
-                f"the specimen so the pair sits further from the edge the crosshead marker moves "
-                f"toward, and/or move it back until Px₀ reads about {h['px0_for_safe']:.0f} px "
-                f"(now {h['px0']:.0f}). Then press Calibrate Px₀ again. This is what killed S35 "
-                f"at 13-14 mm.")
+                f"({h['short_by'] / pxmm:.1f} mm) even on the roomier side. Shift the camera "
+                f"along the specimen, and/or move it back until Px₀ reads about "
+                f"{h['px0_for_safe']:.0f} px (now {h['px0']:.0f}). This is what killed S35 at "
+                f"13-14 mm.")
     def on_tare_dic(self, confirm=False):
         """Freeze Px₀ — the marker separation in pixels that every strain is measured against.
 
