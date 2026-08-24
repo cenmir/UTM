@@ -569,5 +569,22 @@
     "ef": 0.1168,
     "tough_kJm3": 165,
     "anchor_N": 20
+  },
+  {
+    "csv": "Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/Specimen_S36_V5_TPU_Spray/UTM_Test_20260824_184604.csv",
+    "specimen": "S36",
+    "test": null,
+    "date": "2026-08-24 18:42:25",
+    "material": "TPU",
+    "infill_pct": 100.0,
+    "area_mm2": 80.0,
+    "gauge_mm": 80.0,
+    "comment": null,
+    "UTS_MPa": 2.21,
+    "sy_MPa": 1.12,
+    "E_GPa": 0.025,
+    "ef": 0.1168,
+    "tough_kJm3": 165,
+    "anchor_N": 20
   }
 ]
