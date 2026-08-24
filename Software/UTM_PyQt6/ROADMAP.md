@@ -338,6 +338,35 @@ the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign
 >    launch — otherwise a fresh clone would have had no TPU option at all and no way to reach
 >    the 60 % window. It only writes what is MISSING, so a starter the operator has tuned is
 >    left alone. Verified by seeding into an empty folder and by re-running it over an edit.
+>    ▸ **The first TPU run (2026-08-24) died three samples in, and found two real bugs.**
+>    `UTM_Test_20260824_142525.csv`: 124.8 s, crosshead **0.038 mm**, the whole file inside
+>    −0.85..+0.74 N, status bar "Auto-stopped at fracture".
+>    &nbsp;&nbsp;**(1) `LiveFractureDetector` fired in the load-cell noise band.** Every test in
+>    it is RELATIVE to a running peak that starts at 0.0, so the first positive noise sample
+>    (+0.29 N) became the peak, `armed` followed immediately (0.29 ≥ 0.3 × 0.29), and the next
+>    negative sample read as a total load collapse. NOT TPU-specific — a stiff specimen simply
+>    climbs out of the noise band fast enough to outrun it, which is why it had never appeared.
+>    Fixed with an absolute `MIN_PEAK_N = 50` floor: ~60× the cell’s 0.27 N noise, 1.5 % of a PLA
+>    fracture peak, and 0.6 MPa on an 80 mm² section — not a test result. The real 1416-sample
+>    file now replays without firing.
+>    &nbsp;&nbsp;**(2) The Fracture test button force-ticked auto-stop**, overriding the TPU
+>    profile. It had to: the force/travel backstop AND the stall guard were gated on the same
+>    checkbox, so switching the detector off silently removed the safety net. Now the backstop
+>    and stall guard run on **every** commanded tension pull and only the DETECTOR is gated —
+>    strictly more safety than before, since they previously depended on an operator tick-box.
+>    ▸ **The ROI is now a profile field too, and TPU takes the full sensor width.** Px₀ is
+>    ~1673 px and a clean marker ~60 px in radius, so the shipped 2348 px crop lets the centres
+>    separate to **33.2 %** strain before one reaches the edge — while the travel backstop is
+>    30 mm on an 80 mm gauge = **37.5 %**. The markers left the frame BEFORE anything stopped
+>    the test, so the strain trace would simply have ended mid-pull with nothing visibly wrong.
+>    `roi=[0, 988, 2448, 419]` (the whole 2448 px sensor width) moves that to **39.2 %**, past
+>    the backstop. Height unchanged: as TPU necks the markers move toward the centreline,
+>    inward. The 60 % strain cap is now the looser of the two limits — the ROI binds first, so
+>    raising the cap further buys nothing without moving the camera.
+>    ▸ `roi=None` had to be made to ACTIVELY restore the preset, not merely decline to change
+>    it: `set_specimen_mode` is what reloads the preset ROI and it only runs when the mode
+>    changes, so TPU → Default (both White) left the camera on TPU’s crop while Default’s own
+>    field claimed it was following the preset. Caught by the round-trip assertion.
 >    ▸ **What the TPU profile carries, and why each one.** Strain cap **60 %** — TPU reaches the
 >    rig's ~34 % travel limit as REAL strain, and at the default 25 % the DIC would reject every
 >    frame past that as a lost marker, silently, mid-pull. Preload **20 N**, not 300 — TPU is

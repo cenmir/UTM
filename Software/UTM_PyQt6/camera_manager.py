@@ -245,6 +245,25 @@ class CameraManager(QObject):
                 pass
         print(f"[Camera] Specimen mode set to: {mode}")
 
+    def set_roi(self, roi):
+        """Override the sensor crop for this specimen.
+
+        Separate from the specimen preset because the ROI a MATERIAL needs is not the ROI a
+        colour needs. The shipped 2348 px crop lets the marker pair separate to 33 % strain
+        before a marker reaches the edge; the rig's own 30 mm travel backstop is 37.5 % on an
+        80 mm gauge, so on an elastomer the markers leave the frame BEFORE anything stops the
+        test, and the strain trace simply ends mid-pull. The full 2448 px sensor width moves
+        that limit to 39 %, past the backstop.
+
+        Takes effect on the next connect: Basler ROI is applied in connect_camera, and Width /
+        OffsetX cannot be changed on a streaming camera.
+        """
+        roi = [int(v) for v in roi]
+        changed = roi != list(self.ROI)
+        self.ROI = roi
+        print(f"[Camera] ROI set to {roi} (OffsetX, OffsetY, Width, Height)")
+        return changed and self.camera is not None and self.camera.IsOpen()
+
     def set_material(self, name, max_frac):
         """How far a marker pair may travel before it is called a lost marker.
 

@@ -3574,8 +3574,14 @@ class UTMApplication(QMainWindow):
             "Px₀ was captured at has to be recorded already.")
         self.autoStopFractureCheck = QCheckBox("Auto-stop at fracture")
         self.autoStopFractureCheck.setObjectName("autoStopFractureCheck")   # emphasised by theme
-        self.autoStopFractureCheck.setToolTip("During a MANUAL tension pull, stop the motor automatically when the "
-                                              "load collapses (fracture). Same detector as the offline analysis.")
+        self.autoStopFractureCheck.setToolTip(
+            "During a MANUAL tension pull, stop the motor automatically when the load collapses "
+            "(fracture). Same detector as the offline analysis.\n\n"
+            "Turn it OFF for a specimen that DRAWS "
+            "without breaking — an elastomer — where there is no collapse to detect and an armed "
+            "detector can only misfire. Stop that pull by hand.\n\n"
+            "The force and travel backstops "
+            "and the stall guard do NOT depend on this box: they run on every tension pull.")
         self.autoStopFractureCheck.setChecked(True)   # on by default (safety); a loaded profile can override
         self.fractureTestButton = QPushButton("Fracture test")
         self.fractureTestButton.setObjectName("fractureTestButton")         # emphasised by theme
@@ -3766,6 +3772,21 @@ class UTMApplication(QMainWindow):
         # all PETG - went into the registry labelled PLA and had to be corrected by hand.
         self._apply_material(getattr(r, "material", "PLA"),
                              getattr(r, "strain_cap_pct", DEFAULT_STRAIN_CAP_PCT))
+        # None means "follow the specimen preset", and that has to be applied, not merely skipped.
+        # set_specimen_mode is what restores the preset's ROI, and it only runs when the mode
+        # actually CHANGES — so TPU -> Default, both on White, left the camera on TPU's 2448 px crop
+        # while Default's own field said it was following the preset.
+        _roi = getattr(r, "roi", None) or CameraManager.SPECIMEN_PRESETS.get(
+            self.specimenModeCombo.currentText(), {}).get("roi")
+        if _roi:
+            if self.camera_manager.set_roi(_roi):
+                self.append_to_console(
+                    f"[Settings] ROI for {r.name} is {list(_roi)} — the camera is RUNNING, and "
+                    "Basler applies a crop only on connect. Stop Camera and Start Camera again, "
+                    "then Calibrate Px₀, before this run.")
+            else:
+                self.append_to_console(f"[Settings] ROI {list(_roi)} "
+                                       "(OffsetX, OffsetY, Width, Height).")
         # --- advanced test mode: per-mode params, then the selected mode itself ---
         self._apply_mode_params(getattr(r, "mode_params", None))
         mode_txt = ""
@@ -3814,6 +3835,9 @@ class UTMApplication(QMainWindow):
             material=getattr(self.camera_manager, "material", "PLA"),
             strain_cap_pct=round(
                 (getattr(self.camera_manager, "PAIR_MAX_FRAC", 1.25) - 1.0) * 100.0, 1),
+            # Only when it DIFFERS from the specimen preset, so an ordinary profile stays silent
+            # about the ROI and keeps following the preset if that is ever recalibrated.
+            roi=self._roi_override(),
         )
         try:
             path = r.save()
@@ -3911,19 +3935,26 @@ class UTMApplication(QMainWindow):
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setWindowTitle("Fracture test — checklist")
         msg.setText("Run the specimen to FRACTURE?")
-        msg.setInformativeText("Confirm you have:\n" + self._prep_checklist() +
-                               "\nOn Yes, the gripper pulls in TENSION and auto-stops at fracture. "
-                               "Keep Emergency STOP in reach.")
+        # Whether the pull ends itself is the PROFILE's call, not this button's. It used to tick the
+        # box unconditionally, which overrode the TPU profile's auto_stop_fracture=False and armed a
+        # collapse detector on a specimen that has no collapse to detect.
+        _autostop = (getattr(self, 'autoStopFractureCheck', None) is not None
+                     and self.autoStopFractureCheck.isChecked())
+        msg.setInformativeText(
+            "Confirm you have:\n" + self._prep_checklist() + "\n"
+            + ("On Yes, the gripper pulls in TENSION and auto-stops at fracture. "
+               if _autostop else
+               "Auto-stop at fracture is OFF for this profile, so the pull will NOT end itself — "
+               "YOU must press Stop when you have seen enough. The force, travel and stall "
+               "backstops still apply. ")
+            + "Keep Emergency STOP in reach.")
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg.setDefaultButton(QMessageBox.StandardButton.No)
         if msg.exec() != QMessageBox.StandardButton.Yes:
             self.append_to_console("[Fracture test] cancelled."); return
         if not self._capture_ask_folder_before_test():      # still before ANY motor command
             return
-        # arm auto-stop at fracture (fresh detector)
-        if getattr(self, 'autoStopFractureCheck', None) is not None:
-            self.autoStopFractureCheck.setChecked(True)
-        self._autostop_detector = None
+        self._autostop_detector = None                     # fresh detector for this run
         self._stall_hist = []
         # start the tension pull at the current Set speed (Up = tension; firmware "Down")
         speed_mm_s = self.get_speed_rpm() * self.MM_PER_S_PER_RPM
@@ -3932,10 +3963,14 @@ class UTMApplication(QMainWindow):
         self.serial_manager.send_command("Down")   # firmware "Down" = physical tension on this rig
         self._start_movement_grace_period()
         self._capture_autostart("fracture test")
-        self.append_to_console(f"[Fracture test] pulling to fracture at {speed_mm_s:.3f} mm/s — auto-stop armed "
-                               f"(backstop {self.POLICY_MAX_FORCE_N:.0f} N / {self.POLICY_MAX_TRAVEL_MM:.0f} mm). "
-                               f"Press Stop / E-Stop to abort.")
-        self.set_status("Fracture test — pulling to fracture ...")
+        self.append_to_console(
+            f"[Fracture test] pulling at {speed_mm_s:.3f} mm/s — "
+            + ("auto-stop ARMED" if _autostop else
+               "auto-stop OFF for this profile: STOP IT BY HAND when you have seen enough")
+            + f" (backstop {self.POLICY_MAX_FORCE_N:.0f} N / {self.POLICY_MAX_TRAVEL_MM:.0f} mm, "
+              "stall guard live either way). Press Stop / E-Stop to abort.")
+        self.set_status("Fracture test — pulling to fracture ..." if _autostop
+                        else "Pulling — auto-stop OFF, stop it by hand")
 
     def _autostop_check(self):
         """Manual-pull fracture auto-halt: a hard force/travel backstop, then the live fracture detector."""
@@ -3989,6 +4024,12 @@ class UTMApplication(QMainWindow):
                                 f"{self.current_load:.0f} N.\n\nLikely the motor hit its force limit — check that it "
                                 f"is not hot, the driver current, and for binding; or use a smaller-cross-section "
                                 f"specimen so the fracture force is within the rig's capacity.")
+            return
+        # The DETECTOR is the optional half. Everything above this line is the safety net and runs
+        # on every tension pull. A specimen that draws without ever breaking (TPU) has no load
+        # collapse to detect, so an armed detector there can only misfire.
+        if not (getattr(self, 'autoStopFractureCheck', None) is not None
+                and self.autoStopFractureCheck.isChecked()):
             return
         from utm_analysis import LiveFractureDetector
         if getattr(self, '_autostop_detector', None) is None:
@@ -4828,9 +4869,14 @@ class UTMApplication(QMainWindow):
             self._return_check()
         elif getattr(self, 'active_policy', None) is not None:
             self._policy_step()
-        elif (getattr(self, 'autoStopFractureCheck', None) is not None and self.autoStopFractureCheck.isChecked()
-              and self.upRadioButton.isChecked() and self.motorsSwitch.isChecked()):
-            self._autostop_check()          # manual tension pull: auto-halt on fracture
+        elif self.upRadioButton.isChecked() and self.motorsSwitch.isChecked():
+            # ANY commanded tension pull, whether or not auto-stop is ticked. The force/travel
+            # backstop and the stall guard live in here, and they used to be gated on the same
+            # checkbox as the fracture detector — so switching the detector off (which is the right
+            # setting for a specimen that never fractures, like TPU) silently removed the safety net
+            # too. That coupling is why the Fracture test button force-ticked the box. The detector
+            # itself is still gated, inside _autostop_check.
+            self._autostop_check()
 
         # Add to plot data if:
         # 1. Load cell data stream is enabled (loadCellSwitch)
@@ -6887,6 +6933,15 @@ class UTMApplication(QMainWindow):
         for combo in (self.specimenModeCombo, getattr(self, "specimenModeComboLP", None)):
             if combo is not None:
                 combo.setEnabled(not running)
+
+    def _roi_override(self):
+        """The live ROI, or None if it is just what the specimen preset asks for."""
+        cm = getattr(self, "camera_manager", None)
+        if cm is None:
+            return None
+        live = list(getattr(cm, "ROI", []) or [])
+        preset = CameraManager.SPECIMEN_PRESETS.get(getattr(cm, "specimen_mode", ""), {})
+        return None if live == list(preset.get("roi", [])) else (live or None)
 
     def _apply_material(self, name, cap_pct):
         """Tell the DIC what is mounted and how far it may believe the markers travelled.

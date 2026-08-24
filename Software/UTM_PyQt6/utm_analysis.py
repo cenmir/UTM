@@ -348,6 +348,9 @@ class LiveFractureDetector:
         if det.update(force, ec=dic_cauchy, lpx=dic_L_px):
             # fracture -> halt motor, start post-fracture anchor hold
 
+    - Does nothing at all until the peak load has passed `min_peak_N`. Every other test
+      here is RELATIVE to the running peak, and a relative test has no meaning while the
+      only signal is load-cell noise — see the note on min_peak_N below.
     - Arms only after the load has built past `arm_frac` of the running peak (so the
       toe / grip-seating region cannot trigger it).
     - Fires on load collapse below `collapse_frac` of the running peak, OR on an
@@ -356,11 +359,29 @@ class LiveFractureDetector:
       specimen cannot still be carrying its peak force.
     """
 
-    def __init__(self, collapse_frac=0.5, arm_frac=0.3, ec_jump=0.03, jump_load_frac=0.9):
+    # An ABSOLUTE floor under every relative test above. Without it the detector fires in the
+    # noise band before the specimen has taken any load at all: peak starts at 0.0, so the first
+    # positive noise sample (say +0.29 N) becomes the peak, `armed` follows immediately because
+    # 0.29 >= 0.3 x 0.29, and the next negative sample (-0.26 N) is below 0.5 x 0.29 and reads as
+    # a total load collapse. Three samples, ~0.3 s, and the run is over.
+    #
+    # That is exactly how the first TPU test died (2026-08-24, UTM_Test_20260824_142525.csv): the
+    # crosshead moved 0.038 mm, the whole file spans -0.85 to +0.74 N, and the status bar said
+    # "Auto-stopped at fracture". It is not a TPU-specific bug — a stiff specimen simply climbs
+    # out of the noise band fast enough to outrun it, so it had never been seen.
+    #
+    # 50 N is ~60x the load cell's 0.27 N noise and 0.75 N quantisation, and 1.5 % of a PLA
+    # fracture peak (~3.4 kN), so it changes nothing about a real test. A specimen that genuinely
+    # broke below 50 N on an 80 mm2 section failed at 0.6 MPa and is not a test result.
+    MIN_PEAK_N = 50.0
+
+    def __init__(self, collapse_frac=0.5, arm_frac=0.3, ec_jump=0.03, jump_load_frac=0.9,
+                 min_peak_N=None):
         self.collapse_frac = collapse_frac
         self.arm_frac = arm_frac
         self.ec_jump = ec_jump
         self.jump_load_frac = jump_load_frac
+        self.min_peak_N = self.MIN_PEAK_N if min_peak_N is None else float(min_peak_N)
         self.peak = 0.0
         self.armed = False
         self.fired = False
@@ -372,6 +393,9 @@ class LiveFractureDetector:
             return True
         if force > self.peak:
             self.peak = force
+        if self.peak < self.min_peak_N:      # nothing below this is a fracture; it is noise
+            self._prev_ec, self._prev_lpx = ec, lpx
+            return False
         if self.peak > 0 and force >= self.arm_frac * self.peak:
             self.armed = True
         # A DIC jump only counts as fracture if the LOAD agrees. A specimen that has broken cannot

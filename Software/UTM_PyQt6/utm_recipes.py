@@ -31,6 +31,12 @@ class TestRecipe:
     #
     # Recipes written before this field default to 25 %, which is what they all ran at.
     strain_cap_pct: float = 25.0
+    # Sensor crop, [OffsetX, OffsetY, Width, Height], or None to keep the specimen preset's.
+    # Here rather than in the preset because the crop a MATERIAL needs is not the crop a COLOUR
+    # needs: the shipped 2348 px width lets the marker pair separate to 33 % strain before a
+    # marker reaches the edge, and the rig's 30 mm travel backstop is 37.5 % on an 80 mm gauge.
+    # On an elastomer the markers therefore leave the frame BEFORE anything stops the test.
+    roi: list = None
     # "manual", or the EXACT advanced-test-mode dropdown label ("Cyclic", "Staircase",
     # "Relaxation", "Creep", "Staircase → FRACTURE", "Progressive cyclic → FRACTURE").
     # Storing the label verbatim keeps load/save a straight lookup with no translation table.
@@ -159,6 +165,13 @@ def _starter_recipes():
             # rejects every frame past that as a lost marker, silently, mid-pull. Beyond ~60 %
             # the markers leave the camera ROI, so the ROI binds first and more buys nothing.
             strain_cap_pct=60.0,
+            # FULL SENSOR WIDTH (2448 of 2448), against the shipped 2348. Px0 is ~1673 px and a
+            # clean marker is ~60 px in radius, so the centres may separate to 2348-120 = 2229 px
+            # = 33.2 % strain on the shipped crop, but to 2329 px = 39.2 % on the full width.
+            # The travel backstop is 30 mm on an 80 mm gauge = 37.5 %. Those 100 px are the
+            # difference between the strain trace ending mid-pull and it running to the backstop.
+            # Height is unchanged: as TPU necks the markers move toward the centreline, inward.
+            roi=[0, 988, 2448, 419],
             # OFF. The detector watches for the load COLLAPSE of a brittle break; a TPU specimen
             # draws without ever collapsing, so armed it can only misfire on a fluctuation.
             auto_stop_fracture=False,
