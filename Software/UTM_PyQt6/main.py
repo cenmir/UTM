@@ -47,6 +47,12 @@ from camera_manager import CameraManager
 # would have every frame past 25 % rejected, silently, mid-pull - hence its own profile at 60 %.
 DEFAULT_STRAIN_CAP_PCT = 25.0
 
+# How much of the crosshead travel actually reaches the GAUGE. The rest goes into the specimen
+# shoulders and the grips. Measured on S35 (TPU): 64-66 % across the whole pull, stable enough
+# to plan framing with. Used only to turn a travel target into the strain the markers must
+# survive - it enters no reported result.
+GAUGE_SHARE_OF_TRAVEL = 0.65
+
 # Shown at the top of the Settings dropdown, in this order. "Default" is PLA and PETG at a 25 %
 # strain cap; "TPU" is the elastomer at 60 %, with the 20 N preload and auto-stop OFF that a
 # specimen which never fractures needs.
@@ -7233,35 +7239,45 @@ class UTMApplication(QMainWindow):
         return msg.exec() == QMessageBox.StandardButton.Yes
 
     def _report_frame_headroom(self):
-        """At Px0, say whether the markers can stay in frame for the whole planned pull."""
+        """At Px0, say whether the markers can stay in frame for the whole planned pull.
+
+        S35 (TPU) is why this exists: the pair was frozen 309 px from the edge it would travel
+        toward, tracking died at 12.6 % strain, and 305 px of frame sat unused at the other end
+        the whole time. Nothing said so until the specimen had been pulled.
+        """
         target = getattr(self, "_stop_travel_mm", None) or self.POLICY_MAX_TRAVEL_MM
-        # Crosshead travel is not all gauge strain - some goes into the shoulders and the grips.
-        # Measured on S35: the gauge took 65 % of the travel. Using the FULL travel here is the
-        # safe direction, since it over-states the strain the markers must survive.
-        eps = target / max(1e-6, self.gauge_length)
+        # Measured on S35: only ~65 % of crosshead travel reaches the gauge, the rest going into
+        # the shoulders and the grips. Using the FULL travel is the safe direction here, but at
+        # 25 mm it demands more frame than the sensor has, so the realistic figure is used and
+        # the conservative one is reported alongside it.
+        eps = target * GAUGE_SHARE_OF_TRAVEL / max(1e-6, self.gauge_length)
         h = self.camera_manager.frame_headroom(eps)
         if h is None:
             return
-        head = (f"[DIC] Framing for a {target:.0f} mm pull ({eps * 100:.0f} % strain): the pair "
-                f"must separate by {h['need']:.0f} px more, and has {h['gap_lo']:.0f} px of frame "
-                f"on one side and {h['gap_hi']:.0f} px on the other.")
-        if h["verdict"] == "ok":
-            self.append_to_console(head + " Both ends can take it — OK whichever end moves.")
-        elif h["verdict"] == "check":
-            tight = "the low" if h["gap_lo"] < h["gap_hi"] else "the high"
+        pxmm = getattr(self.camera_manager, "px_per_mm", 0.0) or 1.0
+        head = (f"[DIC] Framing for a {target:.0f} mm pull (~{eps * 100:.0f} % gauge strain): the "
+                f"pair must separate by {h['need']:.0f} px more. Frame left: {h['wide']:.0f} px on "
+                f"one side, {h['tight']:.0f} px on the other.")
+        pxmm = pxmm or 1.0
+        if h["verdict"] == "safe":
             self.append_to_console(
-                head + f" ⚠ Only ONE side can take it, so this aim works only if the marker at "
-                f"{tight} end is the FIXED one. If the CROSSHEAD end is there, the marker will "
-                f"leave the frame part-way through and the strain trace will simply stop — "
-                f"shift the camera along the specimen until both sides read at least "
-                f"{h['need']:.0f} px, then press Calibrate Px₀ again.")
+                head + f" ✓ SAFE — both ends can absorb it, so it does not matter which grip "
+                f"is the moving one. Go.")
+        elif h["verdict"] == "ok":
+            self.append_to_console(
+                head + f" ⚠ CONDITIONAL — only the {h['wide']:.0f} px side can absorb it, so this "
+                f"works ONLY if the crosshead marker is the one with that room ahead of it. To "
+                f"remove the doubt: move the camera BACK a little until Px₀ reads about "
+                f"{h['px0_for_safe']:.0f} px (now {h['px0']:.0f}), centre the pair, and press "
+                f"Calibrate Px₀ again — that makes it safe either way.")
         else:
             self.append_to_console(
-                head + f" ❌ The pair CANNOT fit at that strain at any aim — it needs "
-                f"{h['px0'] + h['need'] + 2 * self.camera_manager.MARKER_R_PX:.0f} px and the frame is "
-                f"{h['span']:.0f} px. Zoom out (move the camera back) so Px₀ is smaller, or lower "
-                f"the travel target.")
-
+                head + f" ❌ NOT ENOUGH — short by {h['short_by']:.0f} px "
+                f"({h['short_by'] / pxmm:.1f} mm) even on the roomier side. Shift the camera along "
+                f"the specimen so the pair sits further from the edge the crosshead marker moves "
+                f"toward, and/or move it back until Px₀ reads about {h['px0_for_safe']:.0f} px "
+                f"(now {h['px0']:.0f}). Then press Calibrate Px₀ again. This is what killed S35 "
+                f"at 13-14 mm.")
     def on_tare_dic(self, confirm=False):
         """Freeze Px₀ — the marker separation in pixels that every strain is measured against.
 

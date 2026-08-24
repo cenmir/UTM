@@ -273,10 +273,26 @@ class CameraManager(QObject):
         gap_lo = lo - self.MARKER_R_PX
         gap_hi = span - hi - self.MARKER_R_PX
         need = self.initial_distance * float(target_strain)
-        verdict = ("ok" if min(gap_lo, gap_hi) >= need
-                   else "check" if gap_lo + gap_hi >= need else "fail")
+        # max(), NOT min(). Requiring BOTH ends to absorb the whole growth is unsatisfiable on
+        # this rig and would nag forever: the pair nearly fills the frame, so at the BEST
+        # possible aim one side has ~540 px and the other ~110 px. It does not need both -
+        # only ONE marker travels (the crosshead end; the other creeps ~25 % as much), so the
+        # test is whether the room is on the side that will use it. The message names which end
+        # that has to be, because the frame cannot tell which grip is moving.
+        wide, tight = max(gap_lo, gap_hi), min(gap_lo, gap_hi)
+        # THREE states, because "one side can take it" is only conditionally safe: the room has
+        # to be on the side the crosshead marker moves toward, and the frame cannot tell which
+        # grip is moving. "safe" needs no such judgement and is what to aim for on a specimen
+        # you cannot afford to waste.
+        verdict = ("safe" if tight >= need else "ok" if wide >= need else "fail")
         return {"span": span, "gap_lo": gap_lo, "gap_hi": gap_hi, "need": need,
-                "verdict": verdict, "px0": self.initial_distance}
+                "wide": wide, "tight": tight, "short_by": max(0.0, need - wide),
+                "moving_end": "low" if gap_lo >= gap_hi else "high",
+                "verdict": verdict, "px0": self.initial_distance,
+                # Centred, both gaps are (span - px0)/2 - R and the growth is px0*eps, so the
+                # largest Px0 that is safe either way solves (span-2R)/2 - px0/2 = px0*eps.
+                "px0_for_safe": (span - 2 * self.MARKER_R_PX) / (1 + 2 * float(target_strain)),
+                "centre_B": (span - self.initial_distance) / 2.0}
 
     def set_roi(self, roi):
         """Override the sensor crop for this specimen.
@@ -547,22 +563,41 @@ class CameraManager(QObject):
                 binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
 
-            valid = []
+            valid, near = [], []
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                if self.MIN_AREA < area < self.MAX_AREA:
-                    perimeter = cv2.arcLength(cnt, True)
-                    if perimeter > 0:
-                        circularity = 4 * np.pi * area / (perimeter ** 2)
-                        if circularity > self.MIN_CIRCULARITY:
-                            M = cv2.moments(cnt)
-                            if M["m00"] > 0:
-                                cx = M["m10"] / M["m00"]
-                                cy = M["m01"] / M["m00"]
-                                valid.append((cx, cy))
+                perimeter = cv2.arcLength(cnt, True)
+                circ = (4 * np.pi * area / (perimeter ** 2)) if perimeter > 0 else 0.0
+                M = cv2.moments(cnt)
+                cy = (M["m01"] / M["m00"]) if M["m00"] > 0 else -1.0
+                if self.MIN_AREA < area < self.MAX_AREA and circ > self.MIN_CIRCULARITY:
+                    if M["m00"] > 0:
+                        valid.append((M["m10"] / M["m00"], cy))
+                elif area > 200:
+                    # A NEAR MISS: big enough to be a marker, rejected by a gate. Kept so the
+                    # badge can say WHY instead of only "1/2". Losing a marker used to be
+                    # silent, which is a bad way to spend a specimen.
+                    why = ("area %d < %d" % (area, self.MIN_AREA) if area <= self.MIN_AREA else
+                           "area %d > %d" % (area, self.MAX_AREA) if area >= self.MAX_AREA else
+                           "circularity %.2f < %.2f" % (circ, self.MIN_CIRCULARITY))
+                    near.append((area, cy, why))
 
             # Sort by Y so blob 1 is always top, blob 2 always bottom
             valid.sort(key=lambda b: b[1])
+
+            # Say WHY a marker is missing. Throttled hard: this runs at ~20 Hz.
+            if len(valid) < 2 and near:
+                now = time.monotonic()
+                if now - getattr(self, "_near_miss_t", 0.0) > 3.0:
+                    self._near_miss_t = now
+                    top = sorted(near, reverse=True)[:2]
+                    self.notice.emit(
+                        "Only %d marker%s passed the filters. Nearest miss%s: %s  "
+                        "(threshold %d — try Settings ▸ DIC camera setup ▸ Auto-calibrate DIC)"
+                        % (len(valid), "" if len(valid) == 1 else "s",
+                           "" if len(top) == 1 else "es",
+                           "; ".join("at y=%.0f %s" % (c, w) for _, c, w in top),
+                           self.THRESHOLD))
 
             if len(valid) > 2:
                 # More than 2 does NOT mean the markers were missed — it means something else in
