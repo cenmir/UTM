@@ -102,10 +102,28 @@ _RETIRED_DEFAULTS = ("Default 100% infill", "Default 50% infill")
 DEFAULT_100 = DEFAULT
 
 
-def _starter_recipes():
-    """The one profile the app always offers.
+def _starter_mode_params():
+    """Params for EVERY advanced mode, so switching Test type after a Load gives sane values
+    rather than leftovers from whatever was loaded before. Shared by both starters: the mode
+    protocols are force-based and do not depend on the material.
+    """
+    return {
+            "Cyclic": {"low": 200.0, "high": 1500.0, "cycles": 5, "speed": 0.1,
+                       "waveform": "Sine"},
+            "Staircase": {"start": 500.0, "step": 400.0, "levels": 4, "dwell": 30.0,
+                          "speed": 0.1, "ramp": "Smooth"},
+            "Relaxation": {"strain": 0.004, "duration": 120.0, "speed": 0.1},
+            "Creep": {"load": 1200.0, "duration": 120.0, "speed": 0.1},
+            "Staircase → FRACTURE": {"start": 500.0, "step": 300.0, "dwell": 10.0,
+                                     "speed": 0.1, "ramp": "Smooth"},
+            "Progressive cyclic → FRACTURE": {"first_peak": 600.0, "peak_step": 300.0,
+                                              "unload_to": 200.0, "speed": 0.1},
+    }
 
-    Was two (100 % and 50 % infill). One is enough: infill is a LABEL that enters no calculation,
+def _starter_recipes():
+    """The profiles the app always offers: "Default" (PLA/PETG) and "TPU" (the elastomer).
+
+    Was one for a while, having been two (100 % and 50 % infill). Infill is a LABEL that enters no calculation,
     and every force parameter here is a starting point the operator adjusts per specimen anyway —
     two near-identical profiles just meant two things to keep in sync and one more decision at the
     start of a test. Carries params for EVERY mode, so switching Test type after a Load gives sane
@@ -120,28 +138,49 @@ def _starter_recipes():
     return [
         TestRecipe(
             name=DEFAULT, infill_pct=100.0, preload_N=300.0, **common,
-            mode_params={
-                "Cyclic": {"low": 200.0, "high": 1500.0, "cycles": 5, "speed": 0.1,
-                           "waveform": "Sine"},
-                "Staircase": {"start": 500.0, "step": 400.0, "levels": 4, "dwell": 30.0,
-                              "speed": 0.1, "ramp": "Smooth"},
-                "Relaxation": {"strain": 0.004, "duration": 120.0, "speed": 0.1},
-                "Creep": {"load": 1200.0, "duration": 120.0, "speed": 0.1},
-                "Staircase → FRACTURE": {"start": 500.0, "step": 300.0, "dwell": 10.0,
-                                         "speed": 0.1, "ramp": "Smooth"},
-                "Progressive cyclic → FRACTURE": {"first_peak": 600.0, "peak_step": 300.0,
-                                                  "unload_to": 200.0, "speed": 0.1},
-            },
+            mode_params=_starter_mode_params(),
             notes="Starter profile. Preload 300 N, infill label 100 %. Non-destructive modes stay "
                   "well below yield; fracture protocols step to ~3.2 kN in ~10 levels/cycles. "
+                  "Strain cap 25 %: PLA fractures at 4-6 % and PETG at ~8 %, so the DIC's "
+                  "lost-marker guard only ever sees an impossible pair. "
                   "WARNING: a thermally derated session can stall before a 100 % infill specimen "
                   "fractures (T7 on S20 stalled at 2355 N tared) — let the motor cool, or run a "
                   "50 % specimen. Adjust the forces to the specimen before a destructive run."),
+        # An ELASTOMER is a different test wearing the same rig, and every parameter that has to
+        # change for it lives here rather than in four controls the operator sets one at a time.
+        TestRecipe(
+            name="TPU", infill_pct=100.0,
+            # 20 N, not 300. On PLA a 300 N preload is ~0.15 % strain and tares away invisibly.
+            # TPU is far less stiff, so 300 N would pull it through a large part of the elastic
+            # range BEFORE the tare — and the slope compared against PLA would then be measured
+            # from the wrong place on the curve.
+            preload_N=20.0,
+            # 60 %. TPU reaches the rig's ~34 % travel limit as REAL strain; at 25 % the DIC
+            # rejects every frame past that as a lost marker, silently, mid-pull. Beyond ~60 %
+            # the markers leave the camera ROI, so the ROI binds first and more buys nothing.
+            strain_cap_pct=60.0,
+            # OFF. The detector watches for the load COLLAPSE of a brittle break; a TPU specimen
+            # draws without ever collapsing, so armed it can only misfire on a fluctuation.
+            auto_stop_fracture=False,
+            **{k: v for k, v in common.items()
+               if k not in ("material", "auto_stop_fracture")}, material="TPU",
+            mode_params=_starter_mode_params(),
+            notes="Elastomer. STOP THE TEST BY HAND at the travel limit — TPU will not fracture, "
+                  "so there is no load collapse for auto-stop to catch, and it is off. Strain cap "
+                  "60 % because TPU reaches the rig's ~34 % travel limit as real strain; at the "
+                  "default 25 % the DIC would reject every frame past that as a lost marker, "
+                  "silently, mid-pull. Preload 20 N, not 300, because 300 N would tare away a "
+                  "large part of the elastic range you are trying to compare against PLA. Same "
+                  "80 mm gauge and 80 mm2 section as the PLA and PETG specimens, so the curves "
+                  "are directly comparable."),
     ]
 
 
 def ensure_default(directory=RECIPES_DIR):
-    """Guarantee the starter profile exists, and retire the two it replaced.
+    """Guarantee the starter profiles exist, and retire the two Defaults they replaced.
+
+    They are SEEDED rather than tracked in git: recipes/ is gitignored because it also holds the
+    operator's own profiles. So a fresh clone gets Default and TPU from here on first launch.
 
     Idempotent, and a profile the operator has customised under a different name is untouched. The
     two old starters ARE deleted: they were written by the app, not by the operator, and leaving
@@ -153,12 +192,17 @@ def ensure_default(directory=RECIPES_DIR):
                 os.remove(path)
         except Exception:
             pass                                  # a stale starter is cosmetic; never block startup
-    r = _starter_recipes()[0]
-    cur = find(r.name, directory)
-    if cur is None:
-        r.save(directory)
-        cur = r
-    return cur
+    first = None
+    for r in _starter_recipes():
+        # Only if MISSING. A starter the operator has since tuned is theirs, and overwriting it
+        # on every launch would silently undo their edits.
+        cur = find(r.name, directory)
+        if cur is None:
+            r.save(directory)
+            cur = r
+        if first is None:
+            first = cur
+    return first
 
 
 def main():

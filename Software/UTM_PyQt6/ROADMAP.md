@@ -333,6 +333,11 @@ the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign
 >    the top of the Settings dropdown, and picking one moves everything the material implies at
 >    once. `TestRecipe` gained `strain_cap_pct`; recipes written before it default to 25 %,
 >    which is what every test on record actually ran at.
+>    ▸ **Both starters are SEEDED, not tracked.** `recipes/` is gitignored because it also
+>    holds the operator's own profiles, so `ensure_default()` writes Default and TPU on first
+>    launch — otherwise a fresh clone would have had no TPU option at all and no way to reach
+>    the 60 % window. It only writes what is MISSING, so a starter the operator has tuned is
+>    left alone. Verified by seeding into an empty folder and by re-running it over an edit.
 >    ▸ **What the TPU profile carries, and why each one.** Strain cap **60 %** — TPU reaches the
 >    rig's ~34 % travel limit as REAL strain, and at the default 25 % the DIC would reject every
 >    frame past that as a lost marker, silently, mid-pull. Preload **20 N**, not 300 — TPU is
