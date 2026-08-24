@@ -16,6 +16,7 @@ import sys
 import time            # module-level: _live_blob_count/_on_dic_blobs need it at signal time
 import math            # DIC overlay geometry (dashed line / marker travel)
 import os              # capture folder paths
+import json            # remembered custom materials and their strain caps
 from utm_autocal import MIN_MARGIN as _AC_MIN_MARGIN   # "fragile" line for the DIC health badge
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QProgressDialog, QVBoxLayout, QFileDialog
@@ -41,12 +42,24 @@ from camera_manager import CameraManager
 # `max_frac` is a multiple of Px0, so 1.25 means "believe strain up to 25 %". PLA fractures at 4-6 %
 # and PETG at 8 %, so 1.25 never sees anything but an impossible pair. TPU reaches the rig's ~34 %
 # travel limit as REAL strain and would have every frame past 25 % rejected, silently, mid-pull.
+#
+# These three are only the SHIPPED entries. The dropdown is editable: type "Aluminium 6061" or
+# "PLA-CF, batch 7" and it becomes a material with its own strain cap, remembered from then on.
+# A dropdown cannot hold every material this rig will ever see, and "Other" recorded nothing
+# useful in the CSV header — the whole point of the field is that the record says what was pulled.
 MATERIALS = {
     "PLA":   {"max_frac": 1.25, "note": "fractures at 4-6 % strain"},
     "PETG":  {"max_frac": 1.25, "note": "fractures at ~8 % strain"},
     "TPU":   {"max_frac": 1.60, "note": "elastomer - reaches the rig's ~34 % travel limit unbroken"},
-    "Other": {"max_frac": 1.60, "note": "unknown elongation - the permissive window"},
 }
+
+# What a material typed by hand starts at. TIGHT, not permissive, and deliberately so: the two ways
+# this setting can be wrong are not symmetric. Too tight aborts the run with a visible lost-marker
+# error and costs a specimen. Too loose accepts a marker that jumped to a grip edge as real strain,
+# and that ends up as a wrong epsilon_f on a slide with nothing to show it was wrong. Metals,
+# composites and filled polymers all sit far below 25 %; the elastomer is the exception, and an
+# operator pulling one knows it and can raise the cap in the box beside the name.
+NEW_MATERIAL_MAX_FRAC = 1.25
 import numpy as np
 import cv2
 from PyQt6.QtGui import QImage, QPixmap
@@ -1055,6 +1068,11 @@ class UTMApplication(QMainWindow):
 
         # DIC Camera state
         self.camera_manager = CameraManager()
+        # The settings row is built BEFORE this line runs, so _restore_material() could set the
+        # dropdown and the cap box but had no camera to push them into. The widgets then read
+        # 60 % while the DIC sat on 25 %, and the first TPU pull after a restart would have
+        # aborted on a lost marker with the UI insisting it was configured correctly.
+        self._apply_material_to_dic()
         from utm_capture import CaptureManager
         self.capture = CaptureManager(root=self.CAPTURE_ROOT,
                                       fps=getattr(CameraManager, "FRAME_RATE", 35))
@@ -3216,6 +3234,108 @@ class UTMApplication(QMainWindow):
             except Exception:
                 pass
 
+    def _material_caps(self):
+        """Every material the operator can pick: the shipped three plus any typed since.
+
+        Stored as a JSON string rather than a dict, because QSettings round-trips a nested dict
+        through the Windows INI as something that does not come back a dict.
+        """
+        caps = {k: v["max_frac"] for k, v in MATERIALS.items()}
+        try:
+            saved = json.loads(self._recall("specimen/material_caps", "{}") or "{}")
+            caps.update({str(k): float(v) for k, v in saved.items()})
+        except (ValueError, TypeError, AttributeError):
+            pass                                    # a corrupt store falls back to the shipped three
+        return caps
+
+    def _restore_material(self):
+        """Rebuild the dropdown from shipped + typed materials and reinstate the last one used."""
+        caps = self._material_caps()
+        want = str(self._recall("specimen/material", "PLA")).strip() or "PLA"
+        cap = caps.get(want, NEW_MATERIAL_MAX_FRAC)
+        for w in (self.materialCombo, self.strainCapSpin):
+            w.blockSignals(True)
+        self.materialCombo.clear()
+        self.materialCombo.addItems(sorted(caps))
+        self.materialCombo.setCurrentText(want)
+        self.strainCapSpin.setValue(int(round((cap - 1.0) * 100)))
+        for w in (self.materialCombo, self.strainCapSpin):
+            w.blockSignals(False)
+        # camera_manager does not exist yet at this point in construction — __init__ builds the
+        # settings row first — so the DIC is told separately, by _apply_material_to_dic().
+        self._apply_material_to_dic()
+        try:
+            from PyQt6.QtCore import QTimer                    # console does not exist yet
+            QTimer.singleShot(0, lambda: self.append_to_console(
+                f"[Settings] Material restored to {want} from the last session "
+                f"(DIC believes strain up to {(cap - 1.0) * 100:.0f} %). "
+                "Change it now if this specimen differs."))
+        except Exception:
+            pass
+
+    def _apply_material_to_dic(self):
+        """Push whatever the Material row currently shows into the DIC.
+
+        Called twice on purpose: once from _restore_material (which may be too early) and once
+        the moment camera_manager exists. Whichever runs second is the one that lands, and both
+        read the same widgets, so it cannot disagree with what is on screen.
+        """
+        if not (hasattr(self, "camera_manager") and hasattr(self, "materialCombo")):
+            return
+        name = self.materialCombo.currentText().strip() or "PLA"
+        self.camera_manager.set_material(name, 1.0 + self.strainCapSpin.value() / 100.0)
+
+    def on_material_changed(self, name):
+        """A material was picked from the list, or a new one was typed and confirmed."""
+        name = (name or "").strip()
+        if not name:                                           # cleared the box — put back what was there
+            self.materialCombo.setCurrentText(str(self._recall("specimen/material", "PLA")))
+            return
+        caps = self._material_caps()
+        known = name in caps
+        # A name never seen before starts TIGHT rather than inheriting whatever the previous
+        # material used. Going TPU -> "Aluminium 6061" must not leave a metal on a 60 % window.
+        cap = caps.get(name, NEW_MATERIAL_MAX_FRAC)
+        self._remember("specimen/material", name)
+        if not known:
+            caps[name] = cap
+            self._remember("specimen/material_caps",
+                           json.dumps({k: v for k, v in caps.items() if k not in MATERIALS}))
+            self.materialCombo.blockSignals(True)
+            self.materialCombo.clear()
+            self.materialCombo.addItems(sorted(caps))
+            self.materialCombo.setCurrentText(name)
+            self.materialCombo.blockSignals(False)
+        self.strainCapSpin.blockSignals(True)
+        self.strainCapSpin.setValue(int(round((cap - 1.0) * 100)))
+        self.strainCapSpin.blockSignals(False)
+        self.camera_manager.set_material(name, cap)
+        note = MATERIALS.get(name, {}).get("note")
+        self.append_to_console(
+            f"[Specimen] Material: {name}"
+            + (f" — {note}" if note else " — added; it will be in the list from now on")
+            + f". DIC believes strain up to {(cap - 1.0) * 100:.0f} %"
+            + ("" if known else " until you change the box beside it."))
+
+    def on_strain_cap_changed(self, pct):
+        """The operator moved the cap. Remember it AGAINST THIS MATERIAL, including a shipped one."""
+        name = self.materialCombo.currentText().strip() or "PLA"
+        cap = 1.0 + pct / 100.0
+        caps = self._material_caps()
+        caps[name] = cap
+        # Persist only the overrides. A shipped material left at its shipped value drops out of the
+        # store, so editing MATERIALS in a later version is not shadowed forever by a stale copy.
+        self._remember("specimen/material_caps", json.dumps(
+            {k: v for k, v in caps.items()
+             if k not in MATERIALS or abs(v - MATERIALS[k]["max_frac"]) > 1e-9}))
+        self.camera_manager.set_material(name, cap)
+        self.append_to_console(
+            f"[Specimen] {name}: DIC will now believe strain up to {pct} % before calling a "
+            f"separation a lost marker."
+            + (f"  (shipped value for {name} is "
+               f"{(MATERIALS[name]['max_frac'] - 1) * 100:.0f} %)" if name in MATERIALS
+               and abs(cap - MATERIALS[name]["max_frac"]) > 1e-9 else ""))
+
     def _confirm_destructive(self, title, what):
         """Fracture protocols destroy the specimen, so make the operator confirm — same discipline as
         the Fracture test button. Returns True to proceed."""
@@ -3547,17 +3667,49 @@ class UTMApplication(QMainWindow):
         # to be corrected by hand.
         r1.addWidget(QLabel("Material:"))
         self.materialCombo = QComboBox()
-        self.materialCombo.addItems(list(MATERIALS))
+        # EDITABLE. The shipped three are a starting point, not the list of materials that exist.
+        # NoInsert because the handler adds the name itself, once it is complete — letting Qt insert
+        # would leave "A", "Al", "Alu"… in the list, one per keystroke.
+        self.materialCombo.setEditable(True)
+        self.materialCombo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.materialCombo.setMinimumWidth(150)
         self.materialCombo.setToolTip(
-            "The specimen's polymer. Two effects:\n"
+            "The specimen's material. TYPE A NAME to add one that is not listed — "
+            "\"Aluminium 6061\", \"PLA-CF\", a batch code — and press Enter. It is remembered.\n\n"
+            "Two effects:\n"
             "  • it is recorded in the CSV header and the registry, which had no way to know it\n"
-            "  • it sets how far the DIC will believe the markers can travel before calling it a\n"
-            "    lost marker — 25 % for PLA and PETG, 60 % for an elastomer\n"
-            "Independent of the White/Black specimen mode, which is about optics: a TPU specimen\n"
+            "  • it sets the strain cap in the box beside it\n\n"
+            "Independent of the White/Black specimen mode, which is about optics: a TPU specimen "
             "can be either colour.")
-        self.materialCombo.setCurrentText(str(self._recall("specimen/material", "PLA")))
-        self.materialCombo.currentTextChanged.connect(self.on_material_changed)
         r1.addWidget(self.materialCombo)
+
+        # The cap is a VISIBLE control, not a number buried in a table. It has to be, now that a
+        # material can be typed: the app cannot know what "Aluminium 6061" stretches to, so the
+        # operator says. Showing it for the shipped materials too is the part that makes the guard
+        # auditable — 25 % is not a hidden default any more, it is on screen next to the name.
+        self.strainCapSpin = QSpinBox()
+        self.strainCapSpin.setRange(5, 200)
+        self.strainCapSpin.setSingleStep(5)
+        self.strainCapSpin.setSuffix(" % strain")
+        self.strainCapSpin.setToolTip(
+            "How far the DIC will believe the markers travelled before it calls the separation a "
+            "LOST MARKER rather than strain.\n\n"
+            "It changes NO recorded number — 3 % strain reads 3.000 % at any setting. It only "
+            "decides when a jump stops being believed.\n\n"
+            "25 % for PLA and PETG, which fracture at 4-8 %. 60 % for an elastomer, which reaches "
+            "the rig's ~34 % travel limit intact. Beyond ~60 % the markers leave the camera's ROI, "
+            "so the ROI binds first and raising this further buys nothing.")
+        r1.addWidget(self.strainCapSpin)
+
+        # Wire AFTER both widgets exist — the cap handler reads the combo and vice versa.
+        # textActivated = picked from the list. editingFinished = typed and confirmed with Enter or
+        # by clicking away. Deliberately NOT currentTextChanged, which fires per keystroke and would
+        # treat every prefix of a typed name as a new material.
+        self._restore_material()
+        self.materialCombo.textActivated.connect(self.on_material_changed)
+        self.materialCombo.lineEdit().editingFinished.connect(
+            lambda: self.on_material_changed(self.materialCombo.currentText()))
+        self.strainCapSpin.valueChanged.connect(self.on_strain_cap_changed)
         r1.addSpacing(16)
         r1.addWidget(QLabel("Infill %:"))
         self.infillSpinBox = QSpinBox()
@@ -3571,12 +3723,7 @@ class UTMApplication(QMainWindow):
         # creep) has no such gate — which is exactly how T6.4, T6.5 and both T9 runs recorded
         # "Infill: 100 %" on 50 % specimens while T7.3, a destructive run, came out right.
         # Fix: remember it across restarts so it is set once per SPECIMEN, not once per session.
-        self._restore_infill()
-        # Push the remembered material into the DIC now. Without this a restart leaves an elastomer
-        # on PLA's tight 25 % window while the dropdown reads TPU — the failure would appear
-        # mid-pull, as a lost-marker abort, on a specimen that was tracking perfectly.
-        if hasattr(self, "camera_manager"):
-            self.on_material_changed(self.materialCombo.currentText())
+        self._restore_infill()                      # material: see _restore_material
         self.infillSpinBox.valueChanged.connect(
             lambda v: self._remember("specimen/infill_pct", int(v)))
         r1.addWidget(self.infillSpinBox)
@@ -4395,6 +4542,11 @@ class UTMApplication(QMainWindow):
                     f"{self.gauge_length} mm, Material: {_mat}, Infill: {infill_val} %\n")
             px_per_mm = getattr(self.camera_manager, 'px_per_mm', 0.0)
             f.write(f"# DIC Calibration - px_per_mm: {px_per_mm:.4f}\n")
+            # The guard that decided whether a separation was strain or a lost marker. Recorded
+            # because a run that aborted mid-pull is only diagnosable afterwards if the ceiling
+            # it hit is in the file. It changes no value here - it gates what was believed.
+            _cap = getattr(self.camera_manager, "PAIR_MAX_FRAC", 1.25)
+            f.write(f"# DIC Strain Cap - {(_cap - 1) * 100:.0f} % (beyond this a separation was read as a lost marker)\n")
             _bl = self.load_plot_dic_blobs
             _ok = sum(1 for b in _bl if b == 2)
             f.write(f"# DIC Health - {100.0*_ok/len(_bl):.0f}% frames tracked 2/2 ({_ok}/{len(_bl)})\n" if _bl else "# DIC Health - n/a\n")
@@ -6882,15 +7034,6 @@ class UTMApplication(QMainWindow):
         for combo in (self.specimenModeCombo, getattr(self, "specimenModeComboLP", None)):
             if combo is not None:
                 combo.setEnabled(not running)
-
-    def on_material_changed(self, name):
-        """Record the material and push its strain window to the DIC."""
-        spec = MATERIALS.get(name, MATERIALS["Other"])
-        self._remember("specimen/material", name)
-        self.camera_manager.set_material(name, spec["max_frac"])
-        self.append_to_console(
-            f"[Specimen] Material: {name} — {spec['note']}; DIC will believe strain up to "
-            f"{(spec['max_frac'] - 1) * 100:.0f} %")
 
     def on_specimen_mode_changed(self, mode):
         # Keep both tab combos in sync without re-triggering this handler.

@@ -327,7 +327,25 @@ the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign
 >    camera's specimen-mode dropdown either. **Specimen mode selects optical POLARITY and a TPU
 >    specimen can be printed black or white**; bundling the two would have forced every elastomer
 >    to be black. So the window moved to a **Material dropdown in Settings, beside Infill**:
->    PLA and PETG keep the tight 0.85–1.25 × Px₀, TPU and `Other` carry 0.85–1.60.
+>    PLA and PETG keep the tight 0.85–1.25 × Px₀ and TPU carries 0.85–1.60.
+>    ▸ **The dropdown is EDITABLE and there is no `Other`.** The operator’s point: a fixed list
+>    cannot name every material this rig will see, and `Other` recorded nothing useful in a
+>    header whose whole job is to say what was pulled. Type “Aluminium 6061”, press Enter, and
+>    it is a material from then on — remembered, with its own cap, in the list next launch.
+>    ▸ **A typed material starts at 25 %, never at the previous material’s value.** The two
+>    failure directions are not symmetric. Too tight aborts the run with a visible lost-marker
+>    error and costs one specimen. Too loose accepts a marker that jumped to a grip edge as
+>    real strain, and that reaches a slide as a wrong ε_f with nothing to show it was wrong.
+>    ▸ **The cap is a visible spin box beside the name**, so 25 % is no longer a hidden default,
+>    and it is written into the CSV as `# DIC Strain Cap` — a run that aborted mid-pull is only
+>    diagnosable afterwards if the ceiling it hit is in the file. Only OVERRIDES are persisted,
+>    so editing `MATERIALS` in a later version is not shadowed forever by a stale stored copy.
+>    ▸ **Two bugs the checks caught, both invisible in the source.** (a) `currentTextChanged`
+>    fires per KEYSTROKE on an editable combo — typing “Aluminium” would have registered nine
+>    materials; it is wired to `textActivated` + `editingFinished` instead. (b) `__init__`
+>    builds the settings row BEFORE it creates the `CameraManager`, so the restore set the
+>    widgets and pushed nothing: the box read 60 % while the DIC sat on 25 %. Now applied again
+>    by `_apply_material_to_dic()` the moment the camera exists.
 >    ▸ **It fixed a second bug the operator had already paid for by hand.** `utm_registry.py`
 >    hard-coded `"material": "PLA"` on every record ever written, and nothing in the UI ever set
 >    it — which is how S30, S31 and S32, all PETG, entered the registry labelled PLA. The
