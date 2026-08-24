@@ -3692,6 +3692,181 @@ footer(s, "HuffYUV, FFVHuff and both Ut Video variants claim lossless and return
           "verified at 100.0 % are offered as lossless.")
 pageno(s)
 
+
+# =====================================================================================
+# SEGMENT: PETG — THE SECOND MATERIAL  — p252-254
+# =====================================================================================
+import petg_data as PG                                                             # noqa: E402
+import petg_plots as PGP                                                           # noqa: E402
+PGP.fig_trio(); PGP.fig_limits(); PGP.fig_vs_pla(); PGP.fig_expect()
+_g30, _g31, _g32 = PG.get("S30"), PG.get("S31"), PG.get("S32")
+_p25, _p26 = PG.get("S25"), PG.get("S26")
+_u32, _ = PG.uts_corrected("S32")
+_EXP = PG.expectation_table()
+_PK = [PG.peak_load_N(k) for k in ("S30", "S31", "S32")]
+
+# ---- p252: the three PETG runs ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "PETG — THREE RUNS ON ONE MATERIAL")
+tb(s, 0.4, 1.15, 12.55, 0.44,
+   "S29 is excluded outright: it was loaded repeatedly before it finally fractured, so its curve "
+   "is not a single monotonic pull and nothing from it describes virgin material. Three runs "
+   "remain, all 100 % infill at 0.10 mm/s.", fs=12, italic=True, colour=GREY_TEXT)
+
+img_fit(s, _os.path.join("documentation", "petg_trio.png"), 1.55, 1.72, 10.0, 3.55)
+
+table(s, 0.4, 5.46, 12.55, 1.05,
+      [["Run", "Tracked", "Peak load N", "UTS MPa", "E GPa", "ε_f %", "What it can carry"],
+       ["S30", "%d %%" % _g30["track"], "%.0f" % _PK[0], "%.2f" % _g30["uts"],
+        "%.2f" % _g30["E"], "%.2f" % (_g30["ef"] * 100), "everything"],
+       ["S31", "%d %%" % _g31["track"], "%.0f" % _PK[1], "%.2f" % _g31["uts"],
+        "—", "—", "strength only"],
+       ["S32", "%d %%" % _g32["track"], "%.0f" % _PK[2], "%.2f *" % _u32,
+        "%.2f" % _g32["E"], "%.2f" % (_g32["ef"] * 100), "force and slopes, not absolute stress"]],
+      cw=[0.9, 1.1, 1.4, 1.2, 1.0, 1.0, 3.6], hf=10, bf=9.5)
+
+banner(s, 0.4, 6.50, 12.55, 0.46,
+       "PEAK LOAD IS THE ONE NUMBER ALL THREE CAN CARRY — %.0f, %.0f and %.0f N, a spread of "
+       "%.1f %%. It comes straight off the load cell and touches neither the DIC nor the anchor."
+       % (_PK[0], _PK[1], _PK[2], 100 * (max(_PK) / min(_PK) - 1)),
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
+footer(s, "* S32's UTS is re-derived with the rig's usual 300 N preload because its own anchor "
+          "recovery failed — see the next slide. Same protocol as the PLA pair throughout.")
+pageno(s)
+
+# ---- p253: why each run has a limit ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "PETG — WHAT LIMITS EACH RUN, AND WHAT SURVIVES IT")
+tb(s, 0.4, 1.15, 12.55, 0.44,
+   "Two different faults, neither of them the material — and in both cases some of the run is "
+   "still perfectly good. Discarding a whole specimen because part of it is compromised throws "
+   "away evidence.", fs=12, italic=True, colour=GREY_TEXT)
+
+img_fit(s, _os.path.join("documentation", "petg_limits.png"), 0.40, 1.70, 12.55, 3.15)
+
+header(s, 0.4, 5.06, 6.15, "S31 — 57 % tracked")
+tb(s, 0.4, 5.42, 6.15, 1.4,
+   "The sprayed dots carry a crescent of overspray FUSED to the rim, which puts circularity at "
+   "0.49–0.51 against a 0.50 gate; noise then flipped markers in and out frame by frame. "
+   "UTS and σ_y come from the LOAD CELL and never touch the DIC, so they stand — and agree with "
+   "S30 to %.1f %%. E, ε_f and toughness are strain quantities and do not."
+   % abs(PG.pct(_g30["uts"], _g31["uts"])), fs=10, colour=BLACK)
+
+header(s, 6.80, 5.06, 6.15, "S32 — the force anchor failed")
+tb(s, 6.80, 5.42, 6.15, 1.4,
+   "The anchor is recovered from the settled post-fracture tail, which should read −(the tared-away "
+   "preload) ≈ −300 N. S30's tail settles at −311 N; S32's settled at +936 N — the specimen never "
+   "fully released — so the anchor came out −1044 N and shifted every stress down by 13 MPa. "
+   "Its peak LOAD, 3117 N off the load cell, is untouched.", fs=10, colour=BLACK)
+
+banner(s, 0.4, 6.50, 12.55, 0.46,
+       "A CONSTANT OFFSET CANCELS IN ANY SLOPE, which is why S32's E (%.2f GPa) already matches "
+       "S30's (%.2f) and why it can still be compared on the plastic slope two slides on."
+       % (_g32["E"], _g30["E"]), fill=YELLOW_WARN, fg=BLACK, fs=11)
+footer(s, "min_circularity was loosened 0.50 → 0.40 after S31 ran; the roadmap carries the revert. "
+          "S32 should be redone, or re-derived with an explicit anchor.")
+pageno(s)
+
+# ---- p254: PETG vs PLA ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "PETG vs PLA — S30 AGAINST S25")
+tb(s, 0.4, 1.13, 12.55, 0.44,
+   "The first time this rig has compared two materials. Same protocol, same gauge, same DIC — so "
+   "any difference is the polymer, not the machine.", fs=12, italic=True, colour=GREY_TEXT)
+
+img_fit(s, _os.path.join("documentation", "petg_vs_pla.png"), 0.40, 1.62, 12.55, 2.86)
+
+table(s, 0.4, 4.64, 12.55, 1.30,
+      [["", "UTS MPa", "σ_y MPa", "E GPa", "ε_f %", "toughness kJ/m³", "peak load N"],
+       ["PLA  S25", "%.2f" % _p25["uts"], "%.2f" % _p25["sy"], "%.2f" % _p25["E"],
+        "%.2f" % (_p25["ef"] * 100), "%.0f" % _p25["tough"], "%.0f" % (_p25["uts"] * 80)],
+       ["PETG S30", "%.2f" % _g30["uts"], "%.2f" % _g30["sy"], "%.2f" % _g30["E"],
+        "%.2f" % (_g30["ef"] * 100), "%.0f" % _g30["tough"], "%.0f" % (_g30["uts"] * 80)],
+       ["PETG vs PLA", "%+.1f %%" % PG.pct(_p25["uts"], _g30["uts"]),
+        "%+.1f %%" % PG.pct(_p25["sy"], _g30["sy"]), "%+.1f %%" % PG.pct(_p25["E"], _g30["E"]),
+        "%+.1f %%" % PG.pct(_p25["ef"], _g30["ef"]),
+        "%+.1f %%" % PG.pct(_p25["tough"], _g30["tough"]), ""]],
+      cw=[1.7, 1.2, 1.2, 1.1, 1.1, 1.7, 1.4], hf=10, bf=9.5)
+
+banner(s, 0.4, 6.34, 12.55, 0.52,
+       "PETG trades STRENGTH AND STIFFNESS for TOUGHNESS: %.0f %% of PLA's UTS and %.0f %% of its "
+       "modulus, but %.0f %% more strain before fracture and %.0f %% more energy absorbed. That is "
+       "the classic PLA-vs-PETG trade, and the rig reproduced it unaided."
+       % (100 * _g30["uts"] / _p25["uts"], 100 * _g30["E"] / _p25["E"],
+          PG.pct(_p25["ef"], _g30["ef"]), PG.pct(_p25["tough"], _g30["tough"])),
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=10.5)
+footer(s, "S25 chosen as the PLA comparator: same frame-capture protocol, 100 % DIC coverage, and "
+          "the closest run in date. S26 is drawn on the curve for context.")
+pageno(s)
+
+# ---- p255: does it match literature ----
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "IS IT WHAT LITERATURE PREDICTS?")
+tb(s, 0.4, 1.13, 12.55, 0.44,
+   "The ORDERING is the prediction worth testing — absolute values move with spool, printer and "
+   "settings, but which material wins each property does not.",
+   fs=12, italic=True, colour=GREY_TEXT)
+
+table(s, 0.4, 1.66, 12.55, 1.62,
+      [["Property", "Literature says", "We measured", "PLA", "PETG", "Verdict"]] +
+      [[r["label"], "%s higher" % r["expect"], "%s higher" % r["measured"],
+        "%.2f %s" % (r["pla"], r["unit"]), "%.2f %s" % (r["petg"], r["unit"]),
+        "✔ as expected" if r["agree"] else "✘ NOT as expected"] for r in _EXP],
+      cw=[2.0, 1.9, 1.7, 1.7, 1.7, 2.2], hf=10, bf=9.5)
+
+img_fit(s, _os.path.join("documentation", "petg_expect.png"), 0.40, 3.42, 12.55, 2.55)
+
+banner(s, 0.4, 6.34, 12.55, 0.52,
+       "ALL FOUR PREDICTIONS HOLD. And the one MISS is shared: both materials sit ~7-8 % below "
+       "the published UTS band while E and ε_f land inside it. A strength knock-down that is the "
+       "SAME SIZE on two different polymers is the print process, not the instrument — the "
+       "measurement is exonerated by the very thing that looked like a shortfall.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=10.5)
+footer(s, "⚠ Bands are typical published values for 100 % infill printed parts. The PETG spool's "
+          "OWN datasheet has not been obtained — until it is, this is a sanity check on the "
+          "ordering, not the like-for-like validation PLA has against add:north E-PLA.")
+pageno(s)
+
+# ---- p256: the plastic slope, specimen to specimen ----
+PGP.fig_plastic()
+_ps30, _ps32 = PGP.plastic_slope("S30"), PGP.plastic_slope("S32")
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "PETG — THE PLASTIC SLOPE, SPECIMEN TO SPECIMEN")
+tb(s, 0.4, 1.13, 12.55, 0.44,
+   "After the peak, PETG draws: stress falls while strain keeps climbing. The RATE it falls at is "
+   "a material response the toe and the grips cannot reach, which makes it a cleaner "
+   "specimen-to-specimen comparison than UTS.", fs=12, italic=True, colour=GREY_TEXT)
+
+img_fit(s, _os.path.join("documentation", "petg_plastic.png"), 0.40, 1.64, 12.55, 2.86)
+
+table(s, 0.4, 4.66, 7.6, 1.30,
+      [["Run", "Tracked", "dσ/dε  (MPa per % strain)", "R²", "Fitted over"],
+       ["S30", "%d %%" % _g30["track"], "%+.3f" % _ps30["slope"], "%.4f" % _ps30["r2"],
+        "%.2f – %.2f %%" % (_ps30["lo"], _ps30["hi"])],
+       ["S32", "%d %%" % _g32["track"], "%+.3f" % _ps32["slope"], "%.4f" % _ps32["r2"],
+        "%.2f – %.2f %%" % (_ps32["lo"], _ps32["hi"])],
+       ["S31", "%d %%" % _g31["track"], "cannot be fitted", "—",
+        "curve ends 1.08 % past the peak"]],
+      cw=[1.0, 1.1, 2.3, 1.1, 2.1], hf=9.5, bf=9.5)
+
+header(s, 8.25, 4.66, 4.7, "Why this comparison survives S32's anchor")
+tb(s, 8.25, 5.02, 4.7, 1.4,
+   "The failed anchor enters the stress axis as a CONSTANT OFFSET, and a constant cancels in any "
+   "derivative. So S32's absolute UTS cannot be trusted while its SLOPES can — its E (%.2f GPa) "
+   "already matches S30's (%.2f), which is the same fact showing up twice."
+   % (_g32["E"], _g30["E"]), fs=9.8, colour=BLACK)
+
+banner(s, 0.4, 6.44, 12.55, 0.46,
+       "The two runs that can be fitted agree to %.0f %% on the softening rate (%.2f vs %.2f MPa "
+       "per %% strain, both R² > 0.98), and their curves lie almost on top of one another. For a "
+       "first pass at a new material on this rig, that is a good result."
+       % (100 * abs(_ps32["slope"] - _ps30["slope"]) / abs(_ps30["slope"]),
+          _ps30["slope"], _ps32["slope"]),
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=10.5)
+footer(s, "Fitted between 15 % and 85 % of the way from the UTS strain to fracture, so neither the "
+          "turnover at the peak nor the last dying samples enter the fit.")
+pageno(s)
+
 try:
     prs.save("documentation/V6a_8_6_20_slides.pptx")
     _n = len(prs.slides.__iter__.__self__._sldIdLst)

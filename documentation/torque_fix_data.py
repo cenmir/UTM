@@ -51,19 +51,28 @@ ROLES = {
 
 
 def post_fix():
-    """Every fractured run after the realignment: [(spec, date, material, role, peak, UTS, E)]."""
+    """Every fractured run after the realignment: [(spec, date, material, role, peak, UTS, E)].
+
+    Every field is coerced to a STRING or a number before it leaves here. A registry row written by
+    the app can legitimately have `specimen: null` until someone labels it, and python-pptx raises
+    on a None cell — so an unlabelled run used to take the whole deck build down with a TypeError
+    from inside a regex, six slides away from the actual cause. A missing label is a data gap, not
+    a reason to lose 111 slides.
+    """
     out = []
     for r in _rows():
-        date = str(r.get("date"))[:10]
-        if date < FIX_DATE:
+        date = str(r.get("date") or "")[:10]
+        if not date or date < FIX_DATE:
             continue
         uts, area = r.get("UTS_MPa"), r.get("area_mm2")
         if not uts or not area:
             continue
-        spec = r.get("specimen")
-        mat, role = ROLES.get(spec, ("—", "—"))
-        out.append((spec, date, mat, role, float(uts) * float(area), float(uts),
-                    r.get("E_GPa")))
+        spec = r.get("specimen") or "(unlabelled)"
+        mat, role = ROLES.get(spec, (str(r.get("material") or "—"), "—"))
+        E = r.get("E_GPa")
+        out.append((str(spec), date, str(mat), str(role),
+                    float(uts) * float(area), float(uts),
+                    float(E) if E else None))
     return sorted(out, key=lambda t: (t[1], t[0]))
 
 
