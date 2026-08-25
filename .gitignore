@@ -78,3 +78,5 @@ documentation/deck_png_tpu/
 
 # Everything the app and its tools write: captures, diagnostics, setup and ROI output
 Software/UTM_PyQt6/output/
+# Slide renders used only to proof-read a deck
+documentation/deck_png_*/

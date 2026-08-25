@@ -3917,11 +3917,14 @@ pageno(s)
 # ---- TPU and the three-material comparison (own file, kept out of this one for length)
 exec(open("documentation/scripts/tpu_slides_block.py", encoding="utf-8").read())
 
+# ---- marker-spacing test: S33/S34 at 45 mm vs S25/S26 at 80 mm
+exec(open("documentation/scripts/gauge_slides_block.py", encoding="utf-8").read())
+
 try:
     prs.save("documentation/decks/V6a_8_6_20_slides.pptx")
     _n = len(prs.slides.__iter__.__self__._sldIdLst)
     print(f"Saved: V6a_8_6_20_slides.pptx ({_n} slides, "
           f"pages {FIRST_PAGE}-{FIRST_PAGE + _n - 1})")
 except PermissionError:
-    prs.save("documentation/V6a_8_6_20_slides_updated.pptx")
-    print("Original locked (open in PowerPoint). Saved: V6a_8_6_20_slides_updated.pptx")
+    prs.save("documentation/decks/V6a_8_6_20_slides_updated.pptx")
+    print("Original locked (open in PowerPoint). Saved: decks/V6a_8_6_20_slides_updated.pptx")
