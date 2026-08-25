@@ -3,7 +3,7 @@ analyze() from utm_analysis (anchor self-calibration, baseline DIC re-zero, load
 + strain-jump fracture detection)."""
 import sys, os
 sys.stdout.reconfigure(encoding="utf-8")
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "Software", "UTM_PyQt6"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "UTM_PyQt6"))
 from statistics import mean, median, pstdev, stdev
 from utm_analysis import analyze
 ROOT = r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure"

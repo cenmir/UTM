@@ -4,7 +4,7 @@ measured UTS and failure strain (load-collapse analyze, same as v6_compare). Sav
 (V6_fracture_patterns.png) for the comparison slide."""
 import sys, os
 sys.stdout.reconfigure(encoding="utf-8")
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "Software", "UTM_PyQt6"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "UTM_PyQt6"))
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt

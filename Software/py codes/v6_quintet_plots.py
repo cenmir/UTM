@@ -3,7 +3,7 @@ strength repeatability vs references, ductility range, and offset-k vs datasheet
 Reuses the v6_compare analyze() (load-collapse fracture, anchor, DIC baseline re-zero)."""
 import sys, os
 sys.stdout.reconfigure(encoding="utf-8")
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "Software", "UTM_PyQt6"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "UTM_PyQt6"))
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
