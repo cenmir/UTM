@@ -33,7 +33,7 @@ EXPOSURE = 50000
 GAMMA = 0.5
 THRESHOLD = 100          # dark dots on light specimen (White mode)
 MIN_AREA, MAX_AREA, MIN_CIRC = 2000, 200000, 0.5
-OUT = Path("full_frame_output"); OUT.mkdir(exist_ok=True)
+OUT = Path("../output/full_frame_output"); OUT.mkdir(exist_ok=True)
 
 
 def detect_blobs(gray):

@@ -3265,7 +3265,7 @@ class UTMApplication(QMainWindow):
         slug = mode.lower().replace("→", "to").replace(" ", "_").strip("_")
         while "__" in slug:
             slug = slug.replace("__", "_")
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui_help", f"{slug}.png")
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "help", f"{slug}.png")
         caps = {
             "Cyclic": "Repeatedly loads then unloads the specimen between Low and High force for the given "
                       "number of Cycles (Speed = peak ramp rate). Reveals hysteresis / stiffness change per "
@@ -5260,7 +5260,7 @@ class UTMApplication(QMainWindow):
     # Nothing here runs on the GUI thread except flipping flags. Frames go straight from the camera
     # thread into utm_capture's bounded buffers; encoding happens on its own worker threads, which
     # is why the feed, the plots and the load-cell rate are unaffected.
-    CAPTURE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "captures")
+    CAPTURE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", "captures")
 
     # ===== SF12 — DIC auto-calibration ==========================================================
     #

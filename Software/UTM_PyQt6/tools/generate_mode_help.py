@@ -8,7 +8,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui_help")
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../ui/help")
 os.makedirs(OUT, exist_ok=True)
 
 BLUE, RED, GREY = "#1f6fb2", "#c0392b", "#7f8c8d"

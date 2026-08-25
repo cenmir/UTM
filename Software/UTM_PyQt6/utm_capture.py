@@ -8,7 +8,7 @@ the STILLS. If a lossless video is ever needed, FFV1 was measured at 100.0 % ide
 frame and 9.7 ms on this machine (pad the width to even first, or the column goes missing anyway).
 
     from utm_capture import CaptureManager
-    cap = CaptureManager(root="captures")
+    cap = CaptureManager(root=os.path.join("output", "captures"))
     cap.start_png(label="V7a", size=(419, 2348))
     cap.submit(frame, t_mono)          # called from the CAMERA thread, ~40 us
     cap.stop_all()
@@ -426,7 +426,7 @@ class CaptureManager:
     `submit` is the exception — it is called from the camera thread, and is the only method that
     has to be fast."""
 
-    def __init__(self, root="captures", fps=35):
+    def __init__(self, root=os.path.join("output", "captures"), fps=35):
         self.root = root
         self.fps = fps
         # BOTH are lists. Raw and speckle answer different questions and an operator generally

@@ -31,7 +31,7 @@ from PyQt6.QtWidgets import QApplication
 from camera_manager import CameraManager
 
 
-OUTPUT_DIR = Path("setup_output")
+OUTPUT_DIR = Path("../output/setup_output")
 N_FRAMES = 30
 MIN_OK_FRACTION = 0.95
 DISTANCE_STD_LIMIT_PX = 0.5

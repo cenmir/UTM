@@ -25,7 +25,7 @@ grab_result = camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
 if grab_result.GrabSucceeded():
     img = grab_result.Array.copy()
     img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
-    cv2.imwrite("test_images/sample_image.png", img)
+    cv2.imwrite("output/test_images/sample_image.png", img)
     print(f"ROI frame shape: {img.shape}")
 
 grab_result.Release()

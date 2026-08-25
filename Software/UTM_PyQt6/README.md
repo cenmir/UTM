@@ -31,11 +31,16 @@ different job with a different risk.
 | `tools/` | diagnostic and build scripts — ROI picker, blob checker, DIC replay, exe build |
 | `tests/` | camera and phase-8.6 test scripts |
 | `docs/` | ROADMAP, TESTING_TODO, TEST_FAILURES, RECALIBRATE_ROI, COMMANDS |
-| `ui/` · `ui_help/` | Qt Designer `.ui` files and the mode-help HTML |
-| `recipes/` | saved settings profiles (seeded on first launch) |
-| `diagnostics/` | images and video the tools write. Gitignored — pure scratch |
-| `captures/` · `setup_output/` · `full_frame_output/` · `test_images/` | script output, gitignored |
+| `ui/` | the Qt Designer `.ui` file, and `ui/help/` — the mode-help images |
+| `recipes/` | saved settings profiles, seeded on first launch (Default, TPU) |
+| `output/` | everything the app and its tools WRITE: `captures/`, `diagnostics/`, `setup_output/`, `full_frame_output/`, `test_images/`. Gitignored in one line |
 | `8.6.20 - …/` · `8.6.3/` · `CSV files/` · `SF9 - …/` | test data |
+
+`CAPTURE_ROOT`, the `.ui` path, `ui/help` and `RECIPES_DIR` are all built from `__file__`, so they
+follow the module — but they do NOT follow a folder that moves underneath them. A wrong one does
+not raise; it points at a directory that is not there, and the symptom is a capture that never
+appears or a help image that is blank. If you move any of these, check
+`main.py` (`UI_FILE`, `CAPTURE_ROOT`, the `ui/help` lookup) and `utm_recipes.RECIPES_DIR`.
 
 ## Running anything in `tools/` or `tests/`
 

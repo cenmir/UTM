@@ -52,9 +52,6 @@ Software/UTM_PyQt6/check_blobs.png
 Software/UTM_PyQt6/live_frame.png
 Software/UTM_PyQt6/test_*.png
 Software/UTM_PyQt6/utm_annotated.png
-Software/UTM_PyQt6/full_frame_output/
-Software/UTM_PyQt6/setup_output/
-Software/UTM_PyQt6/test_images/
 
 # Rig test-data folders (the CSVs are already covered by *.csv above, but these
 # also hold session plots/photos)
@@ -67,7 +64,6 @@ Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/
 Software/UTM_PyQt6/*.jpg
 
 # DIC frame capture / video recording output (huge: ~1.9 GB per minute of PNGs)
-Software/UTM_PyQt6/captures/
 
 # Session pack for the MOT extensometer visit. Documents are copies (the originals are
 # tracked or generated); the operator drops multi-GB videos in here before travelling, which
@@ -78,4 +74,7 @@ Validation docs/
 documentation/deck_png_tpu/
 
 # Diagnostic images written by the scripts in Software/UTM_PyQt6/tools and /tests
-Software/UTM_PyQt6/diagnostics/
+
+
+# Everything the app and its tools write: captures, diagnostics, setup and ROI output
+Software/UTM_PyQt6/output/
