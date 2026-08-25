@@ -37,5 +37,5 @@ ax.text(0.0, 2.35, "strength knocks down MORE\n(k≈1.26, 80 %) than stiffness\n
         bbox=dict(facecolor="#eef4ec", edgecolor="none", boxstyle="round,pad=0.4"))
 ax.text(2.0, 2.0, "elongation = 3–7 % range\n(mean 5.6 %; brittle end\nwell below the 8 % spec)", ha="center", fontsize=9.5,
         color="#a0521a", bbox=dict(facecolor="#fdf1e6", edgecolor="none", boxstyle="round,pad=0.4"))
-plt.tight_layout(); plt.savefig("V6a_epla_offset.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6a/V6a_epla_offset.png", dpi=150, bbox_inches="tight"); plt.close()
 print("saved V6a_epla_offset.png")

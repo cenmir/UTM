@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 V4B = r"Software\UTM_PyQt6\8.6.3\UTM_Test_20260605_152501_V4b_Staricase_Tension.csv"
 V4C = r"Software\UTM_PyQt6\8.6.3\UTM_Test_20260605_164908_V4c_Staircase_Tension_350N.csv"
-OUT_PNG = "V4b_vs_V4c_comparison.png"
+OUT_PNG = "images/V4/V4b_vs_V4c_comparison.png"
 
 
 def read_csv(path):

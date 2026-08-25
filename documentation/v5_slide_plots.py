@@ -127,7 +127,7 @@ ax.set_xlabel("Time (s)"); ax.set_ylabel("True force (N)")
 ax.set_title("8.6.20 V5 — Load vs time (full test)", fontweight="bold")
 ax.set_xlim(-5, 285); ax.set_ylim(-90, 1980)
 ax.grid(alpha=0.3)
-plt.tight_layout(); plt.savefig("V5_slide_load_time.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V5/V5_slide_load_time.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ============ PLOT 2: Stress vs strain — FOUR REGIONS marked ============
 fig, ax = plt.subplots(figsize=(12.5, 6.2))
@@ -162,7 +162,7 @@ ax.set_xlabel("DIC Cauchy strain ε_c"); ax.set_ylabel("Engineering stress (MPa)
 ax.set_title("8.6.20 V5 — Stress vs strain (four deformation regions)", fontweight="bold")
 ax.grid(alpha=0.3, zorder=1); ax.legend(loc="lower right", fontsize=11)
 ax.set_xlim(-0.0005, 0.027); ax.set_ylim(0, 26.5)
-plt.tight_layout(); plt.savefig("V5_slide_stress_strain.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V5/V5_slide_stress_strain.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ============ PLOT 3: Cauchy vs True strain (NEW) ============
 fig, ax = plt.subplots(figsize=(12.5, 6.2))
@@ -184,7 +184,7 @@ ax.set_xlabel("DIC strain"); ax.set_ylabel("Engineering stress (MPa)")
 ax.set_title("8.6.20 V5 — Cauchy vs True strain", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="lower right")
 ax.set_xlim(-0.0005, 0.027); ax.set_ylim(0, 26)
-plt.tight_layout(); plt.savefig("V5_slide_cauchy_true.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V5/V5_slide_cauchy_true.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ============ PLOT 4: Stress vs displacement — gauge vs rig split shown ============
 fig, ax = plt.subplots(figsize=(12.5, 6.2))
@@ -223,7 +223,7 @@ ax.set_xlabel("Displacement (mm)"); ax.set_ylabel("Engineering stress (MPa)")
 ax.set_title("8.6.20 V5 — Stress vs displacement: gauge stretch vs rig take-up", fontweight="bold")
 ax.grid(alpha=0.3); ax.set_xlim(-0.1, 4.15); ax.set_ylim(0, 26.5)
 ax.legend(loc="lower right", fontsize=11)
-plt.tight_layout(); plt.savefig("V5_slide_stress_position.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V5/V5_slide_stress_position.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ============ PLOT 5: Cauchy strain vs crosshead displacement (V5 only) ============
 fig, ax = plt.subplots(figsize=(12.5, 6.2))
@@ -251,6 +251,6 @@ ax.set_ylabel("DIC Cauchy strain ε_c")
 ax.set_title("8.6.20 V5 — gauge strain vs crosshead displacement", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="lower right", fontsize=11)
 ax.set_xlim(-0.05, 4.1); ax.set_ylim(-0.001, 0.027)
-plt.tight_layout(); plt.savefig("V5_slide_strain_position.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V5/V5_slide_strain_position.png", dpi=150, bbox_inches="tight"); plt.close()
 
 print("\nSaved 5 slide plots.")

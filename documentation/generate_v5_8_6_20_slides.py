@@ -242,7 +242,7 @@ pageno(s, 127)
 # ================= SLIDE 2 — Load vs time =================
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PHASE 8.6.20: LOAD vs TIME")
-s.shapes.add_picture("V5_slide_load_time.png", Inches(0.6), Inches(1.5), width=Inches(12.1))
+s.shapes.add_picture("images/V5/V5_slide_load_time.png", Inches(0.6), Inches(1.5), width=Inches(12.1))
 footer(s, "Δ = 1304 N is the net pull applied during the test (UTS 1767 N − preload 463 N). "
           "Smooth rise, zero slip events (max dip 0.18 %) — drive + grips validated at 6× previous max load.")
 pageno(s, 128)
@@ -250,7 +250,7 @@ pageno(s, 128)
 # ================= SLIDE 3 — Stress vs strain =================
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PHASE 8.6.20: STRESS vs STRAIN")
-s.shapes.add_picture("V5_slide_stress_strain.png", Inches(0.35), Inches(1.5), width=Inches(8.85))
+s.shapes.add_picture("images/V5/V5_slide_stress_strain.png", Inches(0.35), Inches(1.5), width=Inches(8.85))
 # yield-method explanation
 ybx = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(9.4), Inches(1.6), Inches(3.5), Inches(1.95))
 ybx.fill.solid(); ybx.fill.fore_color.rgb = LIGHT_BLUE; ybx.line.fill.background()
@@ -276,7 +276,7 @@ pageno(s, 129)
 # ================= SLIDE 4 — Cauchy vs True strain =================
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PHASE 8.6.20: CAUCHY vs TRUE STRAIN")
-s.shapes.add_picture("V5_slide_cauchy_true.png", Inches(0.35), Inches(1.5), width=Inches(8.85))
+s.shapes.add_picture("images/V5/V5_slide_cauchy_true.png", Inches(0.35), Inches(1.5), width=Inches(8.85))
 dbx = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(9.4), Inches(1.6), Inches(3.5), Inches(2.2))
 dbx.fill.solid(); dbx.fill.fore_color.rgb = LIGHT_BLUE; dbx.line.fill.background()
 tf = dbx.text_frame; tf.word_wrap = True
@@ -310,7 +310,7 @@ pageno(s, 130)
 # ================= SLIDE 5 — Stress vs position =================
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PHASE 8.6.20: STRESS vs CROSSHEAD POSITION")
-s.shapes.add_picture("V5_slide_stress_position.png", Inches(0.35), Inches(1.5), width=Inches(8.85))
+s.shapes.add_picture("images/V5/V5_slide_stress_position.png", Inches(0.35), Inches(1.5), width=Inches(8.85))
 kpi(s, 9.4, 1.6, 1.7, "rig stiffness k = F/δ", "945 N/mm", h=0.95, vfs=17)
 kpi(s, 11.2, 1.6, 1.7, "gauge share of travel", "52 %", fill=GREEN_PASS, h=0.95, vfs=17)
 xb = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(9.4), Inches(2.7), Inches(3.5), Inches(3.9))
@@ -343,7 +343,7 @@ pageno(s, 131)
 # ================= SLIDE 5b — Cauchy strain vs displacement =================
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PHASE 8.6.20: GAUGE STRAIN vs CROSSHEAD DISPLACEMENT")
-s.shapes.add_picture("V5_slide_strain_position.png", Inches(1.67), Inches(1.55), width=Inches(10.0))
+s.shapes.add_picture("images/V5/V5_slide_strain_position.png", Inches(1.67), Inches(1.55), width=Inches(10.0))
 footer(s, "Gauge strain (DIC) rises ~linearly with crosshead travel but stays well below the dotted "
           "'all-travel-to-gauge' line — at fracture only 1.97 mm of the 3.81 mm travel (52 %) is real "
           "gauge strain; the rest is rig/grip take-up.")

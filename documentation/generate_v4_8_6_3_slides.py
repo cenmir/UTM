@@ -538,7 +538,7 @@ add_section_header(s4, 0.5, 1.45, 8.5, "ε_c vs Position with engaged-regime lin
 add_section_header(s4, 9.3, 1.45, 3.7, "Slope summary")
 
 # Embed the plot
-s4.shapes.add_picture("V4b_V4c_linearity_slide.png",
+s4.shapes.add_picture("images/V4/V4b_V4c_linearity_slide.png",
                       Inches(0.4), Inches(1.85), width=Inches(8.7), height=Inches(5.0))
 
 # Slope table

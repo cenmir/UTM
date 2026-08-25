@@ -108,7 +108,7 @@ ax.set_title("8.6.20 V6a — load vs time (100 % infill, 0.1 mm/s)", fontweight=
 ax.grid(alpha=0.3); ax.legend(loc="lower right", fontsize=11)
 ax.text(20, 700, "Long ductile pull (73 s): rises to UTS then softens ~7 %\nover a wide plastic plateau before fracture.",
         fontsize=11, color="#444", bbox=dict(facecolor="#E7F1F8", edgecolor="none", boxstyle="round,pad=0.4"))
-plt.tight_layout(); plt.savefig("V6a_load_time.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6a/V6a_load_time.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ===== PLOT 2: V6a stress-strain with 4 regions + 0.2% offset =====
 fig, ax = plt.subplots(figsize=(11.5, 6.6))
@@ -131,7 +131,7 @@ ax.set_xlabel("DIC Cauchy strain ε_c"); ax.set_ylabel("Engineering stress (MPa,
 ax.set_title("8.6.20 V6a — stress–strain (100 % infill): E = 2.41 GPa", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="lower right", fontsize=10.5)
 ax.set_xlim(-0.001, e_f*1.07); ax.set_ylim(0, uts["sig"]*1.12)
-plt.tight_layout(); plt.savefig("V6a_stress_strain.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6a/V6a_stress_strain.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ===== PLOT 3: V6a Cauchy vs True strain =====
 fig, ax = plt.subplots(figsize=(11.5, 6.4))
@@ -144,7 +144,7 @@ ax.grid(alpha=0.3); ax.legend(loc="lower right", fontsize=11)
 ax.text(0.004, uts["sig"]*0.9, f"At fracture: ε_c={last['ecz']:.4f}, ε_t={last['etz']:.4f}\n"
         f"(<0.5 % apart — strains small, conventions agree)", fontsize=11, color="#444",
         bbox=dict(facecolor="#fff7e6", edgecolor="none", boxstyle="round,pad=0.4"))
-plt.tight_layout(); plt.savefig("V6a_cauchy_true.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6a/V6a_cauchy_true.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ===== PLOT 4: V6a stress vs crosshead position (gauge/rig split) =====
 fig, ax = plt.subplots(figsize=(11.5, 6.4))
@@ -159,7 +159,7 @@ ax.text(0.2, uts["sig"]*0.55,
         f"({A['gshare']:.0f} %).\nRig/grip take-up {A['rig']:.2f} mm → rig stiffness "
         f"{A['rig_k']:.0f} N/mm.\nHigher force (3.8 kN) ⇒ ~2.7× the rig deflection of V5.",
         fontsize=11, color="#444", bbox=dict(facecolor="#E7F1F8", edgecolor="none", boxstyle="round,pad=0.4"))
-plt.tight_layout(); plt.savefig("V6a_stress_position.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6a/V6a_stress_position.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ===== PLOT 5: V6a gauge strain vs crosshead position =====
 fig, ax = plt.subplots(figsize=(12.5, 6.2))
@@ -174,7 +174,7 @@ ax.text(2.7, 0.004, f"At fracture: {last['travel']:.2f} mm travel → only {A['g
         f"({A['gshare']:.0f} %) stretches the gauge;\nthe rest ({A['rig']:.2f} mm) is rig/grip take-up "
         f"(more than V5: higher force, more compliance).", fontsize=10.5, color="#444",
         bbox=dict(facecolor="#E7F1F8", edgecolor="none", boxstyle="round,pad=0.4"))
-plt.tight_layout(); plt.savefig("V6a_strain_position.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6a/V6a_strain_position.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ============ COMPARISON V6a vs V5 ============
 def ss(d): return [x["ecz"] for x in d["test"]], [x["sig"] for x in d["test"]]
@@ -193,7 +193,7 @@ ax.grid(alpha=0.3); ax.legend(loc="center right", fontsize=12)
 ax.text(3, 3200, "100 % infill carries ≈2.1× the peak force\n(batch mean 3697 vs 1767 N) and sustains a longer pull.",
         fontsize=11, color="#444", bbox=dict(facecolor="#fdecea", edgecolor="none", boxstyle="round,pad=0.4"))
 ax.text(3, 2720, "V6 = representative specimen V6d  (≈ n = 5 mean)", fontsize=9.5, color="#777", style="italic")
-plt.tight_layout(); plt.savefig("V6a_v5_load_time.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6a/V6a_v5_load_time.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # C2: stress-strain
 fig, ax = plt.subplots(figsize=(12, 6.5))
@@ -210,7 +210,7 @@ ax.grid(alpha=0.3); ax.legend(loc="center right", fontsize=12)
 ax.text(0.006, 12, "Same nominal area (80 mm²). 100 % infill is ~2× stronger\n& ~1.7× stiffer; the 100 % batch is also more extensible (ε_f 3–7 %).",
         fontsize=11, color="#444", bbox=dict(facecolor="#fdecea", edgecolor="none", boxstyle="round,pad=0.4"))
 ax.set_xlim(-0.001, 0.056); ax.set_ylim(0, 52)
-plt.tight_layout(); plt.savefig("V6a_v5_stress_strain.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6a/V6a_v5_stress_strain.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # C3: stress vs displacement
 fig, ax = plt.subplots(figsize=(12, 6.3))
@@ -222,7 +222,7 @@ ax.set_title("V6 (100 % infill) vs V5 (50 % infill) — stress vs crosshead disp
 ax.grid(alpha=0.3); ax.legend(loc="center right", fontsize=12)
 ax.text(0.2, 30, "100 % infill needs ~2× the travel (7.3 vs 3.8 mm) to fracture —\nhigher force AND ~2× the gauge stretch — but reaches a\nSIMILAR gauge share (55 % vs 52 %).", fontsize=11, color="#444",
         bbox=dict(facecolor="#fdecea", edgecolor="none", boxstyle="round,pad=0.4"))
-plt.tight_layout(); plt.savefig("V6a_v5_stress_disp.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6a/V6a_v5_stress_disp.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # C4: Cauchy strain vs displacement
 fig, ax = plt.subplots(figsize=(12, 6.3))
@@ -236,7 +236,7 @@ ax.set_title("V6 (100 % infill) vs V5 (50 % infill) — gauge strain vs crosshea
 ax.grid(alpha=0.3); ax.legend(loc="upper left", fontsize=12)
 ax.text(2.8, 0.004, "Both sit below the ideal line (rig compliance) with SIMILAR slopes —\n~half the travel reaches the gauge in both (gauge share 55 % vs 52 %).\n100 % just travels further (stronger + more extensible).", fontsize=10.5, color="#444",
         bbox=dict(facecolor="#fdecea", edgecolor="none", boxstyle="round,pad=0.4"))
-plt.tight_layout(); plt.savefig("V6a_v5_strain_disp.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6a/V6a_v5_strain_disp.png", dpi=150, bbox_inches="tight"); plt.close()
 
 print("Saved 9 plots: V6a_load_time/stress_strain/cauchy_true/stress_position/strain_position,")
 print("               V6a_v5_load_time/stress_strain/stress_disp/strain_disp")

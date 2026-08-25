@@ -194,7 +194,7 @@ pageno(s, 134)
 # ================= SLIDE 2 — Stress-strain overlay + noise reason =================
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "8.6.20: V5/V5b/V5c — STRESS-STRAIN OVERLAY")
-s.shapes.add_picture("V5abc_stress_strain.png", Inches(0.35), Inches(1.55), width=Inches(8.5))
+s.shapes.add_picture("images/V5/V5abc_stress_strain.png", Inches(0.35), Inches(1.55), width=Inches(8.5))
 header(s, 9.0, 1.4, 4.1, "Reading the overlay")
 tb(s, 9.0, 1.85, 4.15, 4.8,
    "• Elastic slope and the ~22–23 MPa plateau overlay closely across all three.\n\n"
@@ -213,7 +213,7 @@ pageno(s, 135)
 # ================= SLIDE 3 — Load vs time overlay =================
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "8.6.20: V5/V5b/V5c — LOAD vs TIME")
-s.shapes.add_picture("V5abc_load_time.png", Inches(1.67), Inches(1.55), width=Inches(10.0))
+s.shapes.add_picture("images/V5/V5abc_load_time.png", Inches(1.67), Inches(1.55), width=Inches(10.0))
 footer(s, "Aligned to ramp start. V5/V5b at 0.1 mm/s, V5c at 0.2 mm/s → V5c ramps ~2× faster and fractures "
           "sooner. Peak force consistent: 1759–1836 N (spread 4.3 %); preload→peak net pull Δ ≈ 1320 N.")
 pageno(s, 136)
@@ -221,7 +221,7 @@ pageno(s, 136)
 # ================= SLIDE 4 — Stress vs displacement overlay =================
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "8.6.20: V5/V5b/V5c — STRESS vs DISPLACEMENT")
-s.shapes.add_picture("V5abc_stress_disp.png", Inches(1.67), Inches(1.55), width=Inches(10.0))
+s.shapes.add_picture("images/V5/V5abc_stress_disp.png", Inches(1.67), Inches(1.55), width=Inches(10.0))
 footer(s, "Gauge share of crosshead travel: V5 52 %, V5b 53 %, V5c 33 %. V5c's lower share follows its "
           "smaller gauge stretch (ε_f 0.0175 → 1.40 mm) over a larger 4.27 mm travel — partly the higher rate.")
 pageno(s, 137)
@@ -229,7 +229,7 @@ pageno(s, 137)
 # ================= SLIDE 5 — Cauchy strain vs displacement overlay =================
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "8.6.20: V5/V5b/V5c — GAUGE STRAIN vs DISPLACEMENT")
-s.shapes.add_picture("V5abc_strain_disp.png", Inches(1.67), Inches(1.55), width=Inches(10.0))
+s.shapes.add_picture("images/V5/V5abc_strain_disp.png", Inches(1.67), Inches(1.55), width=Inches(10.0))
 footer(s, "All three sit below the dotted ‘all travel → gauge’ line (rig compliance). V5/V5b reach ε_f ≈ 0.025; "
           "V5c stops at 0.0175 — it fractured earlier at the higher 0.2 mm/s rate.")
 pageno(s, 138)
@@ -275,7 +275,7 @@ pageno(s, 139)
 # ================= SLIDE 7 — Offset factor + verdict =================
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "8.6.20: INFILL OFFSET FACTOR — REPEATABILITY")
-s.shapes.add_picture("V5abc_offset.png", Inches(0.4), Inches(1.5), width=Inches(7.4))
+s.shapes.add_picture("images/V5/V5abc_offset.png", Inches(0.4), Inches(1.5), width=Inches(7.4))
 
 header(s, 8.1, 1.3, 5.0, "Offset factor  k = Chacón_min / measured")
 off = [

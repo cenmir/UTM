@@ -246,18 +246,18 @@ footer(s, "Predictions set from the 50 % V5 baseline + Chacón (2017) ranges and
 pageno(s)
 
 # ===== SLIDES 3-7 — single-specimen plots =====
-pic_slide("PHASE 8.6.20 V6a: LOAD vs TIME", "V6a_load_time.png", 143,
+pic_slide("PHASE 8.6.20 V6a: LOAD vs TIME", "images/V6a/V6a_load_time.png", 143,
           "Long ductile pull (73 s) at 0.1 mm/s: rises to UTS 3826 N then softens ~7 % over a wide plastic "
           "plateau before fracture. Net pull Δ ≈ 3351 N above the 475 N preload.", x=0.4, y=1.5, w=8.9)
-pic_slide("PHASE 8.6.20 V6a: STRESS vs STRAIN", "V6a_stress_strain.png", 144,
+pic_slide("PHASE 8.6.20 V6a: STRESS vs STRAIN", "images/V6a/V6a_stress_strain.png", 144,
           "E = 2.41 GPa; σ_y(0.2 %) 47.8 MPa ≈ UTS 47.8 MPa (near-linear to peak), then region IV softening "
           "to ε_f = 0.030. Strength is the robust DIC-independent result (load cell + fixed area).", x=0.4, y=1.5, w=8.9)
-pic_slide("PHASE 8.6.20 V6a: CAUCHY vs TRUE STRAIN", "V6a_cauchy_true.png", 145,
+pic_slide("PHASE 8.6.20 V6a: CAUCHY vs TRUE STRAIN", "images/V6a/V6a_cauchy_true.png", 145,
           "Cauchy and True strain agree to <0.5 % (strains are small): ε_c = 0.0298 vs ε_t = 0.0294 at fracture.", x=0.4, y=1.5, w=8.9)
-pic_slide("PHASE 8.6.20 V6a: STRESS vs CROSSHEAD POSITION", "V6a_stress_position.png", 146,
+pic_slide("PHASE 8.6.20 V6a: STRESS vs CROSSHEAD POSITION", "images/V6a/V6a_stress_position.png", 146,
           "Of 7.33 mm crosshead travel, only 2.39 mm (33 %) stretched the gauge; rig/grip took up 4.94 mm. "
           "Higher force (3.8 kN) ⇒ ~2.7× the rig deflection of V5 → strain MUST come from DIC.", x=0.4, y=1.5, w=8.9)
-pic_slide("PHASE 8.6.20 V6a: GAUGE STRAIN vs DISPLACEMENT", "V6a_strain_position.png", 147,
+pic_slide("PHASE 8.6.20 V6a: GAUGE STRAIN vs DISPLACEMENT", "images/V6a/V6a_strain_position.png", 147,
           "Gauge strain rises ~linearly with travel but well below the ‘all-travel-to-gauge’ line — confirming "
           "~two-thirds of the crosshead motion is machine compliance at this force level.", x=1.67, y=1.55, w=10.0)
 
@@ -318,16 +318,16 @@ footer(s, "Next bench step: V6b/V6c (100 % repeats). Campaign goals G1 (50 % rep
 pageno(s)
 
 # ===== SLIDES 10-13 — V6 (100% infill) vs V5 (50% infill) comparison — representative specimen V6d =====
-pic_slide("V6 (100 % INFILL) vs V5 (50 % INFILL): LOAD vs TIME", "V6a_v5_load_time.png", 150,
+pic_slide("V6 (100 % INFILL) vs V5 (50 % INFILL): LOAD vs TIME", "images/V6a/V6a_v5_load_time.png", 150,
           "Both at 0.1 mm/s (rate-matched). 100 % infill carries ≈2.1× the peak force (batch mean 3697 vs 1767 N) "
           "and sustains a longer pull. Uses representative specimen V6d (≈ n = 5 mean), not the pilot V6a.")
-pic_slide("V6 (100 % INFILL) vs V5 (50 % INFILL): STRESS vs STRAIN", "V6a_v5_stress_strain.png", 151,
+pic_slide("V6 (100 % INFILL) vs V5 (50 % INFILL): STRESS vs STRAIN", "images/V6a/V6a_v5_stress_strain.png", 151,
           "Same nominal 80 mm². 100 % infill is ~2× stronger (UTS 46.1 vs 22.1 MPa) and ~1.7× stiffer; the 100 % "
           "batch is also more extensible (ε_f 3–7 % vs ~2.5 %) — the difference is the infill load-bearing knock-down.")
-pic_slide("V6 (100 % INFILL) vs V5 (50 % INFILL): STRESS vs DISPLACEMENT", "V6a_v5_stress_disp.png", 152,
+pic_slide("V6 (100 % INFILL) vs V5 (50 % INFILL): STRESS vs DISPLACEMENT", "images/V6a/V6a_v5_stress_disp.png", 152,
           "100 % infill needs ~2× the travel (7.3 vs 3.8 mm) to fracture — higher force and ~2× the gauge stretch — "
           "but reaches a SIMILAR gauge share (55 % vs 52 %). (The pilot V6a's low 33 % was its own outlier.)")
-pic_slide("V6 (100 % INFILL) vs V5 (50 % INFILL): GAUGE STRAIN vs DISPLACEMENT", "V6a_v5_strain_disp.png", 153,
+pic_slide("V6 (100 % INFILL) vs V5 (50 % INFILL): GAUGE STRAIN vs DISPLACEMENT", "images/V6a/V6a_v5_strain_disp.png", 153,
           "Both curves sit below the ideal ‘all-travel-to-gauge’ line (rig compliance) with SIMILAR slopes — about "
           "half the travel reaches the gauge in both; 100 % just travels further (stronger and more extensible).")
 
@@ -375,7 +375,7 @@ pageno(s)
 # ===== SLIDE 15 — Single common offset factor for V6 (n=5 mean) =====
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "V6 (n = 5): A SINGLE COMMON OFFSET FACTOR?")
-s.shapes.add_picture("V6a_offset_window.png", Inches(0.35), Inches(1.65), width=Inches(7.5))
+s.shapes.add_picture("images/V6a/V6a_offset_window.png", Inches(0.35), Inches(1.65), width=Inches(7.5))
 header(s, 8.0, 1.38, 5.0, "Same interval method as V5 · from n = 5 mean")
 win = [
     ["Property", "feasible k window"],
@@ -422,7 +422,7 @@ for c in range(6):
     ovd[(4, c)] = {'bg': YELLOW_WARN, 'bold': c in (0, 4)}
 table(s, 0.4, 1.72, 7.6, 2.45, dat, cw=[1.95, 0.55, 1.25, 1.2, 0.55, 0.65], hf=10, bf=10, ov=ovd)
 
-s.shapes.add_picture("V6a_epla_offset.png", Inches(8.05), Inches(1.4), width=Inches(5.05))
+s.shapes.add_picture("images/V6a/V6a_epla_offset.png", Inches(8.05), Inches(1.4), width=Inches(5.05))
 linkbox(s, 8.05, 5.0, 5.05, "Spec sheet — add:north E-PLA TDS (PDF, ISO 527 / 178)", ADDNORTH_TDS)
 linkbox(s, 8.05, 5.32, 5.05, "add:north PLA Economy — product page", ADDNORTH_PROD)
 
@@ -442,7 +442,7 @@ pageno(s)
 # ===== SLIDE 17 — V6 repeatability study (n=5) =====
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PHASE 8.6.20 V6: REPEATABILITY STUDY (n = 5, 100 % INFILL)")
-s.shapes.add_picture("V6_quintet_curves.png", Inches(0.32), Inches(1.6), width=Inches(6.5))
+s.shapes.add_picture("images/V6/V6_quintet_curves.png", Inches(0.32), Inches(1.6), width=Inches(6.5))
 header(s, 7.0, 1.32, 6.0, "Per-specimen values  (UTS/σ_y MPa · E GPa · ε_f –)")
 rep = [
     ["Specimen", "UTS", "σ_y", "E", "ε_f"],
@@ -476,7 +476,7 @@ pageno(s)
 # ===== SLIDE 18 — Strength validation =====
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PHASE 8.6.20 V6: STRENGTH — REPEATABLE & IN LITERATURE")
-s.shapes.add_picture("V6_strength_repeat.png", Inches(0.32), Inches(1.6), width=Inches(6.7))
+s.shapes.add_picture("images/V6/V6_strength_repeat.png", Inches(0.32), Inches(1.6), width=Inches(6.7))
 header(s, 7.2, 1.32, 5.9, "Strength vs both references")
 strg = [
     ["Quantity", "V6 (n=5)", "vs Chacón", "vs E-PLA"],
@@ -501,7 +501,7 @@ pageno(s)
 # ===== SLIDE 19 — Ductility =====
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PHASE 8.6.20 V6: DUCTILITY — REPORT AS A RANGE")
-s.shapes.add_picture("V6_ductility.png", Inches(0.32), Inches(1.6), width=Inches(6.7))
+s.shapes.add_picture("images/V6/V6_ductility.png", Inches(0.32), Inches(1.6), width=Inches(6.7))
 header(s, 7.2, 1.32, 5.9, "Failure strain & toughness")
 kpi(s, 7.2, 1.78, 1.9, "ε_f range", "3.0–7.4 %", fill=YELLOW_WARN, h=1.0, vfs=18)
 kpi(s, 9.25, 1.78, 1.9, "ε_f CV", "33 %", fill=YELLOW_WARN, h=1.0, vfs=18)
@@ -535,7 +535,7 @@ for c in range(6):
     ovv[(2, c)] = {'bg': GREEN_PASS, 'bold': c in (0, 3)}
     ovv[(3, c)] = {'bg': YELLOW_WARN, 'bold': c in (0, 3)}
 table(s, 0.4, 1.75, 8.0, 2.35, ver, cw=[0.8, 1.1, 1.3, 1.2, 1.1, 1.4], hf=10.5, bf=11, ov=ovv)
-s.shapes.add_picture("V6_offset_k.png", Inches(8.6), Inches(1.5), width=Inches(4.4))
+s.shapes.add_picture("images/V6/V6_offset_k.png", Inches(8.6), Inches(1.5), width=Inches(4.4))
 banner(s, 0.4, 4.4, 8.0, 1.0,
        "PASS — strength lands inside the journal (k ≈ 1) AND sits at a coherent k ≈ 1.2 vs the add:north "
        "E-PLA datasheet (80 % strength / 91 % stiffness), repeatable at CV 2.5 % across 5 specimens.",
@@ -629,7 +629,7 @@ tb(s, 0.5, 3.15, 6.1, 3.0,
    "4.  PLA stress-relaxes ~2 % while held → the load settles AT / just above the target.",
    fs=12, colour=BLACK)
 
-s.shapes.add_picture("preload_schedule.png", Inches(6.75), Inches(1.65), width=Inches(6.2))
+s.shapes.add_picture("images/rig/preload_schedule.png", Inches(6.75), Inches(1.65), width=Inches(6.2))
 
 banner(s, 0.4, 6.25, 12.5, 0.72,
        "Why: manual jogging is slow and overshoots, and PLA relaxes after you stop (you would undershoot). "
@@ -839,7 +839,7 @@ pageno(s)
 # ---- Slide 170: SF 1 · DIC health HUD — modes  [content unchanged, was slide 176] ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "DIC HEALTH HUD — LIVE TRACKING QUALITY")
-pic_or_ph(s, "DIC HUD UI Screenshot.png", 0.4, 1.35, 8.2, 0.8, "[ drop DIC HUD UI Screenshot.png here ]")
+pic_or_ph(s, "images/rig/DIC HUD UI Screenshot.png", 0.4, 1.35, 8.2, 0.8, "[ drop DIC HUD UI Screenshot.png here ]")
 tb(s, 8.8, 1.28, 4.15, 0.95, "A live badge on both test tabs:\nmarkers found / expected · % frames tracked · pixel jitter.",
    fs=11, italic=True, colour=GREY_TEXT)
 header(s, 0.4, 2.35, 12.55, "What each state means")
@@ -897,9 +897,9 @@ pageno(s)
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "IN THE APP — ONE-CLICK REPORT & SAVED SETTINGS")
 header(s, 0.4, 1.28, 6.2, "Generate report  →  one-page PDF + PNGs")
-s.shapes.add_picture("feat_report_s16.png", Inches(0.4), Inches(1.78), width=Inches(6.15))
+s.shapes.add_picture("images/features/feat_report_s16.png", Inches(0.4), Inches(1.78), width=Inches(6.15))
 header(s, 6.95, 1.28, 6.0, "Settings  —  save a setup, reload in 1 click")
-pic_or_ph(s, "Settings save_UI_Screenshot.png", 6.95, 1.85, 6.0, 0.6, "[ drop Settings save_UI_Screenshot.png here ]")
+pic_or_ph(s, "images/rig/Settings save_UI_Screenshot.png", 6.95, 1.85, 6.0, 0.6, "[ drop Settings save_UI_Screenshot.png here ]")
 tb(s, 6.95, 2.65, 6.0, 3.1,
    "•  Saves area · gauge · preload · speed · mode + params\n\n"
    "•  'Default' always present (auto-stop ON)\n\n"
@@ -913,7 +913,7 @@ pageno(s)
 # ---- Slide 174: SF 5 · auto-stop at fracture — proof  [content unchanged, was slide 170] ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PROOF — AUTO-STOP AT FRACTURE  (S16, 100% infill)")
-s.shapes.add_picture("feat_autostop_proof.png", Inches(0.35), Inches(1.55), width=Inches(7.4))
+s.shapes.add_picture("images/features/feat_autostop_proof.png", Inches(0.35), Inches(1.55), width=Inches(7.4))
 header(s, 8.0, 1.28, 4.95, "ACTIVATION CONDITION")
 flow(s, 8.0, 1.72, 4.95, 1.55,
      "ARM  when load ≥ 30% of peak\n\nFIRE  when load < 50% of peak\n(collapse)  →  Stop + E-Stop",
@@ -929,7 +929,7 @@ pageno(s)
 # ---- Slide 175: SF 6 · strain-rate fracture — results & why  [content unchanged, was slide 171] ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "STRAIN-RATE FRACTURE TEST — RESULTS & WHY IT WORKS")
-s.shapes.add_picture("feat_strainrate_proof.png", Inches(0.35), Inches(1.55), width=Inches(7.4))
+s.shapes.add_picture("images/features/feat_strainrate_proof.png", Inches(0.35), Inches(1.55), width=Inches(7.4))
 header(s, 8.0, 1.28, 4.95, "Rate held BY adapting speed")
 sr = [["Regime", "speed", "dε/dt"], ["elastic", "0.10", "0.00049"], ["yield", "0.09", "0.00050"],
       ["necking", "0.06", "0.00048"], ["draw", "0.05", "0.00054"]]
@@ -948,7 +948,7 @@ pageno(s)
 # ---- Slide 176: SF 6 · strain-rate — report plots (S19, 50%)  [content unchanged, was slide 172] ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "STRAIN-RATE FRACTURE — REPORT PLOTS  (S19, 50% infill)")
-s.shapes.add_picture("feat_sr_plots.png", Inches(0.5), Inches(1.5), width=Inches(12.3))
+s.shapes.add_picture("images/features/feat_sr_plots.png", Inches(0.5), Inches(1.5), width=Inches(12.3))
 header(s, 0.4, 5.02, 12.55, "Closed-loop speed limits")
 kpi(s, 0.4, 5.46, 3.9, "TARGET RATE", "0.0005 /s")
 kpi(s, 4.55, 5.46, 3.9, "MIN SPEED", "0.005 mm/s")
@@ -1069,7 +1069,7 @@ pageno(s)
 # ---- Slide 180: buck-converter enclosure CAD ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "BUCK-CONVERTER ENCLOSURE — CAD (PLA)")
-pic_or_ph(s, "Buckconverter_Enclosure_CAD.png", 0.5, 1.4, 6.3, 5.43, "[ drop Buckconverter_Enclosure_CAD.png here ]")
+pic_or_ph(s, "images/rig/Buckconverter_Enclosure_CAD.png", 0.5, 1.4, 6.3, 5.43, "[ drop Buckconverter_Enclosure_CAD.png here ]")
 header(s, 7.35, 1.28, 5.55, "Purpose")
 tb(s, 7.35, 1.7, 5.55, 0.95, "PLA-printed enclosure that houses the buck converter powering the LED ring lights.",
    fs=12, colour=BLACK)
@@ -1104,7 +1104,7 @@ pageno(s)
 # ---- Motor jitter = stall warning ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "MOTOR JITTER = STALL WARNING  (a failed test)")
-s.shapes.add_picture("feat_motor_jitter.png", Inches(0.35), Inches(1.55), width=Inches(7.4))
+s.shapes.add_picture("images/features/feat_motor_jitter.png", Inches(0.35), Inches(1.55), width=Inches(7.4))
 header(s, 8.0, 1.28, 4.95, "What happened")
 tb(s, 8.0, 1.72, 4.95, 1.6,
    "At the force ceiling the crosshead FROZE and the whole machine SHOOK — a stalled stepper skipping steps.\n\n"
@@ -1233,7 +1233,7 @@ s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "ENGINEERING vs TRUE (CAUCHY) STRESS — & MEASURING THE AREA")
 
 header(s, 0.4, 1.28, 6.1, "Why we REPORT engineering stress")
-s.shapes.add_picture("feat_eng_vs_true.png", Inches(0.4), Inches(1.66), width=Inches(6.15))
+s.shapes.add_picture("images/features/feat_eng_vs_true.png", Inches(0.4), Inches(1.66), width=Inches(6.15))
 tb(s, 0.4, 4.32, 6.15, 1.15,
    "σ_eng = F / A₀  (REPORTED)      σ_true = F / A  (not tracked, ~2–5% higher)\n\n"
    "Basis: ISO 527 · Chacón · datasheet all use ENGINEERING → apples-to-apples for our k-factors.  E & σ_y ~unchanged.",
@@ -1267,7 +1267,7 @@ s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "MEASURING POISSON'S RATIO & TRUE STRESS — WITHOUT TRANSVERSE DOTS")
 
 header(s, 0.4, 1.28, 6.05, "The fix — track the specimen's OWN edges")
-s.shapes.add_picture("feat_edgewidth.png", Inches(0.4), Inches(1.66), width=Inches(6.05))
+s.shapes.add_picture("images/features/feat_edgewidth.png", Inches(0.4), Inches(1.66), width=Inches(6.05))
 tb(s, 0.4, 4.28, 6.05, 1.2,
    "Gauge too NARROW for transverse dots (sub-pixel at 20 px/mm) → track the L & R edges instead.\n\n"
    "ε_w = (W₀−W)/W₀     ν = −ε_w/ε_axial     A = W·t     → MEASURED (no assumed ν), written to the CSV.",

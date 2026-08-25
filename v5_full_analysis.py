@@ -232,5 +232,5 @@ ax.grid(alpha=0.3); ax.legend(fontsize=9, loc="upper left")
 plt.suptitle("8.6.20 - V5 tensile failure, fresh PLA S4 (50% infill), preload anchor +463 N",
              fontsize=14, fontweight="bold")
 plt.tight_layout()
-plt.savefig("V5_full_analysis.png", dpi=140, bbox_inches="tight")
+plt.savefig("images/V5/V5_full_analysis.png", dpi=140, bbox_inches="tight")
 print("\nSaved plot: V5_full_analysis.png")

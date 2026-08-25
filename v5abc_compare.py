@@ -201,7 +201,7 @@ ax.set_xlabel("DIC Cauchy strain ε_c"); ax.set_ylabel("Engineering stress (MPa,
 ax.set_title("V5 / V5b / V5c — stress-strain overlay (50 % infill, LED off)", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="lower right", fontsize=11)
 ax.set_xlim(-0.001, 0.034); ax.set_ylim(0, 24)
-plt.tight_layout(); plt.savefig("V5abc_stress_strain.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V5/V5abc_stress_strain.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ============ PLOT 2: grouped bars E / sigma_y / UTS ============
 fig, ax = plt.subplots(figsize=(11, 6))
@@ -218,7 +218,7 @@ ax.set_xticks(list(xbase)); ax.set_xticklabels([m[0] for m in metrics])
 ax.set_ylabel("value (E shown ×5 for scale)")
 ax.set_title("V5 / V5b / V5c — key properties (50 % infill, LED off)", fontweight="bold")
 ax.legend(fontsize=11); ax.grid(axis="y", alpha=0.3)
-plt.tight_layout(); plt.savefig("V5abc_bars.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V5/V5abc_bars.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ============ PLOT 3: offset factor per specimen ============
 fig, ax = plt.subplots(figsize=(11, 6))
@@ -236,7 +236,7 @@ ax.set_xticks(list(xbase)); ax.set_xticklabels([p[0] for p in props])
 ax.set_ylabel("offset factor k = lit_min / measured")
 ax.set_title("V5 / V5b / V5c — infill offset factor (to Chacón lower bound)", fontweight="bold")
 ax.legend(fontsize=10, ncol=2); ax.grid(axis="y", alpha=0.3); ax.set_ylim(0, 3.0)
-plt.tight_layout(); plt.savefig("V5abc_offset.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V5/V5abc_offset.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ============ PLOT 4: load vs time (aligned to ramp start) ============
 pre_mean = mean(R[k]["anchor"] for k in KEYS)       # preload (true force at ramp start)
@@ -267,7 +267,7 @@ ax.set_xlabel("Time from ramp start (s)"); ax.set_ylabel("True force (N)")
 ax.set_title("V5 / V5b / V5c — load vs time (aligned to ramp start, 0.1 mm/s)", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="upper left", fontsize=10.5)
 ax.set_xlim(-1, 52); ax.set_ylim(-120, 1980)
-plt.tight_layout(); plt.savefig("V5abc_load_time.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V5/V5abc_load_time.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ============ PLOT 5: stress vs crosshead displacement ============
 fig, ax = plt.subplots(figsize=(12, 6.3))
@@ -278,7 +278,7 @@ ax.set_xlabel("Crosshead displacement / travel (mm)"); ax.set_ylabel("Engineerin
 ax.set_title("V5 / V5b / V5c — stress vs crosshead displacement", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="lower right", fontsize=11)
 ax.set_xlim(-0.05, 5.2); ax.set_ylim(0, 24)
-plt.tight_layout(); plt.savefig("V5abc_stress_disp.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V5/V5abc_stress_disp.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ============ PLOT 6: Cauchy strain vs crosshead displacement ============
 fig, ax = plt.subplots(figsize=(12, 6.3))
@@ -291,7 +291,7 @@ ax.set_xlabel("Crosshead displacement / travel (mm)"); ax.set_ylabel("DIC Cauchy
 ax.set_title("V5 / V5b / V5c — gauge strain vs crosshead displacement", fontweight="bold")
 ax.grid(alpha=0.3); ax.legend(loc="upper left", fontsize=11)
 ax.set_xlim(-0.05, 5.2); ax.set_ylim(-0.001, 0.034)
-plt.tight_layout(); plt.savefig("V5abc_strain_disp.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V5/V5abc_strain_disp.png", dpi=150, bbox_inches="tight"); plt.close()
 
 print("\nSaved plots: V5abc_stress_strain.png, V5abc_bars.png, V5abc_offset.png,")
 print("             V5abc_load_time.png, V5abc_stress_disp.png, V5abc_strain_disp.png")

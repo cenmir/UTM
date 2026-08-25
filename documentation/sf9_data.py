@@ -1317,7 +1317,7 @@ def fig_dic_halt():
         b.annotate(lab, xy=(x_, 2.0), xytext=(x_ + (-1.5 if x_ == bad0 else 0.5), 2.15),
                    fontsize=8.5, color=RED, ha="center")
     fig.tight_layout()
-    return _save(fig, "feat_dic_halt.png")
+    return _save(fig, "images/features/feat_dic_halt.png")
 
 
 def fig_strain_terms():

@@ -48,7 +48,7 @@ ax.set_title("V6 — 100 % infill, batch V6b–e (LED on, 0.1 mm/s)", fontweight
 ax.set_xlim(0, 8); ax.set_ylim(0, 52); ax.grid(alpha=0.3); ax.legend(fontsize=9, loc="lower right")
 ax.text(0.15, 49.6, "Pilot V6a omitted for clarity (batch edge; kept in the n = 5 stats)",
         fontsize=8.5, color="#777", style="italic")
-plt.tight_layout(); plt.savefig("V6_quintet_curves.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6/V6_quintet_curves.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ---- 2. strength repeatability vs references ----
 fig, ax = plt.subplots(figsize=(7.8, 5.4))
@@ -70,7 +70,7 @@ ax.set_xticks(x); ax.set_xticklabels([n.split()[0] for n in names], fontsize=11)
 ax.set_ylabel("UTS  (MPa)", fontsize=12); ax.set_ylim(0, 64)
 ax.set_title("Strength repeatability vs references (n = 5)", fontweight="bold")
 ax.legend(fontsize=9, loc="lower center", ncol=1); ax.grid(axis="y", alpha=0.3)
-plt.tight_layout(); plt.savefig("V6_strength_repeat.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6/V6_strength_repeat.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ---- 3. ductility range (bimodal) ----
 fig, ax = plt.subplots(figsize=(7.8, 5.4))
@@ -91,7 +91,7 @@ ax.set_title("Ductility — NOT repeatable (CV 33 %), bimodal", fontweight="bold
 ax.text(0.5, 8.4, "tough-skin cluster (A/B/D)", color=clo if (clo:=cl0) else clo, fontsize=9.5, ha="center")
 ax.text(3.5, 8.4, "ductile cluster (C/E)", color=cl1, fontsize=9.5, ha="center")
 ax.legend(fontsize=9, loc="upper center"); ax.grid(axis="y", alpha=0.3)
-plt.tight_layout(); plt.savefig("V6_ductility.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6/V6_ductility.png", dpi=150, bbox_inches="tight"); plt.close()
 
 # ---- 4. offset k vs add:north datasheet ----
 fig, ax = plt.subplots(figsize=(6.4, 5.4))
@@ -108,5 +108,5 @@ ax.set_xticks(range(3)); ax.set_xticklabels(props, fontsize=11)
 ax.set_ylabel("offset k = E-PLA spec / measured (n=5)", fontsize=11); ax.set_ylim(0, 3.0)
 ax.set_title("Knock-down vs add:north E-PLA datasheet", fontweight="bold")
 ax.grid(axis="y", alpha=0.3)
-plt.tight_layout(); plt.savefig("V6_offset_k.png", dpi=150, bbox_inches="tight"); plt.close()
+plt.tight_layout(); plt.savefig("images/V6/V6_offset_k.png", dpi=150, bbox_inches="tight"); plt.close()
 print("saved 4 figs: V6_quintet_curves / V6_strength_repeat / V6_ductility / V6_offset_k")

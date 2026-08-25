@@ -226,5 +226,5 @@ ax.axhline(0, color="gray", linewidth=0.5)
 ax.axvline(0, color="gray", linewidth=0.5)
 
 plt.tight_layout()
-plt.savefig("V4_8_6_19_stress_strain.png", dpi=160, bbox_inches="tight")
+plt.savefig("images/V4/V4_8_6_19_stress_strain.png", dpi=160, bbox_inches="tight")
 print(f"\nSaved plot: V4_8_6_19_stress_strain.png")

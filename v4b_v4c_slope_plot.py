@@ -139,7 +139,7 @@ ax.set_xlim(-0.05, 1.05)
 ax.set_ylim(-0.0009, 0.0017)
 
 plt.tight_layout()
-plt.savefig("V4b_V4c_linearity_slide.png", dpi=160, bbox_inches="tight")
+plt.savefig("images/V4/V4b_V4c_linearity_slide.png", dpi=160, bbox_inches="tight")
 print("Saved: V4b_V4c_linearity_slide.png")
 print(f"V4b engaged: slope = {sb:.6f}/mm, R² = {rb:.4f}")
 print(f"V4c clean:   slope = {sc:.6f}/mm, R² = {rc:.4f}")

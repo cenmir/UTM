@@ -63,6 +63,6 @@ for k, spec in enumerate(SPECS_100):
 
 fig.text(0.055, 0.945, "50 % INFILL — V5 group (LED off)", fontsize=13, fontweight="bold", color=C50)
 fig.text(0.055, 0.475, "100 % INFILL — V6 quintet (LED on)", fontsize=13, fontweight="bold", color=C100)
-fig.savefig("V6_fracture_patterns.png", dpi=150, bbox_inches="tight")
+fig.savefig("images/V6/V6_fracture_patterns.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("saved V6_fracture_patterns.png")
