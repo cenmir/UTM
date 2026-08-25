@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-img = cv2.imread("1000143067.jpg")
+img = cv2.imread("Software/UTM_PyQt6/output/diagnostics/1000143067.jpg")
 h, w = img.shape[:2]
 scale = 900 / h
 img = cv2.resize(img, (int(w * scale), 900))
@@ -61,5 +61,5 @@ for (num, cx, cy, label, color, side) in annotations:
     cv2.putText(padded, label, (label_x, end_y), font, font_scale,
                 (255, 255, 255), 1, cv2.LINE_AA)
 
-cv2.imwrite("utm_annotated.png", padded)
+cv2.imwrite("Software/UTM_PyQt6/output/diagnostics/utm_annotated.png", padded)
 print("Saved utm_annotated.png")

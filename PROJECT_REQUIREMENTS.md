@@ -25,8 +25,8 @@ This document outlines the hardware and software requirements for the Python-bas
     *   **Sensor Format:** 2/3"
 *   **Lighting:** LED lights for illuminating the test specimen.
 
-![](graphics/UTM-schematic.png)
-![](graphics/UTM-Dimensions.png)
+![](images/UTM rig/UTM-schematic.png)
+![](images/UTM rig/UTM-Dimensions.png)
 
 ## Software
 

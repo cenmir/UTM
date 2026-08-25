@@ -15,16 +15,16 @@ ROOT = r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure"
 
 # (test, specimen, csv, image, tag)
 SPECS_50 = [
-    ("V5",  "S4", r"\Specimen_S4_V1_Spray\UTM_Test_20260612_172333_V5_TensionFailure.csv",  r"\Specimen_S4_V1_Spray\S4.jpg",       ""),
-    ("V5b", "S3", r"\Specimen_S3_V1_Spray\UTM_Test_20260617_122450__V5b_TensionFailure.csv", r"\Specimen_S3_V1_Spray\S3(1).jpg",    ""),
-    ("V5c", "S2", r"\Specimen_S2_V1_Spray\UTM_Test_20260617_130559_V5c_0_TensionFailure.csv", r"\Specimen_S2_V1_Spray\S2_2 (1).jpg", ""),
+    ("V5",  "S4", r"\Specimen_S4_V1_Spray\UTM_Test_20260612_172333_V5_TensionFailure.csv",  r"\Specimen_S4_V1_Spray/S4.jpg",       ""),
+    ("V5b", "S3", r"\Specimen_S3_V1_Spray\UTM_Test_20260617_122450__V5b_TensionFailure.csv", r"\Specimen_S3_V1_Spray/S3(1).jpg",    ""),
+    ("V5c", "S2", r"\Specimen_S2_V1_Spray\UTM_Test_20260617_130559_V5c_0_TensionFailure.csv", r"\Specimen_S2_V1_Spray/S2_2 (1).jpg", ""),
 ]
 SPECS_100 = [
-    ("V6a", "S7",  r"\Specimen_S7_V2_Spray\UTM_Test_20260617_165405_V6a_TensionFailure.csv",  r"\Specimen_S7_V2_Spray\S7(1).jpg",    "pilot"),
-    ("V6b", "S8",  r"\Specimen_S8_V2_Spray\UTM_Test_20260625_144903_V6b_TensionFailure.csv",  r"\Specimen_S8_V2_Spray\S8 (1).jpg",   ""),
-    ("V6c", "S10", r"\Specimen_S10_V2_Spray\UTM_Test_20260625_151046_V6c_TensionFailure.csv", r"\Specimen_S10_V2_Spray\S10 (1).jpg", "ductile"),
-    ("V6d", "S11", r"\Specimen_S11_V2_Spray\UTM_Test_20260625_154219_V6d_TensionFailure.csv", r"\Specimen_S11_V2_Spray\S11 (1).jpg", ""),
-    ("V6e", "S9",  r"\Specimen_S9_V2_Spray\UTM_Test_20260625_160032_V6e_TensionFailure.csv",  r"\Specimen_S9_V2_Spray\S9 (1).jpg",   "ductile"),
+    ("V6a", "S7",  r"\Specimen_S7_V2_Spray\UTM_Test_20260617_165405_V6a_TensionFailure.csv",  r"\Specimen_S7_V2_Spray/S7(1).jpg",    "pilot"),
+    ("V6b", "S8",  r"\Specimen_S8_V2_Spray\UTM_Test_20260625_144903_V6b_TensionFailure.csv",  r"\Specimen_S8_V2_Spray/S8 (1).jpg",   ""),
+    ("V6c", "S10", r"\Specimen_S10_V2_Spray\UTM_Test_20260625_151046_V6c_TensionFailure.csv", r"\Specimen_S10_V2_Spray/S10 (1).jpg", "ductile"),
+    ("V6d", "S11", r"\Specimen_S11_V2_Spray\UTM_Test_20260625_154219_V6d_TensionFailure.csv", r"\Specimen_S11_V2_Spray/S11 (1).jpg", ""),
+    ("V6e", "S9",  r"\Specimen_S9_V2_Spray\UTM_Test_20260625_160032_V6e_TensionFailure.csv",  r"\Specimen_S9_V2_Spray/S9 (1).jpg",   "ductile"),
 ]
 
 

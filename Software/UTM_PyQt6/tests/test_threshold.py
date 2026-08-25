@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-img = cv2.imread("test_roi.png")
+img = cv2.imread("Software/UTM_PyQt6/output/diagnostics/test_roi.png")
 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
 print(f"Image shape: {gray.shape}")

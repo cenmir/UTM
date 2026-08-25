@@ -90,7 +90,7 @@ class BlobChecker:
               f"(need >= {MIN_OK_FRACTION * 100:.0f}%)")
         print(f"Distance stable:  {'PASS' if pass_stable else 'FAIL'} "
               f"(need std < {DISTANCE_STD_LIMIT_PX} px)")
-        print(f"\nSaved annotated frame -> {OUTPUT_DIR / 'check_blobs.png'}")
+        print(f"\nSaved annotated frame -> {OUTPUT_DIR / 'Software/UTM_PyQt6/output/diagnostics/check_blobs.png'}")
         return pass_frac and pass_stable
 
     def _save_annotated(self, record):
@@ -106,7 +106,7 @@ class BlobChecker:
             p2 = (int(centroids[1][0]), int(centroids[1][1]))
             cv2.line(vis, p1, p2, (255, 0, 0), 2)
         OUTPUT_DIR.mkdir(exist_ok=True)
-        cv2.imwrite(str(OUTPUT_DIR / "check_blobs.png"), vis)
+        cv2.imwrite(str(OUTPUT_DIR / "Software/UTM_PyQt6/output/diagnostics/check_blobs.png"), vis)
 
 
 def main():

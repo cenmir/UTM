@@ -99,7 +99,7 @@ def main():
     H, W = full.shape
     print(f"Full sensor: Width(X)={W}  Height(Y)={H}  | inc: "
           f"W={int(cam.Width.Inc)} H={int(cam.Height.Inc)} OX={int(cam.OffsetX.Inc)} OY={int(cam.OffsetY.Inc)}")
-    cv2.imwrite(str(OUT / "sensor_full.png"), full)
+    cv2.imwrite(str(OUT / "Software/UTM_PyQt6/output/full_frame_output/sensor_full.png"), full)
 
     scale = min(1.0, 1100.0 / max(H, W))
     disp = cv2.resize(cv2.cvtColor(full, cv2.COLOR_GRAY2BGR), None, fx=scale, fy=scale)
@@ -142,13 +142,13 @@ def main():
 
     # Close the loop: apply on the real camera, rotate like the live pipeline, detect.
     res = grab(cam, roi=roi, rotate=True)
-    cv2.imwrite(str(OUT / "roi_preview.png"), res)
+    cv2.imwrite(str(OUT / "Software/UTM_PyQt6/output/full_frame_output/roi_preview.png"), res)
     found = detect_blobs(res)
     print(f"\n--- LIVE-EQUIVALENT CHECK ---")
     print(f"Blobs detected in applied ROI (rotated, same as live DIC): {len(found)}  (want 2)")
     for i, (bx, by, br) in enumerate(sorted(found, key=lambda b: b[1])):
         print(f"   blob{i}: ({bx:.0f},{by:.0f}) r={br:.0f}")
-    print(f"Preview saved -> {OUT / 'roi_preview.png'}")
+    print(f"Preview saved -> {OUT / 'Software/UTM_PyQt6/output/full_frame_output/roi_preview.png'}")
     if len(found) == 2:
         print("\nOK - both markers framed. Paste this into camera_manager.py White preset 'roi':")
         print(f"    \"roi\": {roi},")

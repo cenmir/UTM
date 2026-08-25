@@ -1,13 +1,13 @@
 import cv2
 import numpy as np
 
-img = cv2.imread("test_roi.png")
+img = cv2.imread("Software/UTM_PyQt6/output/diagnostics/test_roi.png")
 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
 THRESHOLD = 150
 
 _, binary = cv2.threshold(gray, THRESHOLD, 255, cv2.THRESH_BINARY_INV)
-cv2.imwrite("test_binary.png", binary)
+cv2.imwrite("Software/UTM_PyQt6/output/diagnostics/test_binary.png", binary)
 
 contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -48,4 +48,4 @@ if len(valid) == 2:
 elif len(valid) != 2:
     print(f"ERROR: Need exactly 2 blobs, found {len(valid)}")
 
-cv2.imwrite("test_blobs.png", output)
+cv2.imwrite("Software/UTM_PyQt6/output/diagnostics/test_blobs.png", output)

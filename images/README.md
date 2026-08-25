@@ -29,8 +29,8 @@ failing, so a broken path produces a deck that builds cleanly and is quietly wro
 move, rebuild and check the picture count is unchanged:
 
 ```
-python documentation/generate_v6a_slides.py
-python -c "from pptx import Presentation; p=Presentation('documentation/V6a_8_6_20_slides.pptx'); \
+python documentation/scripts/generate_v6a_slides.py
+python -c "from pptx import Presentation; p=Presentation('documentation/decks/V6a_8_6_20_slides.pptx'); \
 print(sum(1 for s in p.slides for sh in s.shapes if sh.shape_type==13), 'pictures')"
 ```
 

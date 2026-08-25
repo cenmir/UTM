@@ -317,7 +317,7 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
     # It assumes every specimen's curve is straight in the same place, and ours are not: the local
     # slope rises through the first half-percent before yielding takes it down, and how far it has
     # risen by 0.40 % differs specimen to specimen. Measured over every 100 % infill run on record
-    # (n = 11, documentation/e_fit_data.py) the fixed window scatters 13.2 % and sits 7 % under the
+    # (n = 11, documentation/scripts/e_fit_data.py) the fixed window scatters 13.2 % and sits 7 % under the
     # material datasheet, while the STEEPEST GENUINELY-STRAIGHT stretch scatters 8.5 % and lands
     # +5 %. Winning on repeatability and on datasheet agreement at the same time is what rules out
     # noise-chasing — a rule chasing noise would raise scatter, not lower it.

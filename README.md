@@ -16,7 +16,7 @@ Additionally on each motor shaft end a magnet is attached and its rotational pos
 
 The software is written in python using the PyQt6 framework for the GUI.
 
-![](graphics/GUI.png)
+![](images/UTM rig/GUI.png)
 
 ## Hardware
 

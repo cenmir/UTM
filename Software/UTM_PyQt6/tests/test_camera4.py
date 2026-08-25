@@ -24,7 +24,7 @@ frame_count = [0]
 def on_frame_ready(frame):
     frame_count[0] += 1
     if frame_count[0] == 10:
-        cv2.imwrite("live_frame.png", frame)
+        cv2.imwrite("Software/UTM_PyQt6/output/diagnostics/live_frame.png", frame)
         print("Saved live_frame.png")
     print(f"Frame received — shape: {frame.shape}")
 

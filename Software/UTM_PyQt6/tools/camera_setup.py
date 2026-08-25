@@ -195,7 +195,7 @@ class SetupChecker:
             cv2.putText(vis, f"{dist:.0f} px", (mid[0] + 10, mid[1]),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
         OUTPUT_DIR.mkdir(exist_ok=True)
-        out_path = OUTPUT_DIR / "camera_setup.png"
+        out_path = OUTPUT_DIR / "Software/UTM_PyQt6/output/setup_output/camera_setup.png"
         cv2.imwrite(str(out_path), vis)
         return out_path
 
