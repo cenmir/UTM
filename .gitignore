@@ -76,3 +76,6 @@ Validation docs/
 
 # PowerPoint slide renders used only to proof-read the deck
 documentation/deck_png_tpu/
+
+# Diagnostic images written by the scripts in Software/UTM_PyQt6/tools and /tests
+Software/UTM_PyQt6/diagnostics/

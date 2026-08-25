@@ -2,6 +2,12 @@
 Phase 8.6 Validation Tests
 Comprehensive testing of DIC strain measurement system integration
 """
+# Run from the APP directory (Software/UTM_PyQt6), which is also where this script's data and
+# output paths are resolved from:  python tests/test_phase_8_6.py
+# The app modules live one level up, so put that on the path before importing them.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 
 import unittest
 import math

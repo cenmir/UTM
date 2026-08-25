@@ -737,7 +737,7 @@ banner(s, 0.4, 5.5, 12.55, 1.05,
        "anchor-corrected). Strain-rate 6.2 held the target rate by adapting crosshead speed 0.10 → 0.05 mm/s. "
        "ONE hardware limit found — motor torque ceiling ~2.6 kN (next slide).",
        fill=GREEN_PASS, fg=BLACK, fs=11.5)
-footer(s, "Full step-by-step results: Software/UTM_PyQt6/TESTING_TODO.md; thresholds confirmed (fracture arm "
+footer(s, "Full step-by-step results: Software/UTM_PyQt6/docs/TESTING_TODO.md; thresholds confirmed (fracture arm "
           "30% / collapse 50%, travel cap 30 mm, stall guard 0.05 mm / 6 s).")
 pageno(s)
 

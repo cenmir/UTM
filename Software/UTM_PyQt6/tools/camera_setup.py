@@ -16,6 +16,12 @@ Usage:
     python camera_setup.py --mode black    # light markers on dark specimen
     python camera_setup.py --mode black --frames 60
 """
+# Run from the APP directory (Software/UTM_PyQt6), which is also where this script's data and
+# output paths are resolved from:  python tools/camera_setup.py
+# The app modules live one level up, so put that on the path before importing them.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 
 import argparse
 import sys

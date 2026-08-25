@@ -89,7 +89,7 @@ skip it and every offline path still runs. Without a camera the app starts but c
 
 | File | What it is |
 |---|---|
-| `Software/UTM_PyQt6/ROADMAP.md` | **Start here.** Living status of every feature: done, planned, blocked, and what needs rig time. |
+| `Software/UTM_PyQt6/docs/ROADMAP.md` | **Start here.** Living status of every feature: done, planned, blocked, and what needs rig time. |
 | `Software/UTM_PyQt6/main.py` | The application. Control loop, live plots, CSV export, all UI. |
 | `Software/UTM_PyQt6/camera_manager.py` | Camera, thresholding, marker detection, strain. |
 | `Software/UTM_PyQt6/utm_analysis.py` | The canonical analyser. Every script and the app share it — do not re-implement it. |

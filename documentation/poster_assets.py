@@ -2,7 +2,7 @@
 
 Both are WORKFLOW features, not measurements, so these are drawn as schematics rather than plots and
 are labelled as such on the poster. Every number in them comes from the rig-test record in
-`Software/UTM_PyQt6/TESTING_TODO.md` (SF2 = checklist item #2, SF8 = the "bonus" item confirmed
+`Software/UTM_PyQt6/docs/TESTING_TODO.md` (SF2 = checklist item #2, SF8 = the "bonus" item confirmed
 2026-07-27 and retuned at line 139); nothing here is invented.
 
     python documentation/poster_assets.py

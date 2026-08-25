@@ -10,6 +10,12 @@ to check its stop conditions against real data.
 
     python control_sim.py            # runs the validation suite, prints PASS/FAIL per mode
 """
+# Run from the APP directory (Software/UTM_PyQt6), which is also where this script's data and
+# output paths are resolved from:  python tools/control_sim.py
+# The app modules live one level up, so put that on the path before importing them.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from control_policies import (Signals, ForceRampPolicy, StrainRatePolicy, CyclicPolicy,
