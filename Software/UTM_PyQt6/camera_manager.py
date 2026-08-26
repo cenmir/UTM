@@ -821,12 +821,11 @@ class CameraManager(QObject):
         dx_px = abs(centroids[1][0] - centroids[0][0])
         if current_distance == 0:
             return 0.0, 0.0
-        cauchy = (current_distance - self.initial_distance) / self.initial_distance
-        # True strain — guard against zero/negative distance
-        if current_distance > 0 and self.initial_distance > 0:
-             true_strain = math.log(current_distance / self.initial_distance)
-        else:
-             true_strain = 0.0
+        # ONE conversion, shared with the offline video post-processor (utm_postproc). Strain is a
+        # pixel ratio with no gauge, calibration or unit in it, so a live pull and the same pull
+        # replayed from its recording must not be able to disagree — see utm_dic.dic_strain.
+        from utm_dic import dic_strain as _dic_strain
+        cauchy, true_strain = _dic_strain(current_distance, self.initial_distance)
         now = datetime.now()
         self.latest_dic_timestamp = now
         self.latest_dic_cauchy = cauchy

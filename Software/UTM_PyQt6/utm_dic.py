@@ -9,6 +9,7 @@ the centreline (top & bottom) PLUS 2 transverse dots at mid-height (left & right
 classify_markers() labels topmost/bottommost = axial, leftmost/rightmost = transverse.
 The 2-marker (axial-only) case is unchanged — transverse is None and no Poisson/Cauchy is produced.
 """
+from math import log
 from statistics import pstdev
 
 L_TRACK_PX = 100.0     # L_px above this = markers are being tracked (matches utm_analysis)
@@ -74,6 +75,34 @@ def classify_markers(centroids):
         by_x = sorted(pts, key=lambda p: p[0])
         out["transverse"] = (by_x[0], by_x[-1])
     return out
+
+
+def dic_strain(l_px, l0_px):
+    """THE pixel-to-strain conversion. Returns (cauchy, true).
+
+    Every strain this project reports comes through here — the live rig via
+    camera_manager.calculate_dic_strain(), and the offline video post-processor via
+    utm_postproc. That is deliberate: strain is a PIXEL RATIO and contains no gauge length, no
+    calibration and no physical unit, so there is nothing about it that should differ between a
+    live pull and the same pull replayed from its recording. Two copies of three lines would be
+    enough to drift, and this project has already lost curves to a duplicated analysis rule.
+
+        cauchy = (L - L0) / L0        engineering / Cauchy, the CSV's DIC_Cauchy column
+        true   = ln(L / L0)           log strain, the CSV's DIC_True column
+
+    Returns (0.0, 0.0) rather than raising when the inputs cannot produce a strain, matching the
+    live path: a dropout must read as "no reading", never as a confident zero-length marker pair.
+    """
+    if not l0_px or l0_px <= 0 or l_px is None or l_px <= 0:
+        return 0.0, 0.0
+    return (l_px - l0_px) / l0_px, log(l_px / l0_px)
+
+
+def px_per_mm(l0_px, gauge_mm):
+    """Scale factor, from the same pair that sets L0 — mirrors camera_manager.tare_dic()."""
+    if not gauge_mm or gauge_mm <= 0 or not l0_px or l0_px <= 0:
+        return None
+    return l0_px / gauge_mm
 
 
 def axial_distance_px(axial_pair):

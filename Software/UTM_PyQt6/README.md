@@ -22,6 +22,7 @@ different job with a different risk.
 | `utm_capture.py` · `utm_capdlg.py` | frame/video capture and its setup dialog |
 | `utm_camdlg.py` · `utm_autocal.py` | DIC camera setup and auto-calibration |
 | `utm_dic.py` · `utm_wizard.py` | DIC health readout and the guided wizard |
+| `utm_postproc.py` · `utm_postdlg.py` | DIC post-processing: strain from a RECORDED video, and its tab |
 | `theme.py` · `widgets.py` | look and custom controls |
 
 ## Folders
@@ -53,6 +54,33 @@ python tools/dic_replay.py
 
 Their data and output paths are relative to this directory, and the ones that import app modules
 carry a two-line header putting the parent on `sys.path`.
+
+## DIC post-processing (the fourth tab)
+
+Measures strain from a **recorded video** — ours, or a specimen filmed on the MOT XT-205 video
+extensometer — so the two instruments can be compared on the same footing.
+
+Load a video, place two tracking boxes on the speckle (or press Auto-detect for sprayed dots),
+press Run. The strain-vs-time plot builds on the right as it goes.
+
+**The strain maths is not re-implemented.** `utm_postproc` calls `utm_dic.dic_strain()`, and so
+does the live camera path in `camera_manager.calculate_dic_strain()`. Strain is a pixel ratio —
+`(L − L₀)/L₀` — with no gauge, calibration or unit in it, so a pull and the same pull replayed
+from its recording must not be able to disagree.
+
+Two things it gets right that are easy to get wrong:
+
+- **Tracking is against the REFERENCE patch, not the previous frame.** Frame-to-frame tracking
+  accumulates drift, and over 1682 frames a fraction of a pixel per frame exceeds the strain being
+  measured. When correlation falls below the floor it re-seeds and FLAGS that frame rather than
+  silently accumulating error.
+- **Frame rate is measured, not believed.** Every video this rig has produced declares 35 fps in
+  its container; S26 and S35 actually ran at 19.93 and S37 at 33.55. On load the tab reads the
+  true rate from the capture folder's `frames/index.csv` (or `run.json`) and says where it got it.
+  Videos from another camera have no sidecar, and the tab says so instead of assuming.
+
+Validated against S26: post-processing its `video.avi` reproduces that run's own live DIC to
+**273 µε RMS over a 5.6 % strain range** (~0.5 % of reading), with L₀ agreeing to 0.005 %.
 
 ## Test data
 

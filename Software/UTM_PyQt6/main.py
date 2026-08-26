@@ -581,6 +581,29 @@ class UTMApplication(QMainWindow):
         # Connect the range changed signal
         self.ssCropRangeSlider.rangeChanged.connect(self._on_ss_crop_range_changed)
 
+    def _setup_postproc_tab(self):
+        """Add the DIC Post-Processing tab.
+
+        Offline work on a recorded video: no serial link, no camera, no motors. It is a tab rather
+        than a dialog because an analysis runs for as long as the video is long, and the operator
+        needs to watch the strain trace build while it does.
+
+        Failure here must not cost the rig. The import and construction are guarded so a missing
+        OpenCV or a broken module removes ONE tab and says so, instead of preventing the app that
+        drives a motor and a load cell from starting at all.
+        """
+        try:
+            from utm_postdlg import PostProcTab
+            self.postProcTab = PostProcTab(self)
+            self.postProcTab.log.connect(self.append_to_console)
+            self.tabWidget.addTab(self.postProcTab, "DIC Post-Processing")
+        except Exception as e:
+            self.postProcTab = None
+            try:
+                self.append_to_console(f"[PostProc] tab unavailable: {e}")
+            except Exception:
+                print(f"[PostProc] tab unavailable: {e}")
+
     def _setup_main_splitter(self):
         """Replace the HBoxLayout between tabs and right panel with a draggable QSplitter"""
         from PyQt6.QtWidgets import QSplitter
@@ -1047,6 +1070,7 @@ class UTMApplication(QMainWindow):
 
         # Replace HBoxLayout between tabs and right panel with a draggable splitter
         self._setup_main_splitter()
+        self._setup_postproc_tab()
 
         # Connect camera buttons (must be after _setup_camera_display creates them)
         self.startCameraButton.clicked.connect(self.on_start_camera)
