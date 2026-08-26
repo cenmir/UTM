@@ -109,6 +109,12 @@ class CameraManager(QObject):
             # by the pair-plausibility guards and a frozen Px₀ instead of by roundness alone.
             # If a run ever admits a grip edge as a marker, this is the first line to suspect.
             #
+            # FINAL, not provisional. Confirmed again 2026-08-26: 0.40 stands even if marker
+            # preparation improves and clean 0.76 dots come back. Better dots would clear 0.40
+            # with more room, not create a reason to tighten it — so do not reopen this on the
+            # strength of a good-looking specimen. Only evidence that 0.40 ADMITS something it
+            # should not would justify revisiting, and the sweep says it does not.
+            #
             # The PETG specimens sprayed on 2026-08-22 have a crescent of overspray fused to the rim
             # of each dot. The dot itself is round; the dot-plus-crescent is not. Measured on the
             # capture at 20260822_174204: marker 2 is 17 131 px² against a clean dot's 11 140, and
