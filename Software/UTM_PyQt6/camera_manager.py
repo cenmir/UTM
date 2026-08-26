@@ -99,8 +99,15 @@ class CameraManager(QObject):
             "mask_x": None,
             "min_area": 2000,
             "max_area": 200000,
-            # ⚠ TEMPORARY 0.40 FOR THE PETG/TPU CAMPAIGN — put back to 0.50 when it ends.
-            # Roadmap item 10 carries the revert.
+            # 0.40 is the SETTLED default. It was introduced 2026-08-22 as a temporary loosening
+            # for the PETG/TPU campaign and kept by decision on 2026-08-26 after that campaign
+            # closed, rather than being put back to 0.50.
+            #
+            # What justifies keeping it: the sweep below found 0.40 mid-plateau, not on a cliff,
+            # and NOTHING extra is admitted anywhere between 0.50 and 0.25 (3+ blobs stays at
+            # 0.0 %). What 0.50 used to buy — keeping grips and fixture edges out — is now carried
+            # by the pair-plausibility guards and a frozen Px₀ instead of by roundness alone.
+            # If a run ever admits a grip edge as a marker, this is the first line to suspect.
             #
             # The PETG specimens sprayed on 2026-08-22 have a crescent of overspray fused to the rim
             # of each dot. The dot itself is round; the dot-plus-crescent is not. Measured on the
@@ -115,8 +122,11 @@ class CameraManager(QObject):
             # and NOTHING extra is admitted anywhere in that range (3+ blobs stays at 0.0 %), so
             # 0.40 sits mid-plateau rather than on a cliff.
             #
-            # This is a REAL loosening and the right long-term fix is the specimen: mask around each
-            # dot so overspray cannot land touching it, and use matte paint. A clean dot scores 0.76.
+            # The right long-term fix is still the SPECIMEN, and keeping 0.40 does not retire it:
+            # mask around each dot so overspray cannot land touching it, and use matte paint. A
+            # clean dot scores 0.76 and needs none of this. S37 (TPU, 2026-08-26) is the standing
+            # evidence — its sprayed dots scored 0.18 and needed a one-off 0.16 profile to track
+            # at all, which no gate value fixes and better preparation would have.
             "min_circularity": 0.40,
         },
     }
@@ -169,7 +179,7 @@ class CameraManager(QObject):
     PAIR_STEP_FLOOR_PX = 30.0        # always allow this much, so noise alone can never lock it out
     MIN_AREA = 2000
     MAX_AREA = 200000
-    MIN_CIRCULARITY = 0.40      # ⚠ temporary, matches SPECIMEN_PRESETS["Black"] — see the note there
+    MIN_CIRCULARITY = 0.40      # settled default, matches SPECIMEN_PRESETS["Black"] — note there
 
     def __init__(self):
         super().__init__()

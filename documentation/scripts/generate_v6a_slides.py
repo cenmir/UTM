@@ -3970,6 +3970,9 @@ exec(open("documentation/scripts/tpu_slides_block.py", encoding="utf-8").read())
 # ---- marker-spacing test: S33/S34 at 45 mm vs S25/S26 at 80 mm
 exec(open("documentation/scripts/gauge_slides_block.py", encoding="utf-8").read())
 
+# ---- S37: TPU at a 45 mm marker gauge, and the trio comparison redrawn with it
+exec(open("documentation/scripts/s37_slides_block.py", encoding="utf-8").read())
+
 try:
     prs.save("documentation/decks/V6a_8_6_20_slides.pptx")
     _n = len(prs.slides.__iter__.__self__._sldIdLst)

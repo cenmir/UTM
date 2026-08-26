@@ -403,8 +403,15 @@ the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign
 >    25 %, and a `hasattr` guard swallowed it silently. **Neither was visible without a check
 >    that drives the widgets and then asserts on the CAMERA, not on the widget.**
 >
-> 10. **🟡 REVERT `min_circularity` 0.40 → 0.50 WHEN PETG/TPU ENDS.** Loosened 2026-08-22 for the
->    campaign, in `camera_manager.py` (the Black preset AND the class default, which mirrors it).
+> 10. **✅ CLOSED 2026-08-26 — `min_circularity` STAYS AT 0.40.** Introduced 2026-08-22 as a
+>    temporary loosening for the PETG/TPU campaign, in `camera_manager.py` (the Black preset
+>    AND the class default, which mirrors it). Kept by decision when that campaign closed,
+>    rather than reverted to 0.50.
+>    ▸ **What justifies keeping it.** The sweep below puts 0.40 mid-plateau, not on a cliff, and
+>    nothing extra is admitted anywhere from 0.50 down to 0.25 (3+ blobs stays at 0.0 %).
+>    What 0.50 bought — keeping grips and fixture edges out — is now carried by the
+>    pair-plausibility guards and a frozen Px₀ rather than by roundness alone. If a run ever
+>    admits a grip edge as a marker, this is the first thing to suspect.
 >    ▸ **Why it was loosened.** The PETG dots have a crescent of overspray FUSED to the rim. The dot
 >    is round; dot-plus-crescent is not. On capture `20260822_174204` marker 2 measures 17 131 px²
 >    against a clean dot's 11 140 and scores **0.49–0.51 circularity across the run** — straddling a
@@ -413,10 +420,10 @@ the E fit window + SF13; 2026-08-11 T6.5 + T9; 2026-07-29 full rig-test campaign
 >    The failure is SHAPE, not brightness. Swept on the real capture, the 2-blob rate went
 >    **0.50 → 81.8 %, 0.45 → 100 %, 0.40 → 100 %, 0.25 → 100 %**, with 3+ blobs staying at 0.0 %
 >    throughout — so 0.40 is mid-plateau, not a cliff, and admits nothing extra.
->    ▸ **This is a real loosening and must not become permanent.** 0.50 exists to keep grips and
->    fixture edges out, and it earned its place. It is safe here only because the run is short, Px₀
->    is set, and the pair-plausibility guards catch a wrong pair anyway.
->    ▸ **The proper fix is the SPECIMEN, and it should be done before the next batch:** mask around
+>    ▸ **This remains a real loosening.** 0.50 earned its place; the decision is that the pair
+>    guards and a frozen Px₀ now carry that job. Short runs, Px₀ set before the pull, and the
+>    pair-plausibility checks are what make it safe — not the gate.
+>    ▸ **The proper fix is STILL the SPECIMEN, and closing this item does not retire it:** mask around
 >    each dot so overspray cannot land touching it, spray lighter from further back, and use MATTE
 >    white — marker 2's core blows out to 255 from a specular sheen while its rim stays mid-grey. A
 >    clean dot scores **0.76** and needs none of this.
