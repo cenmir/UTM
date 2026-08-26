@@ -4236,13 +4236,17 @@ class UTMApplication(QMainWindow):
     def _sf11_after_save(self, csv_path):
         """Everything that used to be a remembered manual step after pressing Save."""
         import utm_capture as _cap
+        import utm_registry as _reg
         done = []
 
         # 1. the capture link (the other half is written into the CSV header by _export_csv)
         run = getattr(self, "_pending_capture_run", None)
         if run:
             p = _cap.write_manifest(run["dir"], {
-                "csv": os.path.abspath(csv_path),
+                # Repo-relative, so filing the capture folder into its specimen folder — or
+                # reorganising the tree — does not kill the pointer. csv_name is what actually
+                # survived every past move, and it stays as the belt-and-braces half.
+                "csv": _reg.rel_to_repo(csv_path),
                 "csv_name": os.path.basename(csv_path),
                 "file_id": self.fileIdLineEdit.text().strip() or None,
                 "captured_from": run["start"].isoformat(timespec="seconds"),
@@ -4502,7 +4506,11 @@ class UTMApplication(QMainWindow):
             self._pending_capture_run = self._capture_run_for(first_time,
                                                               self.load_plot_times[-1])
             if self._pending_capture_run:
-                f.write(f"# Capture: {os.path.abspath(self._pending_capture_run['dir'])}\n")
+                # Repo-relative when the capture sits inside the tree, absolute otherwise (a
+                # capture still under Documents/Captures has no repo-relative form). Absolute
+                # alone did not survive the folder being filed afterwards — see rel_to_repo.
+                import utm_registry as _reg
+                f.write(f"# Capture: {_reg.rel_to_repo(self._pending_capture_run['dir'])}\n")
             if comment:
                 f.write(f"# Comment: {comment}\n")
             f.write("#\n")

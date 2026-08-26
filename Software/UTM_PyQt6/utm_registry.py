@@ -42,6 +42,18 @@ def parse_ids(csv_path):
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+def rel_to_repo(path):
+    """Public alias of _rel, for SF11's manifest and CSV header.
+
+    Both halves of the capture link used to be written with os.path.abspath(). That records where
+    a file was at save time, which stops being true the moment the capture folder is filed into
+    its specimen folder or the tree is reorganised — measured 2026-08-26, 0 of 14 stored run.json
+    paths and 1 of 20 "# Capture:" headers still resolved, even though every link had been made
+    correctly. The registry already solved this here; the manifest simply never used it.
+    """
+    return _rel(path)
+
+
 def _rel(csv_path):
     """Store the CSV path relative to the repo root, forward-slashed.
 

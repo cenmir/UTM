@@ -7,7 +7,7 @@
   "video_lossless": true,
   "video_true_width": 419,
   "video_padded_width": 420,
-  "csv": "C:\\Users\\sivadi\\OneDrive - Jonkoping University\\Dokument\\Python codes\\UTM-main current\\Software\\UTM_PyQt6\\8.6.20 - Tensile test to Failure\\New folder\\UTM_Test_20260822_181957.csv",
+  "csv": "C:/Users/sivadi/OneDrive - Jonkoping University/Dokument/Python codes/UTM-main current/Software/UTM_PyQt6/Test data/8.6.20 - Tensile test to Failure/Specimen_S31_V3_PETG_Spray_Video10/UTM_Test_20260822_181957.csv",
   "csv_name": "UTM_Test_20260822_181957.csv",
   "captured_from": "2026-08-22T18:18:08",
   "captured_to": "2026-08-22T18:19:56",
