@@ -14,7 +14,7 @@ _APP = os.path.abspath(os.path.join(_ROOT, "Software", "UTM_PyQt6"))
 sys.path.insert(0, _APP)
 import utm_analysis as ua                                    # noqa: E402
 
-DATA = os.path.join(_APP, "SF9 - Advanced Test Modes")
+DATA = os.path.join(_APP, "Test data", "Smart Features - Advanced Test Modes")
 OUT = _HERE
 AREA, GAUGE = 80.0, 80.0
 
@@ -1258,7 +1258,7 @@ def fig_teach_dissipation():
     return _save(fig, "documentation/figures/sf9_teach_dissipation.png")
 
 
-S17_HALT = os.path.join(_APP, "8.6.20 - Tensile test to Failure", "Specimen_S17_V2_Spray",
+S17_HALT = os.path.join(_APP, "Test data", "8.6.20 - Tensile test to Failure", "Specimen_S17_V2_Spray",
                         "StrainRate_Halt_Test_UTM_Test_20260728_211125.csv")
 
 

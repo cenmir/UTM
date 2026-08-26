@@ -6,7 +6,7 @@ Scans test CSVs, runs the shared analysis (utm_analysis), and records each test'
 tests without hard-coding CSV paths into every script — and the post-fracture anchor is
 captured once, here, instead of re-derived everywhere.
 
-    python utm_registry.py scan "Software/UTM_PyQt6/8.6.20 - Tensile test to Failure"
+    python utm_registry.py scan "Software/UTM_PyQt6/Test data/8.6.20 - Tensile test to Failure"
     python utm_registry.py list                  # whole registry as a table
     python utm_registry.py list --contains V6     # filter by test label / specimen / path
     python utm_registry.py add <one_test.csv>      # add/update a single test

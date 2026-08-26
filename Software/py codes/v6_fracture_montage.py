@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from utm_analysis import analyze
 
-ROOT = r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure"
+ROOT = r"Software\UTM_PyQt6\Test data\8.6.20 - Tensile test to Failure"
 
 # (test, specimen, csv, image, tag)
 SPECS_50 = [

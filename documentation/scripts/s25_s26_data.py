@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.abspath(_APP))
 
 from utm_analysis import analyze, read_csv  # noqa: E402
 
-BASE = os.path.abspath(os.path.join(_APP, "8.6.20 - Tensile test to Failure"))
+BASE = os.path.abspath(os.path.join(_APP, "Test data", "8.6.20 - Tensile test to Failure"))
 AREA_MM2 = GAUGE_MM = 80.0
 STEP_PCT = 0.10                    # strain step of the common grid, in %
 ROWS_PER_SLIDE = 22

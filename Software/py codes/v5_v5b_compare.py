@@ -7,8 +7,8 @@ from statistics import mean, stdev
 
 AREA = 80.0; GAUGE = 80.0
 FILES = {
-    "V5 (S4)":  r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure\Specimen_S4_V1_Spray\UTM_Test_20260612_172333_V5_TensionFailure.csv",
-    "V5b (S3)": r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure\Specimen_S3_V1_Spray\UTM_Test_20260617_122450__V5b_TensionFailure.csv",
+    "V5 (S4)":  r"Software\UTM_PyQt6\Test data\8.6.20 - Tensile test to Failure\Specimen_S4_V1_Spray\UTM_Test_20260612_172333_V5_TensionFailure.csv",
+    "V5b (S3)": r"Software\UTM_PyQt6\Test data\8.6.20 - Tensile test to Failure\Specimen_S3_V1_Spray\UTM_Test_20260617_122450__V5b_TensionFailure.csv",
 }
 
 

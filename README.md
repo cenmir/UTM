@@ -99,7 +99,7 @@ skip it and every offline path still runs. Without a camera the app starts but c
 
 ## What is NOT in this repository
 
-**The test data.** `Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/` is gitignored — it is
+**The test data.** `Software/UTM_PyQt6/Test data/8.6.20 - Tensile test to Failure/` is gitignored — it is
 several GB of CSVs, camera frames and videos. `registry.json` references those paths, so analysis
 and deck scripts will not find their inputs on a fresh clone. Ask for the data folder separately
 if you need to reproduce a result rather than write new code.

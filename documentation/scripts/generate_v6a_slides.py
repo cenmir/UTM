@@ -568,7 +568,7 @@ def frac_tile(sl, path, x, y, w, at, cb, name, metric, band, tag):
 
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PHASE 8.6.20: FRACTURE PATTERNS — 50 % vs 100 % INFILL (V5 & V6)")
-FROOT = r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure"
+FROOT = r"Software\UTM_PyQt6\Test data\8.6.20 - Tensile test to Failure"
 C50 = RGBColor(0x1F, 0x5F, 0xA0); C100 = RGBColor(0xC0, 0x00, 0x00)
 FR50 = [
     ("V5 · S4",  "22.1 MPa · ε_f 2.5 %", FROOT + r"\Specimen_S4_V1_Spray/S4.jpg",       ""),
@@ -2049,7 +2049,7 @@ header(s, 6.85, 5.58, 6.0, "So the choice is forced")
 tb(s, 6.85, 5.92, 6.05, 1.25,
    "•  A stress–strain curve must be INTERNALLY CONSISTENT — engineering with engineering, or true "
    "with true. Mixing them is simply wrong.\n"
-   "•  True stress needs the current cross-section ⇒ Poisson, which the narrow gauge blocks (p190).\n"
+   "•  True stress needs the current cross-section ⇒ Poisson, which the narrow gauge blocks (p187).\n"
    "•  So engineering + engineering is the only defensible pairing available today.\n"
    "•  ISO 527 and the add:north TDS also report engineering — which is what keeps our k-factors "
    "comparable (p208).", fs=10)
@@ -2062,7 +2062,7 @@ pageno(s)
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "REFERENCE — WOULD TRUE STRESS CHANGE OUR ANSWERS?")
 tb(s, 0.5, 1.16, 12.4, 0.34,
-   "Worth asking before building the edge-tracking rig on p190. Short answer: it is a ~3 % refinement "
+   "Worth asking before building the edge-tracking rig on p187. Short answer: it is a ~3 % refinement "
    "on the numbers — but it buys two things nothing else can.",
    fs=11.5, italic=True, colour=GREY_TEXT)
 img_fit(s, "documentation/figures/sf9_true_stress.png", 0.45, 1.52, 12.45, 3.25)
@@ -2338,8 +2338,8 @@ banner(s, 0.45, 4.10, 12.45, 0.62,
 
 header(s, 0.5, 4.90, 6.05, "What is now CLOSED")
 tb(s, 0.5, 5.24, 6.05, 1.55,
-   "•  Cyclic hysteresis is measurable — loop area AND unload modulus both trend (p215-214).\n"
-   "•  Creep is measurable — %+.0f µε at %.0f× the noise floor, decelerating (p217-217).\n"
+   "•  Cyclic hysteresis is measurable — loop area AND unload modulus both trend (p213-214).\n"
+   "•  Creep is measurable — %+.0f µε at %.0f× the noise floor, decelerating (p216-217).\n"
    "•  The DIC noise floor is now MEASURED over a full 900 s window: ± %.0f µε.\n"
    "•  Fatigue damage has a first number: %.1f %% TRUE UTS after %d cycles at 79 %% of fracture,\n"
    "   measured against S18 — the run that used the SAME protocol (T7.3).\n"
@@ -2354,7 +2354,7 @@ tb(s, 6.85, 5.24, 6.05, 1.55,
    "continuous run, baseline E on cycle 2.\n"
    "•  Creep at ONE stress level only — a compliance curve needs 3-4 levels.\n"
    "•  The `Infill` CSV header still writes 100 % after an app restart (label only).", fs=10.5)
-footer(s, "Raw CSVs: Software/UTM_PyQt6/SF9 - Advanced Test Modes/<specimen folder>/. Every number on "
+footer(s, "Raw CSVs: Software/UTM_PyQt6/Test data/Smart Features - Advanced Test Modes/<specimen folder>/. Every number on "
           "this page is recomputed by documentation/scripts/sf9_data.py — the table is generated, not typed.")
 pageno(s)
 
@@ -2447,14 +2447,14 @@ tb(s, 9.0, 2.06, 3.95, 2.30,
    "Both open ≈ 0.6 s BEFORE the crosshead moves and run 4.6 s past fracture.", fs=10.5)
 header(s, 9.0, 4.52, 3.95, "The one that did not do this")
 tb(s, 9.0, 4.90, 3.95, 1.45,
-   "S24 (the first capture run, p219-class data) logged only 27 % DIC coverage — the frames were "
+   "S24 (the first capture run, before these two) logged only 27 % DIC coverage — the frames were "
    "all there and all distinct, so the loss was in the load↔DIC matching step. It has not recurred: "
    "both runs here are at 100 %.", fs=10.5)
 banner(s, 0.4, 6.55, 12.55, 0.42,
        "PASS — 3 127 stills and 3 × 3 127 AVI frames, zero dropped, all four sinks in step, "
        "100 % DIC coverage on both runs. The videos are usable as extensometer input.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
-footer(s, "Raw: Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/Specimen_S25… and …S26…/. "
+footer(s, "Raw: Software/UTM_PyQt6/Test data/8.6.20 - Tensile test to Failure/Specimen_S25… and …S26…/. "
           "Frame counts, rates and coverage recomputed at build time by documentation/scripts/s25_s26_data.py.")
 pageno(s)
 
@@ -2745,7 +2745,7 @@ banner(s, 0.4, 6.0, 12.55, 0.85,
        "could have gone wrong (noise). The 47 % coverage is real but is NOT a marker-colour "
        "effect; p232 separates the two.", fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
 footer(s, "S13 · 100 % infill · black PLA, white spray dots · 2026-08-18 · "
-          "Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/Specimen_S13_V2_Spray_Video7/")
+          "Software/UTM_PyQt6/Test data/8.6.20 - Tensile test to Failure/Specimen_S13_V2_Spray_Video7/")
 pageno(s)
 
 # ---- Slide 228: the run on its own ----
@@ -3033,7 +3033,7 @@ banner(s, 0.4, 6.05, 12.55, 0.80,
        f"runs, zero dropped, all sinks in step, DIC coverage {_S27['coverage']:.0f} % and "
        f"{_S28['coverage']:.0f} %. Both videos are usable as extensometer input.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
-footer(s, "Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/Specimen_S27_V1_Spray_Video4/ and "
+footer(s, "Software/UTM_PyQt6/Test data/8.6.20 - Tensile test to Failure/Specimen_S27_V1_Spray_Video4/ and "
           "…_S28_…_Video5/. Frame counts and rates recomputed at build time.")
 pageno(s)
 
@@ -3450,6 +3450,50 @@ footer(s, "Same 0.05–0.35 % strain interval for all three. |r| = absolute resi
           "drift.")
 pageno(s)
 
+# ---- WHAT THE RMS NUMBER MEANS, AND WHERE IN THE PULL IT CAME FROM ----
+# Added because the slide above reports one number per instrument and never says which part of
+# the test produced it, which invites "our DIC is 1.9x quieter, everywhere". It is not that: it
+# is scatter about a straight line over one narrow slice of the elastic region, and the slice is
+# narrow because 0.05-0.35 % is very nearly ALL the XT-205 ever delivered.
+_wf = MP.window_facts()
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "WHAT THE RMS NUMBER MEANS, AND WHERE IT COMES FROM")
+tb(s, 0.4, 1.13, 12.55, 0.50,
+   "The previous slide gives one number per instrument. This says exactly what was measured, "
+   "over which stretch of the test, and what the number does NOT claim.",
+   fs=12, italic=True, colour=GREY_TEXT)
+
+img_fit(s, _os.path.join("documentation", "figures", "mot_window.png"), 0.40, 1.66, 12.55, 3.23)
+
+header(s, 0.4, 5.00, 6.15, "What RMS is — and is not")
+tb(s, 0.4, 5.38, 6.15, 1.20,
+   "Fit a straight line to strain-against-TIME over the window, subtract it, and take the "
+   "standard deviation of what is left. That is the RMS, in microstrain (1 µε = 0.0001 % "
+   "strain), so our 23.5 µε is ± 0.0024 % strain.\n"
+   "It measures STEADINESS, not correctness. It says nothing about whether the strain value is "
+   "right — px_per_mm calibration is what decides that.",
+   fs=9.6, colour=BLACK)
+
+header(s, 6.80, 5.00, 6.15, "Why a straight line is the right reference here")
+tb(s, 6.80, 5.38, 6.15, 1.20,
+   "The window is 0.05–0.35 %% strain: the elastic toe, %.0f %% of the way to PLA's %.1f %% "
+   "fracture and well before yield. Pulled at constant crosshead speed, strain there rises "
+   "linearly in time — R² = %.5f on S25 over %.0f s and %d samples.\n"
+   "So anything off the line is the instrument, not the material. Past yield that stops being "
+   "true, which is why the window ends at 0.35 %%."
+   % (0.35 / 4.18 * 100, 4.18, _wf["S25"]["r2"], _wf["S25"]["secs"], _wf["S25"]["n"]),
+   fs=9.6, colour=BLACK)
+
+banner(s, 0.4, 6.50, 12.55, 0.50,
+       "THE WINDOW IS NOT OURS TO CHOOSE: THE XT-205's WHOLE RECORD ENDS AT %.2f %% STRAIN, SO "
+       "0.05–0.35 %% IS %d OF ITS %d SAMPLES — NEARLY ALL IT DELIVERED, AND ONLY %.0f %% OF OURS."
+       % (_wf["MOT"]["max_pct"], _wf["MOT"]["n"], _wf["MOT"]["N"],
+          100.0 * _wf["S25"]["n"] / _wf["S25"]["N"]),
+       fill=LIGHT_BLUE, fg=BLACK, fs=10.5)
+footer(s, "Left panel: S25's full pull to fracture with the window shaded. Middle and right: that "
+          "window on S25, the straight fit, and the residual the RMS summarises.")
+pageno(s)
+
 
 # =====================================================================================
 # SEGMENT: SMART-FEATURE OVERVIEW — p248-249
@@ -3568,8 +3612,9 @@ sf_overview([
      "either half finds the other. Matched by time-window OVERLAP, never by recency.", "done"),
     (12, "DIC auto-calibration",
      "Sweeps exposure × threshold and scores each on trackability — contrast margin dominates, "
-     "because it predicts whether tracking SURVIVES a flicker. Proposes; Cancel restores exactly.",
-     "built"),
+     "because it predicts whether tracking SURVIVES a flicker. Proposes; Cancel restores exactly. "
+     "Shown running on the rig on the next slides.",
+     "done"),
     (13, "Guided wizard",
      "Twelve steps in the order they must be done, read from flags the app already had. Optional "
      "and off by default — a checklist that cannot be dismissed is just a wider warning.", "done"),
@@ -3592,8 +3637,8 @@ sf_overview([
 # Row 5 is free on this slide (8 cards, not 10), so it carries the legend and the one sentence
 # that says what the set adds up to — better than leaving a band of white under the cards.
 for _i, (_lab, _st, _txt) in enumerate([
-        ("16", "done", "built AND rig-validated"),
-        ("2", "built", "built, waiting on rig time"),
+        ("17", "done", "built AND rig-validated"),
+        ("1", "built", "built, waiting on a screenshot"),
         ("1", "block", "blocked by hardware")]):
     _x = 0.40 + _i * 2.35
     _f, _fg = _SF_STATUS[_st]
@@ -3609,23 +3654,28 @@ for _i, (_lab, _st, _txt) in enumerate([
     tb(s, _x + 0.56, 6.06, 1.75, 0.26, _txt, fs=9.0, colour=GREY_TEXT)
 
 banner(s, 0.4, 6.46, 12.55, 0.50,
-       "The two blue cards wait on RIG TIME, not on code: SF18 needs the lighting fixed to shoot "
-       "the overlay under load, and SF12's sweep could not tune a black specimen until 2026-08-19. "
+       "SF12 turned green on 2026-08-22 — its sweep is shown running on the rig two slides on. "
+       "SF18 is the last blue card: the overlay HAS now been seen live under load during the TPU "
+       "runs, but no screenshot was kept, so it stays blue until one is. "
        "SF14 is the only one hardware can block.", fill=LIGHT_BLUE, fg=BLACK, fs=10.5)
 footer(s, "SF17 is absent by design: it was carded and retired the same day, because a card has to "
           "be something the OPERATOR invokes or that acts on the machine during a run.")
 pageno(s)
 
+# ---- smart-feature PROOF slides, placed directly under the two overview cards
+exec(open("documentation/scripts/sf_proof_block.py", encoding="utf-8").read())
+
+
 
 # =====================================================================================
-# SEGMENT: WHAT THE CAPTURE WRITES — p250-251
+# SEGMENT: WHAT THE CAPTURE WRITES — p255-251
 # =====================================================================================
 import capture_format_plots as CFP                                                 # noqa: E402
 import utm_capture as UCAP                                                         # noqa: E402
 CFP.fig_stills(); CFP.fig_video()
 _SFMT, _VCOD = UCAP.STILL_FORMATS, UCAP.VIDEO_CODECS
 
-# ---- p250: still image formats ----
+# ---- p255: still image formats ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "WHAT THE CAPTURE WRITES — STILL IMAGES")
 tb(s, 0.4, 1.13, 12.55, 0.44,
@@ -3658,7 +3708,7 @@ footer(s, "Measured on a real 419×2348 frame from S26. A binary speckle view is
           "23× that PNG level 1 was introduced to capture.")
 pageno(s)
 
-# ---- p251: video codecs ----
+# ---- p256: video codecs ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "WHAT THE CAPTURE WRITES — VIDEO")
 tb(s, 0.4, 1.13, 12.55, 0.44,
@@ -3694,7 +3744,7 @@ pageno(s)
 
 
 # =====================================================================================
-# SEGMENT: PETG — THE SECOND MATERIAL  — p252-254
+# SEGMENT: PETG — THE SECOND MATERIAL  — p257-254
 # =====================================================================================
 import petg_data as PG                                                             # noqa: E402
 import petg_plots as PGP                                                           # noqa: E402
@@ -3705,7 +3755,7 @@ _u32, _ = PG.uts_corrected("S32")
 _EXP = PG.expectation_table()
 _PK = [PG.peak_load_N(k) for k in ("S30", "S31", "S32")]
 
-# ---- p252: the three PETG runs ----
+# ---- p257: the three PETG runs ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PETG — THREE RUNS ON ONE MATERIAL")
 tb(s, 0.4, 1.15, 12.55, 0.44,
@@ -3734,7 +3784,7 @@ footer(s, "* S32's UTS is re-derived with the rig's usual 300 N preload because 
           "recovery failed — see the next slide. Same protocol as the PLA pair throughout.")
 pageno(s)
 
-# ---- p253: why each run has a limit ----
+# ---- p258: why each run has a limit ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PETG — WHAT LIMITS EACH RUN, AND WHAT SURVIVES IT")
 tb(s, 0.4, 1.15, 12.55, 0.44,
@@ -3767,7 +3817,7 @@ footer(s, "min_circularity was loosened 0.50 → 0.40 after S31 ran; the roadmap
           "S32 should be redone, or re-derived with an explicit anchor.")
 pageno(s)
 
-# ---- p254: PETG vs PLA ----
+# ---- p259: PETG vs PLA ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PETG vs PLA — S30 AGAINST S25")
 tb(s, 0.4, 1.13, 12.55, 0.44,
@@ -3799,7 +3849,7 @@ footer(s, "S25 chosen as the PLA comparator: same frame-capture protocol, 100 % 
           "the closest run in date. S26 is drawn on the curve for context.")
 pageno(s)
 
-# ---- p255: does it match literature ----
+# ---- p260: does it match literature ----
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "IS IT WHAT LITERATURE PREDICTS?")
 tb(s, 0.4, 1.13, 12.55, 0.44,
@@ -3827,7 +3877,7 @@ footer(s, "⚠ Bands are typical published values for 100 % infill printed parts
           "ordering, not the like-for-like validation PLA has against add:north E-PLA.")
 pageno(s)
 
-# ---- p256: the plastic slope, specimen to specimen ----
+# ---- p261: the plastic slope, specimen to specimen ----
 PGP.fig_plastic()
 _ps30, _ps32 = PGP.plastic_slope("S30"), PGP.plastic_slope("S32")
 s = prs.slides.add_slide(BLANK); ju(s)
@@ -3867,7 +3917,7 @@ footer(s, "Fitted between 15 % and 85 % of the way from the UTS strain to fractu
           "turnover at the peak nor the last dying samples enter the fit.")
 pageno(s)
 
-# ---- p257: the ELASTIC slope, specimen to specimen ----
+# ---- p262: the ELASTIC slope, specimen to specimen ----
 PGP.fig_elastic()
 _EC = {k: PGP.elastic_common(k) for k in ("S30", "S31", "S32")}
 _own = [PG.get(k)["E"] for k in ("S30", "S31", "S32")]

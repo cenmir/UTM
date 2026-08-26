@@ -8,7 +8,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 from statistics import mean, stdev, median
 
 AREA = 80.0; GAUGE = 80.0
-ROOT = r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure"
+ROOT = r"Software\UTM_PyQt6\Test data\8.6.20 - Tensile test to Failure"
 FILES = {
     "V5 (S4, 50%)":  ROOT + r"\Specimen_S4_V1_Spray\UTM_Test_20260612_172333_V5_TensionFailure.csv",
     "V6a (S7, 100%)": ROOT + r"\Specimen_S7_V2_Spray\UTM_Test_20260617_165405_V6a_TensionFailure.csv",

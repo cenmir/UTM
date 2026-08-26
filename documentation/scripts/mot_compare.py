@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt                                       # noqa: E4
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
-DATA = os.path.join(REPO, "Software", "UTM_PyQt6", "8.6.20 - Tensile test to Failure")
+DATA = os.path.join(REPO, "Software", "UTM_PyQt6", "Test data", "8.6.20 - Tensile test to Failure")
 def _find_mot():
     """Locate the extensometer export by CONTENT, not by a folder name someone might tidy.
 

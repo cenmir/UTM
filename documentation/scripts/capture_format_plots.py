@@ -1,4 +1,4 @@
-"""Figures for the capture-format slides (deck p250-251).
+"""Figures for the capture-format slides (deck p255-251).
 
   cap_still_formats.png   what the three still formats cost, and that all three are identical
   cap_video_codecs.png    where MJPG actually loses the image, next to what the codecs cost
@@ -26,7 +26,7 @@ APP = os.path.abspath(os.path.join(REPO, "Software", "UTM_PyQt6"))
 sys.path.insert(0, APP)
 import utm_capture as CAP                                              # noqa: E402
 
-RUN = os.path.join(APP, "8.6.20 - Tensile test to Failure",
+RUN = os.path.join(APP, "Test data", "8.6.20 - Tensile test to Failure",
                    "Specimen_S26_V2_Spray_Video3", "20260817_111525")
 GRID, INK, MUTED = "#DDDDDD", "#1A1A1A", "#666666"
 C_GOOD, C_BAD, C_MID = "#2f9e44", "#d62728", "#1f77b4"

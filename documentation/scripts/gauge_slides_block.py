@@ -145,7 +145,7 @@ tb(s, 0.5, 3.58, 6.1, 3.0,
    "between a 939 px and a 1675 px baseline. The agreement puts δ below %.2f px — an upper "
    "bound, since it credits the whole discrepancy to that one cause.\n\n"
    "•  Either spacing may be used, so a shorter gauge is available when the frame is the "
-   "constraint — which is exactly the TPU problem on p259."
+   "constraint — which is exactly the TPU problem on p265."
    % _GS["bias_px"],
    fs=9.4, colour=BLACK)
 

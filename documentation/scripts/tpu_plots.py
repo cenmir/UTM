@@ -22,9 +22,9 @@ sys.path.insert(0, os.path.join(ROOT, "Software", "UTM_PyQt6"))
 from utm_analysis import read_csv, analyze, linfit                    # noqa: E402
 
 TESTS = {
-    "S35": os.path.join(ROOT, "Software", "UTM_PyQt6", "8.6.20 - Tensile test to Failure",
+    "S35": os.path.join(ROOT, "Software", "UTM_PyQt6", "Test data", "8.6.20 - Tensile test to Failure",
                         "Specimen_S35_V5_TPU_Spray_Video14", "UTM_Test_20260824_151910.csv"),
-    "S36": os.path.join(ROOT, "Software", "UTM_PyQt6", "8.6.20 - Tensile test to Failure",
+    "S36": os.path.join(ROOT, "Software", "UTM_PyQt6", "Test data", "8.6.20 - Tensile test to Failure",
                         "Specimen_S36_V5_TPU_Spray", "UTM_Test_20260824_184604.csv"),
 }
 GRID = "#DDDDDD"

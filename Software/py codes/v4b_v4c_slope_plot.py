@@ -7,8 +7,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-V4B = r"Software\UTM_PyQt6\8.6.3\UTM_Test_20260605_152501_V4b_Staricase_Tension.csv"
-V4C = r"Software\UTM_PyQt6\8.6.3\UTM_Test_20260605_164908_V4c_Staircase_Tension_350N.csv"
+V4B = r"Software\UTM_PyQt6\Test data\Smart Features - Advanced Test Modes\8.6.3\UTM_Test_20260605_152501_V4b_Staricase_Tension.csv"
+V4C = r"Software\UTM_PyQt6\Test data\Smart Features - Advanced Test Modes\8.6.3\UTM_Test_20260605_164908_V4c_Staircase_Tension_350N.csv"
 
 
 def read_csv(path):

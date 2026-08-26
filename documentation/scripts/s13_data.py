@@ -25,7 +25,7 @@ sys.path.insert(0, _APP)
 
 from utm_analysis import analyze, read_csv                          # noqa: E402
 
-BASE = os.path.join(_APP, "8.6.20 - Tensile test to Failure")
+BASE = os.path.join(_APP, "Test data", "8.6.20 - Tensile test to Failure")
 AREA_MM2 = GAUGE_MM = 80.0
 STALE_MS = 100          # main.py DIC_STALE_THRESHOLD_MS — the matching window
 NOISE_WINDOW_S = 10     # shortest hold available across the three runs

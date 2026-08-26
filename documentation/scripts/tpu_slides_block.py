@@ -188,8 +188,62 @@ tb(s, 0.5, 5.92, 12.4, 1.15,
    "same statement the modulus chart makes, drawn a different way: PLA > PETG ≫ TPU is not a "
    "subtle effect needing careful statistics, it is the dominant feature of the data.",
    fs=9.8, colour=BLACK)
-footer(s, "Fitted over ε 0.05-0.4 %, the same elastic window used for every modulus in this deck. "
-          "One representative run per material.")
+footer(s, "Shaded vertical band = the strain window each run's E was actually fitted over. The "
+          "INTERCEPT is taken over 0.05-0.4 %. Expected bands are literature — sources on the chart.")
+pageno(s)
+
+# ---------------------------------------------------------------- 6b. is that dashed line fair?
+# The dashed line sets the whole claim of the slide above, so the rule behind it gets audited
+# rather than asserted. The alternative rule is run on the same specimens and both are scored on
+# repeatability AND on datasheet agreement, including where the chosen rule loses.
+_EM = TP.e_methods()
+_cov = TP._cov
+
+
+def _wins(m):
+    return "  ·  ".join("%s %.2f–%.2f %%" % (sp, w[0], w[1])
+                        for sp, w in zip(_EM[m]["spec"], _EM[m]["win"]))
+
+
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "IS THAT DASHED LINE CHOSEN FAIRLY? — AUDITING THE MODULUS RULE")
+tb(s, 0.4, 1.12, 12.55, 0.46,
+   "The dashed line decides whether each material passes, so the rule that produced it is worth "
+   "more than an assertion. Here it is, and here is the rule it beat.",
+   fs=11.5, italic=True, colour=GREY_TEXT)
+img_fit(s, "documentation/figures/e_method.png", 0.4, 1.58, 12.55, 3.40)
+
+header(s, 0.4, 5.06, 4.05, "What the dashed line actually is")
+tb(s, 0.4, 5.42, 4.05, 1.05,
+   "Its SLOPE is the group-mean measured E. Its INTERCEPT alone is fitted to the run drawn "
+   "beside it. It is therefore a prediction laid over one run, not a regression of that run — "
+   "which is why it leaves the black curve once the material leaves its elastic region.",
+   fs=9.2, colour=BLACK)
+
+header(s, 4.65, 5.06, 4.05, "How each E is found")
+tb(s, 4.65, 5.42, 4.05, 1.05,
+   "Every candidate window is scored, the straightness gate (R² ≈ 0.999) is applied FIRST, and "
+   "the STEEPEST survivor wins. Not a fixed window — our runs are not straight in the same "
+   "place: S25 is straight over 0.22–0.47 %, S16 not until 0.71–1.11 %.",
+   fs=9.2, colour=BLACK)
+
+header(s, 8.90, 5.06, 4.05, "The verdict, including the cost")
+tb(s, 8.90, 5.42, 4.05, 1.05,
+   "A rule chasing noise RAISES scatter. This one lowers it on all three: PLA %.1f→%.1f %%, "
+   "PETG %.1f→%.1f %%, TPU %.1f→%.1f %%. The cost is a slight upward bias — for PLA the fixed "
+   "window sits nearer the band centre. Both rules stay in band."
+   % (_cov(_EM["PLA"]["fixed"]), _cov(_EM["PLA"]["steep"]),
+      _cov(_EM["PETG"]["fixed"]), _cov(_EM["PETG"]["steep"]),
+      _cov(_EM["TPU"]["fixed"]), _cov(_EM["TPU"]["steep"])),
+   fs=9.2, colour=BLACK)
+
+banner(s, 0.4, 6.52, 12.55, 0.46,
+       "DEFENSIBLE, NOT PERFECT: THE RULE WINS ON REPEATABILITY IN EVERY MATERIAL AND COSTS A "
+       "SMALL UPWARD BIAS — AND BOTH RULES LAND INSIDE EVERY PUBLISHED BAND.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=10.2)
+footer(s, "Fixed-window comparison from the same CSVs (analyze() reports both). S26 and S16 are "
+          "the cases that decide it: their straight stretch starts late, so the fixed window "
+          "averages the compliant toe into the slope and reads ~41 % low.")
 pageno(s)
 
 # ---------------------------------------------------------------- 7. the full comparison

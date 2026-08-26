@@ -42,7 +42,7 @@ APP = os.path.abspath(os.path.join(REPO, "Software", "UTM_PyQt6"))
 sys.path.insert(0, APP)
 import utm_analysis as UA                                             # noqa: E402
 
-D = os.path.join(APP, "8.6.20 - Tensile test to Failure")
+D = os.path.join(APP, "Test data", "8.6.20 - Tensile test to Failure")
 RUNS = {
     "S30": (os.path.join(D, "Specimen_S30_V3_PETG_Spray_Video9",
                          "UTM_Test_20260822_180547.csv"), "PETG", 89),

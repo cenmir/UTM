@@ -1,0 +1,17 @@
+{
+  "still_format": "tiff",
+  "still_lossless": true,
+  "video_codec": [
+    "y800"
+  ],
+  "video_lossless": true,
+  "video_true_width": 419,
+  "video_padded_width": 420,
+  "csv": "C:\\Users\\sivadi\\OneDrive - Jonkoping University\\Dokument\\Python codes\\UTM-main current\\Software\\UTM_PyQt6\\8.6.20 - Tensile test to Failure\\New folder\\UTM_Test_20260824_104255.csv",
+  "csv_name": "UTM_Test_20260824_104255.csv",
+  "captured_from": "2026-08-24T10:40:25",
+  "captured_to": "2026-08-24T10:42:33",
+  "area_mm2": 80.0,
+  "gauge_mm": 80.0,
+  "app_version": "0.5.4"
+}

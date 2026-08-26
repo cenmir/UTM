@@ -191,8 +191,96 @@ def fig_noise(out="mot_noise.png"):
     return p
 
 
+def fig_window(out="mot_window.png"):
+    """Slide 4 — WHAT the RMS is, and WHERE in the pull it was measured.
+
+    The noise slide reports a single number per instrument and never says which part of the test
+    it came from, so it invites the reading "our DIC is 1.9x quieter, everywhere". It is not that.
+    It is the scatter about a straight line over one narrow slice of the elastic region — and the
+    slice is narrow because it is all the XT-205 ever delivered.
+    """
+    tm, em, gl, runs = data()
+    t25, e25 = runs["S25"][0], runs["S25"][1]
+
+    fig, (a1, a2, a3) = plt.subplots(1, 3, figsize=(13.6, 3.5),
+                                     gridspec_kw={"width_ratios": [1.15, 1, 1]})
+
+    # ---- (1) where the window sits in a WHOLE pull, on the stress-strain curve
+    sys.path.insert(0, HERE)
+    import trio_plots as TP
+    e_full, s_full, a_full = TP.curve("S25")
+    a1.plot(e_full, s_full, color=C_S25, lw=1.7)
+    a1.axvspan(LO * 100, HI * 100, color="#d62728", alpha=0.22, zorder=0)
+    a1.set_xlim(0, e_full.max() * 1.03)
+    a1.set_ylim(0, s_full.max() * 1.22)
+    a1.annotate("the noise window\n0.05–0.35 % strain",
+                xy=(HI * 100, s_full.max() * 0.42), xytext=(e_full.max() * 0.30, s_full.max() * 0.30),
+                fontsize=8.8, color="#d62728", weight="bold",
+                arrowprops=dict(arrowstyle="->", color="#d62728", lw=1.4))
+    a1.annotate("UTS  %.1f MPa\nat %.2f %%" % (a_full["uts"], a_full["uts_ec"]),
+                xy=(a_full["uts_ec"], a_full["uts"]),
+                xytext=(a_full["uts_ec"] * 1.35, s_full.max() * 1.02),
+                fontsize=8.4, color=GREY, arrowprops=dict(arrowstyle="->", color="#999"))
+    a1.set_title("WHERE: 0.3 %% of strain out of %.1f %% — the elastic toe" % e_full.max(),
+                 fontsize=10.4)
+    a1.set_xlabel("DIC gauge strain (%)"); a1.set_ylabel("Engineering stress (MPa)")
+    _style(a1)
+
+    # ---- (2) inside the window, strain against time, with the straight fit
+    m = (e25 >= LO) & (e25 <= HI)
+    tt, ee = t25[m] - t25[m].min(), e25[m]
+    sl, ic = np.polyfit(t25[m], ee, 1)
+    fit = sl * t25[m] + ic
+    r2 = np.corrcoef(t25[m], ee)[0, 1] ** 2
+    a2.plot(tt, ee * 100, color=C_S25, lw=1.5, label="S25 measured")
+    a2.plot(tt, fit * 100, color="#212529", lw=1.1, ls="--",
+            label="straight fit  (R² = %.5f)" % r2)
+    a2.set_title("WHAT it is fitted to: strain vs TIME in that window", fontsize=10.4)
+    a2.set_xlabel("time within the window (s)"); a2.set_ylabel("strain (%)")
+    a2.legend(fontsize=8.2, loc="upper left")
+    _style(a2)
+
+    # ---- (3) the residual, which is the thing RMS summarises
+    r = (ee - fit) * 1e6
+    a3.plot(tt, r, color=C_S25, lw=1.1)
+    a3.axhline(0, color="#999", lw=0.8)
+    a3.axhline(r.std(), color="#d62728", lw=1.0, ls=":")
+    a3.axhline(-r.std(), color="#d62728", lw=1.0, ls=":")
+    a3.fill_between(tt, -r.std(), r.std(), color="#d62728", alpha=0.10)
+    a3.text(0.5, 0.965, "±1 RMS = %.1f µε" % r.std(), transform=a3.transAxes,
+            ha="center", va="top", fontsize=9.0, color="#d62728", weight="bold",
+            bbox=dict(boxstyle="round,pad=0.28", fc="white", ec="#d62728", lw=0.8, alpha=0.92))
+    a3.set_ylim(r.min() * 1.35, r.max() * 1.55)
+    a3.set_title("WHAT RMS IS: the spread the fit leaves over", fontsize=10.4)
+    a3.set_xlabel("time within the window (s)")
+    a3.set_ylabel("measured − straight line (µε)")
+    _style(a3)
+
+    fig.tight_layout()
+    p = os.path.join(HERE, "..", "figures", out)
+    fig.savefig(p, dpi=170); plt.close(fig)
+    return p
+
+
+def window_facts():
+    """Numbers the slide quotes, computed rather than typed."""
+    tm, em, gl, runs = data()
+    out = {}
+    mm = (em >= LO) & (em <= HI)
+    out["MOT"] = {"max_pct": em.max() * 100, "n": int(mm.sum()), "N": len(em),
+                  "secs": float(tm[mm].max() - tm[mm].min())}
+    for k in ("S25", "S26"):
+        t, e = runs[k][0], runs[k][1]
+        m = (e >= LO) & (e <= HI)
+        sl, ic = np.polyfit(t[m], e[m], 1)
+        out[k] = {"n": int(m.sum()), "N": len(e), "secs": float(t[m].max() - t[m].min()),
+                  "r2": float(np.corrcoef(t[m], e[m])[0, 1] ** 2),
+                  "rms_ue": float(((e[m] - (sl * t[m] + ic)) * 1e6).std())}
+    return out
+
+
 def build_all():
-    return [fig_record(), fig_rate(), fig_noise()]
+    return [fig_record(), fig_rate(), fig_noise(), fig_window()]
 
 
 if __name__ == "__main__":

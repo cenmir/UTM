@@ -11,7 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 AREA = 80.0; GAUGE = 80.0
-ROOT = r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure"
+ROOT = r"Software\UTM_PyQt6\Test data\8.6.20 - Tensile test to Failure"
 F_V5 = ROOT + r"\Specimen_S4_V1_Spray\UTM_Test_20260612_172333_V5_TensionFailure.csv"
 F_V6 = ROOT + r"\Specimen_S7_V2_Spray\UTM_Test_20260617_165405_V6a_TensionFailure.csv"      # pilot (batch edge)
 F_V6D = ROOT + r"\Specimen_S11_V2_Spray\UTM_Test_20260625_154219_V6d_TensionFailure.csv"    # representative (≈ n=5 mean)

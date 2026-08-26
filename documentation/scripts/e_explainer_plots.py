@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, _os.path.join("Software", "UTM_PyQt6"))
 import utm_analysis as UA
 
-CSV = _os.path.join("Software", "UTM_PyQt6", "8.6.20 - Tensile test to Failure",
+CSV = _os.path.join("Software", "UTM_PyQt6", "Test data", "8.6.20 - Tensile test to Failure",
                     "Specimen_S11_V2_Spray", "UTM_Test_20260625_154219_V6d_TensionFailure.csv")
 OUT = "documentation"
 
@@ -128,7 +128,7 @@ def fig_riserun():
 # Built from S16 — the specimen in the report screenshot — so the picture matches the PDF the
 # operator is actually holding. Its E (1.88 GPa) is low, which is WHY sigma_y lands almost on
 # UTS here: a shallower elastic line takes longer to catch the curve.
-S16_CSV = _os.path.join("Software", "UTM_PyQt6", "8.6.20 - Tensile test to Failure",
+S16_CSV = _os.path.join("Software", "UTM_PyQt6", "Test data", "8.6.20 - Tensile test to Failure",
                         "Specimen_S16_V2_Spray", "UTM_Test_20260728_200615.csv")
 MAGENTA, DARKGREY = "#b03060", "#333333"
 

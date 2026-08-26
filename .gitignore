@@ -21,6 +21,8 @@ Software/UTM_PyQt6/*.spec
 
 # Test data files
 *.csv
+# ...and the .orig backups left by header rewrites, which are the same data
+*.csv.orig
 
 # Claude Code / AI documentation (local only)
 CLAUDE.md
@@ -64,6 +66,15 @@ Software/UTM_PyQt6/8.6.20 - Tensile test to Failure/
 Software/UTM_PyQt6/*.jpg
 
 # DIC frame capture / video recording output (huge: ~1.9 GB per minute of PNGs)
+# The rule under this comment was EMPTY: it used to be covered by Software/UTM_PyQt6/output/,
+# and the capture folders now sit beside the CSVs under "Test data/". Matched by SHAPE
+# rather than by location so the next reorganisation cannot silently lose it again.
+# S26 alone is 1.7 GB of stills + 266 MB of video.
+**/frames*/
+*.avi
+*.mkv
+*.tif
+*.tiff
 
 # Session pack for the MOT extensometer visit. Documents are copies (the originals are
 # tracked or generated); the operator drops multi-GB videos in here before travelling, which

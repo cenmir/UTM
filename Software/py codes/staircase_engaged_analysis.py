@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 # Reuse the same helpers via import - but keep things self-contained:
 
 V2_TRANSFER_RATIO = 0.077
-CSV_PATH = r"Software\UTM_PyQt6\8.6.3\UTM_Test_20260605_152501_V4b_Staricase_Tension.csv"
+CSV_PATH = r"Software\UTM_PyQt6\Test data\Smart Features - Advanced Test Modes\8.6.3\UTM_Test_20260605_152501_V4b_Staricase_Tension.csv"
 OUT_PNG = "images/V4/V4b_engaged_regime.png"
 ENGAGED_POS_MIN = 0.35  # only include holds at Position >= 0.4 mm (a little slack)
 

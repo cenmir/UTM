@@ -27,7 +27,7 @@ sys.path.insert(0, _APP)
 from utm_analysis import analyze, read_csv                          # noqa: E402
 import utm_registry as _REG                                         # noqa: E402
 
-BASE = os.path.join(_APP, "8.6.20 - Tensile test to Failure")
+BASE = os.path.join(_APP, "Test data", "8.6.20 - Tensile test to Failure")
 AREA_MM2 = GAUGE_MM = 80.0
 
 # add:north E-PLA technical datasheet — the canonical material reference (reference_addnorth_tds).

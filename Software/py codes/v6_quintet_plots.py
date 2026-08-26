@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from statistics import mean, stdev
 from utm_analysis import analyze
 
-ROOT = r"Software\UTM_PyQt6\8.6.20 - Tensile test to Failure"
+ROOT = r"Software\UTM_PyQt6\Test data\8.6.20 - Tensile test to Failure"
 FILES = {
     "V6a (S7)":  ROOT + r"\Specimen_S7_V2_Spray\UTM_Test_20260617_165405_V6a_TensionFailure.csv",
     "V6b (S8)":  ROOT + r"\Specimen_S8_V2_Spray\UTM_Test_20260625_144903_V6b_TensionFailure.csv",

@@ -17,7 +17,7 @@ APP = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(ROOT)), "Soft
 sys.path.insert(0, APP)
 import utm_analysis as UA
 
-SPEC = os.path.join(APP, "8.6.20 - Tensile test to Failure", "Specimen_S24_V2_Spray")
+SPEC = os.path.join(APP, "Test data", "8.6.20 - Tensile test to Failure", "Specimen_S24_V2_Spray")
 RUN = os.path.join(SPEC, "20260814_120156")
 CSV = os.path.join(SPEC, "UTM_Test_20260814_120352_100%infill_Videocapture.csv")
 OUT = os.path.join(ROOT, "..", "figures")   # figures live in one place

@@ -1,4 +1,4 @@
-"""Figures for the PETG slides (deck p252-254).
+"""Figures for the PETG slides (deck p257-254).
 
   petg_pair.png      S30 vs S31 — and why only one of them can carry the strain numbers
   petg_vs_pla.png    PETG against PLA, curves plus the four properties
