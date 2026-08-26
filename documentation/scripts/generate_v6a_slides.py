@@ -3741,6 +3741,9 @@ pageno(s)
 # ---- smart-feature PROOF slides, placed directly under the two overview cards
 exec(open("documentation/scripts/sf_proof_block.py", encoding="utf-8").read())
 
+# ---- SF11 and SF15: the two features that were working but had no slide of their own
+exec(open("documentation/scripts/sf11_sf15_block.py", encoding="utf-8").read())
+
 
 
 # =====================================================================================

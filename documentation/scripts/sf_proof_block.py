@@ -36,11 +36,11 @@ _rows = [["SF", "Feature", "Where it is shown working", "Kind of evidence"],
          ["10", "Auto-preload", "⟪UTM SOFTWARE: AUTOMATIC PRELOAD (‘PRELOAD⟫", "the 0.2→0.1→0.02 schedule"]]
 table(s, 0.4, 1.95, 6.15, 3.9, _rows, cw=[0.5, 2.0, 2.0, 2.1], hf=9.5, bf=8.7)
 _rows2 = [["SF", "Feature", "Where it is shown working", "Kind of evidence"],
-          ["11", "Auto-metadata link", "card only — ⟪SMART FEATURES 11–19 — SETUP,⟫", "no run-level screenshot yet"],
+          ["11", "Auto-metadata link", "⟪SF11 · AUTO-METADATA LINK⟫", "both halves round-trip, 14/14"],
           ["12", "DIC auto-calibration", "NEXT SLIDE", "the sweep dialog, real numbers"],
           ["13", "Guided wizard", "NEXT SLIDE + 1", "9 of 9 done, on the rig"],
           ["14", "Poisson / true Cauchy", "⟪PLANNED NEXT — MEASURED POISSON⟫ · ⟪MEASURING POISSON'S RATIO & TRUE⟫", "why the optics block it"],
-          ["15", "Test registry", "⟪SPECIMEN REGISTER⟫ · ⟪50 % vs 100 % —⟫", "the register, every run on record"],
+          ["15", "Test registry", "⟪SF15 · TEST REGISTRY⟫", "the CLI listing, 34 runs"],
           ["16", "Dead-DIC guard", "⟪SAFETY GUARDS & LIMITS —⟫", "the halt at 1.0 s stale"],
           ["18", "Live Px₀ overlay", "LAST OF THIS BLOCK", "overlay 1745 px = caption 1745 px"],
           ["19", "Video + image capture", "LAST TWO OF THIS BLOCK", "S26 frames and all 3 videos"],

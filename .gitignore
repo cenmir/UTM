@@ -96,3 +96,6 @@ documentation/deck_png_*/
 # STALE duplicate the moment the lock clears and the real file is rebuilt, so it must never
 # be committed alongside it.
 documentation/decks/*_updated.pptx
+# Throwaway copies made to export slide PNGs — PowerPoint keeps a handle on them, so the
+# rm after an export often loses the race and they turn up staged.
+documentation/decks/_*.pptx
