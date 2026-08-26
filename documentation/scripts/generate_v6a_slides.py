@@ -1,4 +1,5 @@
 import os as _os  # [doc-folder] run from repo root so plot PNGs & Software/ resolve
+import re as _re
 _os.chdir(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', '..'))
 """Phase 8.6.20 V6a (S7, 100% infill, LED on) deck + V6a-vs-V5 comparison.
 Mirrors the V5 single-specimen deck, then appends 4 comparison slides.
@@ -43,10 +44,85 @@ def tb(slide, x, y, w, h, text, *, fs=14, bold=False, italic=False, colour=BLACK
     return box
 
 
+_SLIDE_TITLES = []          # (slide, title text), in the order slides are created
+
+
 def title(slide, text):
     bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(0.45), Inches(0.5), Inches(0.08))
     bar.fill.solid(); bar.fill.fore_color.rgb = JU_BLUE_BAR; bar.line.fill.background()
     tb(slide, 0.5, 0.55, 12.5, 0.9, text, fs=30, font="Calibri Light")
+    _SLIDE_TITLES.append((slide, text))
+
+
+# ---- cross-references, resolved by TITLE at build time -------------------------------------
+#
+# pageno() already derives each slide's number from its real index, so inserting a slide
+# renumbers the deck correctly. The prose did NOT follow: "see p198" was a literal, and four
+# separate insertions each silently pointed a handful of sentences at the wrong slide. The
+# breakage is invisible — the reference still looks like a page number, it just names a
+# different slide.
+#
+# ref("SOME TITLE") writes a placeholder instead. After the whole deck is built, resolve_refs()
+# walks every text frame and table cell and swaps each placeholder for the real page number.
+# Forward references work because resolution happens last.
+#
+# A key that matches no slide, or more than one, is a BUILD ERROR rather than a wrong number
+# printed confidently. Matching is case-insensitive on a substring of the title, so keys can be
+# short, but they must still be unique.
+_REF_OPEN, _REF_CLOSE = "⟪", "⟫"
+
+
+def ref(key):
+    """A placeholder for the page number of the slide whose title contains `key`."""
+    return f"{_REF_OPEN}{key}{_REF_CLOSE}"
+
+
+def resolve_refs(presentation):
+    """Replace every ref() placeholder with a real page number. Returns (resolved, [problems])."""
+    pages = {}
+    for slide, text in _SLIDE_TITLES:
+        try:
+            pages.setdefault(text.strip().lower(), FIRST_PAGE + presentation.slides.index(slide))
+        except ValueError:                      # a slide built but never added — cannot happen today
+            continue
+    pat = _re.compile(_REF_OPEN + r"(.*?)" + _REF_CLOSE, _re.S)
+
+    def _page_for(key):
+        k = key.strip().lower()
+        hits = [pg for t, pg in pages.items() if k in t]
+        if len(hits) == 1:
+            return hits[0], None
+        if not hits:
+            return None, f'ref("{key}") matches NO slide title'
+        return None, f'ref("{key}") matches {len(hits)} slide titles (pages {sorted(hits)}) — make it unique'
+
+    problems, resolved = [], 0
+    def _sub_text_frame(tf):
+        nonlocal resolved
+        for para in tf.paragraphs:
+            for run in para.runs:
+                if _REF_OPEN not in run.text:
+                    continue
+                out = run.text
+                for m in pat.finditer(run.text):
+                    pg, err = _page_for(m.group(1))
+                    if err:
+                        problems.append(err)
+                        out = out.replace(m.group(0), "p???")
+                    else:
+                        out = out.replace(m.group(0), f"p{pg}")
+                        resolved += 1
+                run.text = out
+
+    for slide in presentation.slides:
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                _sub_text_frame(shape.text_frame)
+            elif shape.has_table:
+                for row in shape.table.rows:
+                    for cell in row.cells:
+                        _sub_text_frame(cell.text_frame)
+    return resolved, problems
 
 
 def header(slide, x, y, w, text):
@@ -140,7 +216,7 @@ def pageno(slide):
 
     It used to be hard-coded per call, 73 literals plus two `219 + _i` loops. That is fine right up
     until a slide is inserted in the middle, at which point every number after it is silently wrong
-    and so is every "see p198" written into the prose. Deriving it from the slide's index in `prs`
+    and so is every "see ⟪SF9 · CREEP  [T1] — OUR RESULTS⟫" written into the prose. Deriving it from the slide's index in `prs`
     makes insertion free: the deck renumbers itself and cannot disagree with itself.
 
     The stale literals were stripped rather than left in place: an argument that is silently
@@ -1063,7 +1139,7 @@ Rc = [["Spec", "Infill", "Colour", "Test / result"],
 table(s, 0.4, 1.4, 6.2, 5.1, Lc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
 table(s, 6.75, 1.4, 6.2, 5.1, Rc, cw=[1.0, 1.1, 1.1, 3.0], hf=10, bf=9)
 footer(s, "All spray markers (black dots on PLA). V1_Spray batch = 50% · V2_Spray = 100%. "
-          "VC1-3 = the frame-capture fracture runs (p221-224). Colour column to be filled by operator.")
+          "VC1-3 = the frame-capture fracture runs (⟪WHY E AND σ_y DISAGREE⟫-224). Colour column to be filled by operator.")
 pageno(s)
 
 # ---- Slide 180: buck-converter enclosure CAD ----
@@ -1096,7 +1172,7 @@ header(s, 0.4, 3.05, 12.55, "What we suspected at the time — torque capacity, 
 tb(s, 0.4, 3.5, 6.2, 1.5, "•  Driver current (Vref) set low\n\n•  PSU voltage sag under load", fs=12, colour=BLACK)
 tb(s, 6.75, 3.5, 6.2, 1.5, "•  Driver THERMAL derating (the chip, not motor)\n\n•  Mechanical binding (screw / rails)  ← this one", fs=12, colour=BLACK)
 banner(s, 0.4, 5.25, 12.55, 1.0,
-       "SUPERSEDED — see p183. It was the fourth cause: the load holders had worked loose and the crossheads sat out of alignment. Fixed; the rig now pulls 3.5 kN.",
+       "SUPERSEDED — see ⟪RESOLVED — THE “TORQUE CEILING”⟫. It was the fourth cause: the load holders had worked loose and the crossheads sat out of alignment. Fixed; the rig now pulls 3.5 kN.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12.5)
 footer(s, "At the SAME 0.10 mm/s and on the SAME DAY: S15 stalled 2.6 kN but S16 fractured 3.8 kN. Read as day-to-day drift at the time — it was specimen-to-specimen, i.e. the remount.")
 pageno(s)
@@ -1155,7 +1231,7 @@ tb(s, 0.4, 3.30, 6.25, 2.05,
       _sd["ratio_pct"]),
    fs=11, colour=BLACK)
 
-header(s, 6.95, 2.92, 6.0, "What that retires — the four ranked causes (p201)")
+header(s, 6.95, 2.92, 6.0, "What that retires — the four ranked causes (⟪SF9 · THE ONE THAT⟫)")
 table(s, 6.95, 3.30, 6.0, 1.95,
       [["Ranked cause", "Verdict"],
        ["1  Driver current (Vref) too low", "exonerated"],
@@ -1173,7 +1249,7 @@ tb(s, 0.4, 5.74, 12.55, 0.56,
    fs=11, colour=BLACK)
 
 banner(s, 0.4, 6.32, 12.55, 0.55,
-       "SUPERSEDES p181 and p182 — the 50 %%-specimen workaround is no longer needed. 100 %% "
+       "SUPERSEDES ⟪MOTOR TORQUE CEILING — THE⟫ and ⟪MOTOR JITTER = STALL WARNING⟫ — the 50 %%-specimen workaround is no longer needed. 100 %% "
        "full-area specimens fracture normally at ~%.1f kN." % (_tq["mean"] / 1000.0),
        fill=GREEN_PASS, fg=DARK_GREEN, fs=12.5)
 footer(s, "Not a hardware purchase and not a software change — a fastener. The stall guard and the "
@@ -1459,7 +1535,7 @@ banner(s, 0.45, 5.94, 12.45, 0.58,
        fill=YELLOW_WARN, fg=BLACK, fs=11)
 banner(s, 0.45, 6.58, 12.45, 0.46,
        "✅ RESOLVED — T6.4 / T6.5 ran 2026-08-11 on S22 at 400→1100 N and the loops closed: "
-       "%.1f px measured against the 13.1 px predicted here.  See p215-214."
+       "%.1f px measured against the 13.1 px predicted here.  See ⟪SF9 · CREEP  [T9] — HOW IT WAS DESIGNED: TWO RUNS⟫-214."
        % SF9["loops_t65"][0]["px_span"],
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
 footer(s, "The 400 N floor is the key: never unload through the slack band, so backlash is crossed "
@@ -1583,7 +1659,7 @@ sf9_result(196, "CREEP", "T1", "documentation/figures/sf9_creep.png",
            vfill=YELLOW_WARN,
            proposal="✅ RESOLVED — T9 ran 2026-08-11 on S23 at 600 N tared for %.0f s and creep IS "
                     "resolved: %+.0f µε drift-corrected = %.0f× the noise floor, decelerating "
-                    "(Findley n = %.2f).  See p217-217."
+                    "(Findley n = %.2f).  See ⟪T1 → T9 — WHY⟫-217."
                     % (SF9["t9"]["dur"], SF9["t9"]["net"],
                        SF9["t9"]["net"] / SF9["t9_base"]["sd"], SF9["t9"]["findley_n"]),
            foot="T1 could not have detected creep at all: fitted rate +0.002 ± 0.060 µε/s, so the 95 % "
@@ -1650,7 +1726,7 @@ tb(s, 0.5, 6.24, 6.3, 1.1,
    "1  Stepper DRIVER CURRENT (Vref) set too low — most likely, and cheapest to check\n"
    "2  Driver THERMAL DERATING — T7 was the 7th test of a 2 h 15 min session\n"
    "3  PSU voltage SAG under peak load\n"
-   "4  ✔ MECHANICAL BINDING — crossheads misaligned, load holders loose.  See p183.",
+   "4  ✔ MECHANICAL BINDING — crossheads misaligned, load holders loose.  See ⟪RESOLVED — THE “TORQUE CEILING”⟫.",
    fs=11)
 header(s, 7.0, 5.92, 5.9, "Mitigation")
 tb(s, 7.0, 6.24, 5.9, 1.1,
@@ -1899,7 +1975,7 @@ _k = lambda spec, ours: spec / ours
 
 title(s, "SF9 — DO THE NUMBERS MAKE SENSE?  vs add:north E-PLA TDS")
 tb(s, 0.5, 1.14, 12.4, 0.36,
-   "SAME reference as the V6 slides (p156 / p163): add:north E-PLA TDS rev 2.1, ISO 527 / 178, so "
+   "SAME reference as the V6 slides (⟪PHASE 8.6.20 V6 (n = 5): VALIDATION — add:north⟫ / ⟪SOFTWARE ROADMAP — ADVANCED FEATURES⟫): add:north E-PLA TDS rev 2.1, ISO 527 / 178, so "
    "k = spec ÷ measured is directly comparable across the deck. The datasheet has NO creep or "
    "relaxation data — those two rows use journals and are marked ‡.",
    fs=11.5, italic=True, colour=GREY_TEXT)
@@ -2014,7 +2090,7 @@ tb(s, 0.5, 6.34, 12.4, 0.62,
    "Specimen economy: S20 (100 %) survived all eight NON-destructive runs (T1–T6.3) AND the failed "
    "T7 — a destructive protocol it was never broken by. The two destructive runs that DID succeed "
    "each consumed a fresh specimen (S18, S21). "
-   "T7 came after 2 h 15 min of continuous testing that day, which is the thermal-derating argument on p201.",
+   "T7 came after 2 h 15 min of continuous testing that day, which is the thermal-derating argument on ⟪SF9 · THE ONE THAT⟫.",
    fs=11, colour=GREY_TEXT)
 footer(s, "Raw CSVs: Software/UTM_PyQt6/8.7/<specimen folder>/. Metrics recomputed by "
           "documentation/scripts/sf9_data.py — this table is generated, not typed.")
@@ -2049,10 +2125,10 @@ header(s, 6.85, 5.58, 6.0, "So the choice is forced")
 tb(s, 6.85, 5.92, 6.05, 1.25,
    "•  A stress–strain curve must be INTERNALLY CONSISTENT — engineering with engineering, or true "
    "with true. Mixing them is simply wrong.\n"
-   "•  True stress needs the current cross-section ⇒ Poisson, which the narrow gauge blocks (p187).\n"
+   "•  True stress needs the current cross-section ⇒ Poisson, which the narrow gauge blocks (⟪MEASURING POISSON'S RATIO & TRUE⟫).\n"
    "•  So engineering + engineering is the only defensible pairing available today.\n"
    "•  ISO 527 and the add:north TDS also report engineering — which is what keeps our k-factors "
-   "comparable (p208).", fs=10)
+   "comparable (⟪SF9 — STRESS vs STRAIN,⟫).", fs=10)
 footer(s, "In code: cauchy = (L−L₀)/L₀ and true_strain = ln(L/L₀), both written to every CSV. Verified "
           "on real data: DIC_True always equals ln(1 + DIC_Cauchy), so the maths was right — only the "
           "NAME was misleading. The column name is kept for backward compatibility with every past test.")
@@ -2062,7 +2138,7 @@ pageno(s)
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "REFERENCE — WOULD TRUE STRESS CHANGE OUR ANSWERS?")
 tb(s, 0.5, 1.16, 12.4, 0.34,
-   "Worth asking before building the edge-tracking rig on p187. Short answer: it is a ~3 % refinement "
+   "Worth asking before building the edge-tracking rig on ⟪MEASURING POISSON'S RATIO & TRUE⟫. Short answer: it is a ~3 % refinement "
    "on the numbers — but it buys two things nothing else can.",
    fs=11.5, italic=True, colour=GREY_TEXT)
 img_fit(s, "documentation/figures/sf9_true_stress.png", 0.45, 1.52, 12.45, 3.25)
@@ -2082,7 +2158,7 @@ banner(s, 0.45, 6.24, 12.45, 0.50,
        "thinning: S16 falls 47.4 → 42 MPa, and volume-conserved true stress is still only 44.5.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
 banner(s, 0.45, 6.80, 12.45, 0.44,
-       "⚠ DESIGN FIX for p190: it says “average width over 100s of rows”. Necking is LOCAL — averaging "
+       "⚠ DESIGN FIX for ⟪SF9 · CYCLIC  [T5 · T6.3] — OUR RESULTS⟫: it says “average width over 100s of rows”. Necking is LOCAL — averaging "
        "under-corrects exactly where it matters. Track the MINIMUM width along the gauge, not the mean.",
        fill=YELLOW_WARN, fg=BLACK, fs=10.5)
 footer(s, "")
@@ -2121,7 +2197,7 @@ sf9_result(211, "CYCLIC — RE-RUN", "T6.4 · T6.5", "documentation/figures/sf9_
                  "resolvable every cycle — impossible on T6.3"]],
            verdict="T6.5 IS THE SLIDE-READY CYCLIC RESULT: 8 cycles at 400→1100 N, peak held to "
                    "± %.1f N, %d closed loops, and BOTH damage metrics (loop area, unload E) fall "
-                   "monotonically. The negative result on p191 is closed."
+                   "monotonically. The negative result on ⟪SF9 · CYCLIC  [T5 · T6.3] — HYSTERESIS: A NEGATIVE RESULT⟫ is closed."
                    % (_t65["pk_mae"], len(_L65)),
            proposal="STILL MISSING — a DAMAGE CURVE. T6.4 lost DIC mid-run and T6.5 ran on the "
                     "already-cycled specimen, and E RECOVERED over the 40 min between them "
@@ -2137,7 +2213,7 @@ s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "T6.3 → T6.5 — WHY THE RE-RUN WORKED")
 tb(s, 0.5, 1.14, 12.4, 0.36,
    "One parameter, not a new machine. Same mode, same engine, same camera, same code — the ONLY "
-   "change is where the cycle bottoms out and tops out. p191 predicted a 13.1 px loop from that "
+   "change is where the cycle bottoms out and tops out. ⟪SF9 · CYCLIC  [T5 · T6.3] — HYSTERESIS: A NEGATIVE RESULT⟫ predicted a 13.1 px loop from that "
    "change alone; here is the measurement.", fs=11.5, italic=True, colour=GREY_TEXT)
 img_fit(s, "documentation/figures/sf9_cyclic_compare.png", 0.45, 1.52, 12.45, 3.05)
 
@@ -2209,7 +2285,7 @@ banner(s, 0.45, 6.42, 12.45, 0.50,
        % (_b9["s1"], _b9["s2"], _b9["ratio"]),
        fill=LIGHT_BLUE, fg=BLACK, fs=11)
 footer(s, "The baseline also RE-MEASURED the DIC noise floor as ± %.0f µε over a full 900 s window "
-          "(p198's ± 12 µε is a 40 s window). %d of %d rows DIC-valid at %.1f ± %.2f N, crosshead frozen."
+          "(⟪SF9 · CREEP  [T1] — OUR RESULTS⟫'s ± 12 µε is a 40 s window). %d of %d rows DIC-valid at %.1f ± %.2f N, crosshead frozen."
           % (_b9["sd"], _b9["n"], _b9["n_raw"], _b9["Fmean"], _b9["Fsd"]))
 pageno(s)
 
@@ -2237,7 +2313,7 @@ sf9_result(214, "CREEP — RE-RUN", "T9", "documentation/figures/sf9_creep_t9.pn
                  "only %.0f %% of that motion is specimen — rest is rig" % _t9["spec_frac_um"]]],
            verdict="CREEP RESOLVED: %+.0f µε drift-corrected = %.0f× the %.0f µε noise floor, "
                    "decelerating (n = %.2f), while the load sat at %.0f ± %.1f N. The negative result "
-                   "on p198 is closed."
+                   "on ⟪SF9 · CREEP  [T1] — OUR RESULTS⟫ is closed."
                    % (_t9["net"], _t9["net"] / _b9["sd"], _b9["sd"], _t9["findley_n"],
                       _t9["Fmean"], _t9["Fsd"]),
            foot="Also measured: creep compliance J = %.3f → %.3f GPa⁻¹ (+%.1f %%), plus a free fixed-grip "
@@ -2280,7 +2356,7 @@ banner(s, 0.45, 6.00, 12.45, 0.52,
        % (_b9["total"], _b9["dur"], _t9["drift_pct"], 100 * _b9["total"] / 450.0, _b9["sub_err"]),
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11)
 banner(s, 0.45, 6.56, 12.45, 0.42,
-       "⚠ NOISE FLOOR DEPENDS ON THE WINDOW: ± 12 µε on p198 is T1's own 40 s scatter; over a full "
+       "⚠ NOISE FLOOR DEPENDS ON THE WINDOW: ± 12 µε on ⟪SF9 · CREEP  [T1] — OUR RESULTS⟫ is T1's own 40 s scatter; over a full "
        "900 s window it is ± %.0f µε. Any LONG-hold claim must be judged against %.0f, not 12."
        % (_b9["sd"], _b9["sd"]),
        fill=YELLOW_WARN, fg=BLACK, fs=10.5)
@@ -2293,7 +2369,7 @@ pageno(s)
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "SF9 — FOLLOW-UP CAMPAIGN REGISTER  (T6.4 – T9, 2026-08-11)")
 tb(s, 0.5, 1.14, 12.4, 0.34,
-   "Continues the T1–T8 register on p210. One session, two specimens, five runs — aimed squarely at "
+   "Continues the T1–T8 register on ⟪SF9 — TEST CAMPAIGN REGISTER⟫. One session, two specimens, five runs — aimed squarely at "
    "the two negative results (cyclic hysteresis, creep) and at the first fatigue-damage number.",
    fs=11, italic=True, colour=GREY_TEXT)
 
@@ -2338,8 +2414,8 @@ banner(s, 0.45, 4.10, 12.45, 0.62,
 
 header(s, 0.5, 4.90, 6.05, "What is now CLOSED")
 tb(s, 0.5, 5.24, 6.05, 1.55,
-   "•  Cyclic hysteresis is measurable — loop area AND unload modulus both trend (p213-214).\n"
-   "•  Creep is measurable — %+.0f µε at %.0f× the noise floor, decelerating (p216-217).\n"
+   "•  Cyclic hysteresis is measurable — loop area AND unload modulus both trend (⟪SF9 · CYCLIC — RE-RUN⟫-214).\n"
+   "•  Creep is measurable — %+.0f µε at %.0f× the noise floor, decelerating (⟪SF9 · CREEP — RE-RUN⟫-217).\n"
    "•  The DIC noise floor is now MEASURED over a full 900 s window: ± %.0f µε.\n"
    "•  Fatigue damage has a first number: %.1f %% TRUE UTS after %d cycles at 79 %% of fracture,\n"
    "   measured against S18 — the run that used the SAME protocol (T7.3).\n"
@@ -2666,7 +2742,7 @@ banner(s, 0.4, 5.55, 12.55, 0.85,
        "as E, and the 0.05–0.40 % value alongside it as E_fixed so nothing is lost. Every test in "
        "the deck and the registry was re-analysed on the new basis. UTS, ε_f, toughness and the "
        "anchor are untouched and were verified bit-identical on all 20 runs; σ_y moves because "
-       "the 0.2 % offset line has slope E. See p239.",
+       "the 0.2 % offset line has slope E. See ⟪THE E FIT WINDOW —⟫.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
 footer(s, "“Steepest straight run” = the steepest stretch below 2 % strain, at least 0.25 % wide, "
           "whose R² is within 0.0005 of the straightest the record can offer (capped at 0.999). "
@@ -2743,7 +2819,7 @@ table(s, 6.85, 3.42, 6.1, 2.35, _v13, cw=[2.6, 2.2, 0.9], hf=10, bf=9.5,
 banner(s, 0.4, 6.0, 12.55, 0.85,
        "HEADLINE — black markers work, and work slightly BETTER than white on the one thing that "
        "could have gone wrong (noise). The 47 % coverage is real but is NOT a marker-colour "
-       "effect; p232 separates the two.", fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
+       "effect; ⟪S13's 47 % DIC COVERAGE⟫ separates the two.", fill=GREEN_PASS, fg=DARK_GREEN, fs=12)
 footer(s, "S13 · 100 % infill · black PLA, white spray dots · 2026-08-18 · "
           "Software/UTM_PyQt6/Test data/8.6.20 - Tensile test to Failure/Specimen_S13_V2_Spray_Video7/")
 pageno(s)
@@ -2833,7 +2909,7 @@ tb(s, 0.4, 6.42, 12.55, 0.75,
    "specimen-to-specimen scatter with no variable changed at all. Black beats that yardstick on "
    "every mechanical property, so the marker colour cannot be resolved above it.", fs=11)
 footer(s, "Recomputed at build time by documentation/scripts/s13_data.py via utm_analysis.analyze(). "
-          "Noise measured over a COMMON 10 s window — see p231 for why that matters.")
+          "Noise measured over a COMMON 10 s window — see ⟪DIC NOISE — THE BLACK⟫ for why that matters.")
 pageno(s)
 
 # ---- Slide 231: noise ----
@@ -3052,7 +3128,7 @@ banner(s, 0.4, 6.05, 12.55, 0.85,
        f"{SI.group_spread(SI.PAIR_100, 'UTS'):.1f} % and "
        f"{SI.group_spread(SI.PAIR_100, 'E'):.1f} % for the 100 % pair — better on all four "
        f"properties. With n = 2 in each group this is an observation about these four specimens, "
-       f"not a demonstrated property of infill; p238 explains what does follow from it.",
+       f"not a demonstrated property of infill; ⟪WHAT S27 / S28 CLOSE⟫ explains what does follow from it.",
        fill=GREEN_PASS, fg=DARK_GREEN, fs=11.5)
 footer(s, "Circles mark UTS. Right panel: |S27 − S28| and |S25 − S26|, each as a percentage of "
           "its own pair mean.")
@@ -3149,7 +3225,7 @@ tb(s, 6.85, 2.05, 6.1, 2.5,
    f"disagrees by {SI.group_spread(SI.PAIR_100, 'E'):.1f} %. Looking at the local slope explains "
    f"why: across 0.05–0.60 % strain it moves about 5 % on S28 but 42 % on S26. A fixed fit window "
    f"is only as repeatable as the curve is straight inside it.\n\n"
-   f"That is the same mechanism p225 argues, now visible in a second material — which is the "
+   f"That is the same mechanism ⟪E — WHERE THE FIT⟫ argues, now visible in a second material — which is the "
    f"evidence the decision was waiting for. It does NOT settle whether the low-strain compliance "
    f"is seating or real PLA non-linearity: with n = 2 per group these four specimens cannot carry "
    f"that.", fs=11)
@@ -3165,8 +3241,8 @@ banner(s, 0.4, 5.90, 12.55, 0.75,
        "here came back at 98–100 % coverage. The grab loop is now instrumented, so the next low "
        "run will name its own bottleneck in the CSV header.",
        fill=LIGHT_BLUE, fg=BLACK, fs=11.5)
-footer(s, "Deck: 50 % pair p236-237 · 100 % pair p221-224 · E fit window p227-226 · black "
-          "specimen p229-233.")
+footer(s, "Deck: 50 % pair ⟪THE INFILL KNOCK-DOWN FACTOR —⟫-237 · 100 % pair ⟪WHY E AND σ_y DISAGREE⟫-224 · E fit window ⟪S13 — THE FIRST BLACK⟫-226 · black "
+          "specimen ⟪S13 (BLACK) vs S26 (WHITE)⟫-233.")
 pageno(s)
 
 # =====================================================================================
@@ -3194,7 +3270,7 @@ def _dev_chip(sl, x, y, w, h, key, text):
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "THE E FIT WINDOW — DECISION TAKEN, AND WHAT IT MOVED")
 tb(s, 0.4, 1.15, 12.55, 0.62,
-   "p225–224 laid out the evidence; the gate was S27/S28 running on the old code, which they have. "
+   "⟪E — WHERE THE FIT⟫–224 laid out the evidence; the gate was S27/S28 running on the old code, which they have. "
    "utm_analysis.analyze() now reports the STEEPEST STRAIGHT RUN as E, with the old fixed-window "
    "value kept alongside as E_fixed so no historical number is lost. Every test in the registry "
    "was re-analysed.", fs=12, italic=True, colour=GREY_TEXT)
@@ -3595,7 +3671,7 @@ sf_overview([
      "Creeps in tension on a 0.2 → 0.1 → 0.02 mm/s schedule and stops at 1.03× target, offsetting "
      "the ~2 % PLA relaxation that follows.", "done"),
 ])
-footer(s, "Green = built and rig-validated. The dense index of all 19 is on p167; SF11–SF19 "
+footer(s, "Green = built and rig-validated. The dense index of all 19 is on ⟪SMART-UTM FEATURE SET — SF1⟫; SF11–SF19 "
           "continue on the next slide.")
 pageno(s)
 
@@ -3926,7 +4002,7 @@ s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "PETG — THE ELASTIC SLOPE, SPECIMEN TO SPECIMEN")
 tb(s, 0.4, 1.13, 12.55, 0.44,
    "The straight run at the very start of the curve. Compared over the SAME 0.05–0.35 % strain "
-   "interval the MOT extensometer analysis used on p245–247, so the two sit on one basis instead "
+   "interval the MOT extensometer analysis used on ⟪MOT VIDEO EXTENSOMETER — SETUP,⟫–247, so the two sit on one basis instead "
    "of each inventing its own region.", fs=12, italic=True, colour=GREY_TEXT)
 
 img_fit(s, _os.path.join("documentation", "figures", "petg_elastic.png"), 0.40, 1.64, 12.55, 2.90)
@@ -3973,11 +4049,39 @@ exec(open("documentation/scripts/gauge_slides_block.py", encoding="utf-8").read(
 # ---- S37: TPU at a 45 mm marker gauge, and the trio comparison redrawn with it
 exec(open("documentation/scripts/s37_slides_block.py", encoding="utf-8").read())
 
+# Every slide exists now, so forward references can be resolved. This runs BEFORE the save, and
+# a bad key aborts rather than shipping a deck that points at the wrong slide.
+_resolved, _problems = resolve_refs(prs)
+if _problems:
+    print(f"\nBUILD FAILED — {len(_problems)} unresolved cross-reference(s):")
+    for _p in _problems:
+        print("   ", _p)
+    raise SystemExit(1)
+
+# Nothing should be left claiming to be a page number that this deck cannot account for.
+_pages_ok = range(FIRST_PAGE, FIRST_PAGE + len(prs.slides.__iter__.__self__._sldIdLst))
+_stale = []
+for _i, _s in enumerate(prs.slides):
+    _txt = []
+    for _sh in _s.shapes:
+        if _sh.has_text_frame:
+            _txt.append(_sh.text_frame.text)
+        elif _sh.has_table:
+            _txt += [_c.text for _r in _sh.table.rows for _c in _r.cells]
+    for _m in _re.finditer(r"\bp(\d{3})\b", "\n".join(_txt)):
+        if int(_m.group(1)) not in _pages_ok:
+            _stale.append(f"p{FIRST_PAGE + _i} refers to p{_m.group(1)}, which is outside this deck")
+if _stale:
+    print(f"\nBUILD FAILED — {len(_stale)} out-of-range page reference(s):")
+    for _p in _stale:
+        print("   ", _p)
+    raise SystemExit(1)
+
 try:
     prs.save("documentation/decks/V6a_8_6_20_slides.pptx")
     _n = len(prs.slides.__iter__.__self__._sldIdLst)
     print(f"Saved: V6a_8_6_20_slides.pptx ({_n} slides, "
-          f"pages {FIRST_PAGE}-{FIRST_PAGE + _n - 1})")
+          f"pages {FIRST_PAGE}-{FIRST_PAGE + _n - 1}, {_resolved} refs resolved by title)")
 except PermissionError:
     prs.save("documentation/decks/V6a_8_6_20_slides_updated.pptx")
     print("Original locked (open in PowerPoint). Saved: decks/V6a_8_6_20_slides_updated.pptx")

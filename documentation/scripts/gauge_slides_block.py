@@ -44,7 +44,7 @@ banner(s, 0.4, 6.4, 12.55, 0.5,
        "Px₀ / 45 mm = 20.89 px/mm and Px₀ / 80 mm = 20.94 px/mm — THE SAME OPTICS, so the data "
        "itself confirms the two spacings.",
        fill=LIGHT_BLUE, fg=BLACK, fs=10.5)
-footer(s, "S33 and S34, 2026-08-24, on the post-realignment rig (see p183). Reference pair S25 / "
+footer(s, "S33 and S34, 2026-08-24, on the post-realignment rig (see ⟪RESOLVED — THE “TORQUE CEILING”⟫). Reference pair S25 / "
           "S26 from the same material and protocol at 80 mm.")
 pageno(s)
 
@@ -145,7 +145,7 @@ tb(s, 0.5, 3.58, 6.1, 3.0,
    "between a 939 px and a 1675 px baseline. The agreement puts δ below %.2f px — an upper "
    "bound, since it credits the whole discrepancy to that one cause.\n\n"
    "•  Either spacing may be used, so a shorter gauge is available when the frame is the "
-   "constraint — which is exactly the TPU problem on p266."
+   "constraint — which is exactly the TPU problem on ⟪WHY THE TPU RUNS STOP⟫."
    % _GS["bias_px"],
    fs=9.4, colour=BLACK)
 

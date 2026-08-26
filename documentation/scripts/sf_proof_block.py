@@ -24,27 +24,27 @@ tb(s, 0.5, 1.32, 12.4, 0.5,
 # of this table was off by one in places and invented pages for SF11/15/18, which have no proof
 # slide at all. A pointer to the wrong slide is worse than an honest "not yet".
 _rows = [["SF", "Feature", "Where it is shown working", "Kind of evidence"],
-         ["1", "DIC health HUD", "p168", "screenshot on the rig"],
-         ["2", "Prepare specimen", "p170", "before / after readouts"],
-         ["3", "Settings / recipes", "p207", "one click restores 6 fields"],
-         ["4", "Generate report", "p171", "the report itself, from S16"],
-         ["5", "Auto-stop at fracture", "p172", "the halt on the load trace"],
-         ["6", "Strain-rate fracture test", "p173 · p174", "0.00051/s held vs 0.0005 target"],
-         ["7", "Stall guard", "p175", "silent through a ductile draw"],
-         ["8", "Release preload", "p176", "both depths on the trace"],
-         ["9", "Six closed-loop protocols", "p188–p204 · p213–p218", "one How + one Results slide each"],
-         ["10", "Auto-preload", "p162", "the 0.2→0.1→0.02 schedule"]]
+         ["1", "DIC health HUD", "⟪DIC HEALTH HUD — LIVE⟫", "screenshot on the rig"],
+         ["2", "Prepare specimen", "⟪SF 2 — PREPARE SPECIMEN⟫", "before / after readouts"],
+         ["3", "Settings / recipes", "⟪SF3 · SETTINGS (RECIPES) —⟫", "one click restores 6 fields"],
+         ["4", "Generate report", "⟪IN THE APP — ONE-CLICK⟫", "the report itself, from S16"],
+         ["5", "Auto-stop at fracture", "⟪PROOF — AUTO-STOP AT FRACTURE⟫", "the halt on the load trace"],
+         ["6", "Strain-rate fracture test", "⟪STRAIN-RATE FRACTURE TEST — RESULTS⟫ · ⟪STRAIN-RATE FRACTURE — REPORT PLOTS⟫", "0.00051/s held vs 0.0005 target"],
+         ["7", "Stall guard", "⟪SAFETY GUARDS & LIMITS —⟫", "silent through a ductile draw"],
+         ["8", "Release preload", "⟪SF 8 — RELEASE PRELOAD⟫", "both depths on the trace"],
+         ["9", "Six closed-loop protocols", "⟪SF9 — ADVANCED TEST MODES:⟫–⟪SF9 · PROGRESSIVE CYCLIC → FRACTURE  [T8] — OUR RESULTS⟫ · ⟪SF9 · CYCLIC — RE-RUN⟫–⟪SF9 — FOLLOW-UP CAMPAIGN REGISTER⟫", "one How + one Results slide each"],
+         ["10", "Auto-preload", "⟪UTM SOFTWARE: AUTOMATIC PRELOAD (‘PRELOAD⟫", "the 0.2→0.1→0.02 schedule"]]
 table(s, 0.4, 1.95, 6.15, 3.9, _rows, cw=[0.5, 2.0, 2.0, 2.1], hf=9.5, bf=8.7)
 _rows2 = [["SF", "Feature", "Where it is shown working", "Kind of evidence"],
-          ["11", "Auto-metadata link", "card only — p250", "no run-level screenshot yet"],
+          ["11", "Auto-metadata link", "card only — ⟪SMART FEATURES 11–19 — SETUP,⟫", "no run-level screenshot yet"],
           ["12", "DIC auto-calibration", "NEXT SLIDE", "the sweep dialog, real numbers"],
           ["13", "Guided wizard", "NEXT SLIDE + 1", "9 of 9 done, on the rig"],
-          ["14", "Poisson / true Cauchy", "p166 · p187", "why the optics block it"],
-          ["15", "Test registry", "p179 · p237", "the register, every run on record"],
-          ["16", "Dead-DIC guard", "p175", "the halt at 1.0 s stale"],
+          ["14", "Poisson / true Cauchy", "⟪PLANNED NEXT — MEASURED POISSON⟫ · ⟪MEASURING POISSON'S RATIO & TRUE⟫", "why the optics block it"],
+          ["15", "Test registry", "⟪SPECIMEN REGISTER⟫ · ⟪50 % vs 100 % —⟫", "the register, every run on record"],
+          ["16", "Dead-DIC guard", "⟪SAFETY GUARDS & LIMITS —⟫", "the halt at 1.0 s stale"],
           ["18", "Live Px₀ overlay", "LAST OF THIS BLOCK", "overlay 1745 px = caption 1745 px"],
           ["19", "Video + image capture", "LAST TWO OF THIS BLOCK", "S26 frames and all 3 videos"],
-          ["—", "Capture formats & disk", "p257 · p258", "TIFF/PNG, FFV1/Y800, cost"]]
+          ["—", "Capture formats & disk", "⟪WHAT THE CAPTURE WRITES — STILL⟫ · ⟪WHAT THE CAPTURE WRITES — VIDEO⟫", "TIFF/PNG, FFV1/Y800, cost"]]
 table(s, 6.8, 1.95, 6.15, 3.9, _rows2, cw=[0.5, 2.0, 2.0, 2.1], hf=9.5, bf=8.7)
 banner(s, 0.4, 6.1, 12.55, 0.5,
        "THE FOUR FEATURES WITH NO SCREENSHOT UNTIL NOW — AUTO-CALIBRATION, THE WIZARD, CAPTURE "
