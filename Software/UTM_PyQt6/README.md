@@ -29,12 +29,12 @@ different job with a different risk.
 | folder | what |
 |---|---|
 | `tools/` | diagnostic and build scripts — ROI picker, blob checker, DIC replay, exe build |
-| `tests/` | camera and phase-8.6 test scripts |
+| `tests script/` | camera and phase-8.6 test scripts |
 | `docs/` | ROADMAP, TESTING_TODO, TEST_FAILURES, RECALIBRATE_ROI, COMMANDS |
 | `ui/` | the Qt Designer `.ui` file, and `ui/help/` — the mode-help images |
 | `recipes/` | saved settings profiles, seeded on first launch (Default, TPU) |
 | `output/` | everything the app and its tools WRITE: `captures/`, `diagnostics/`, `setup_output/`, `full_frame_output/`, `test_images/`. Gitignored in one line |
-| `8.6.20 - …/` · `8.6.3/` · `CSV files/` · `SF9 - …/` | test data |
+| `Test data/` | every test CSV and its per-specimen folder — see below |
 
 `CAPTURE_ROOT`, the `.ui` path, `ui/help` and `RECIPES_DIR` are all built from `__file__`, so they
 follow the module — but they do NOT follow a folder that moves underneath them. A wrong one does
@@ -42,7 +42,7 @@ not raise; it points at a directory that is not there, and the symptom is a capt
 appears or a help image that is blank. If you move any of these, check
 `main.py` (`UI_FILE`, `CAPTURE_ROOT`, the `ui/help` lookup) and `utm_recipes.RECIPES_DIR`.
 
-## Running anything in `tools/` or `tests/`
+## Running anything in `tools/` or `tests script/`
 
 From **this** directory, not from inside the subfolder:
 
@@ -54,9 +54,32 @@ python tools/dic_replay.py
 Their data and output paths are relative to this directory, and the ones that import app modules
 carry a two-line header putting the parent on `sys.path`.
 
-## Test data stays where it is
+## Test data
 
-The data folders are **not** filed under a common parent, deliberately. `registry.json` records
-each test by path, and the deck builders in `documentation/` read those same paths; moving the
-folders would invalidate a committed record of every test ever run, for a tidiness gain in
-directories that are gitignored anyway.
+Everything lives under **`Test data/`**, in two folders:
+
+| folder | what | registry rows |
+|---|---|---|
+| `Test data/8.6.20 - Tensile test to Failure/` | the tensile-to-fracture campaign — one folder per specimen (`Specimen_S<n>_…`), each holding the CSV, its generated report/plots, and the frame-capture folder if the run recorded one | 27 |
+| `Test data/Smart Features - Advanced Test Modes/` | the closed-loop protocol runs (cyclic, staircase, relaxation, creep) plus the older `8.6.3/` set | 7 |
+
+They were gathered under one parent in the 2026-08 reorganisation; before that they sat loose in
+this directory. **`registry.json` records every test by path**, and the deck builders in
+`documentation/` read those same paths, so a move here invalidates both. Both were repointed at
+the time, and the check is one line:
+
+Run it **from the repository root**, not from this directory — the paths in `registry.json` are
+stored relative to the root, so from here every one of them looks missing:
+
+```
+python -c "import json,os; r=json.load(open('Software/UTM_PyQt6/registry.json')); print(sum(1 for x in r if not os.path.isfile(x['csv'])),'unresolved of',len(r))"
+```
+
+That must print `0 unresolved`. If it does not, repoint by searching for each CSV's **basename**
+rather than assuming where the folder went — specimen folders get renamed too (S37's gained a
+`_Video15` suffix after its run, which broke its row and a hard-coded path in the deck scripts).
+
+**The CSVs themselves are gitignored** (`*.csv`), as are the capture folders (`**/frames*/`,
+`*.avi`, `*.mkv`, `*.tif`) — one specimen's stills run to 1.7 GB, and the tree as a whole is 54 GB.
+What IS committed per specimen is the small stuff: `run.json`, the generated report PDF/PNGs, and
+photographs. So the folder structure is in git while the bulk data stays local.

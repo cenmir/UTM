@@ -91,3 +91,8 @@ documentation/deck_png_tpu/
 Software/UTM_PyQt6/output/
 # Slide renders used only to proof-read a deck
 documentation/deck_png_*/
+
+# Fallback deck the generators write when the real .pptx is open in PowerPoint. It is a
+# STALE duplicate the moment the lock clears and the real file is rebuilt, so it must never
+# be committed alongside it.
+documentation/decks/*_updated.pptx

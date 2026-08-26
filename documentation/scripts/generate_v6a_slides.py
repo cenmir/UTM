@@ -822,7 +822,7 @@ _sf_cards = [
     (14, "Poisson / true Cauchy", "optics-blocked, not code", "block"),
     (15, "Test registry", "every run + force anchor", "done"),
     (16, "Dead-DIC guard + backstops", "0.2 s freeze / 1.0 s halt", "done"),
-    (18, "Live Px₀ overlay", "frozen vs live pair, on the feed", "built"),
+    (18, "Live Px₀ overlay", "frozen vs live pair, on the feed", "done"),
     (19, "Video + image capture", "PNG + 3 AVI styles, 0 dropped", "done"),
 ]
 _fill = {"done": (GREEN_PASS, DARK_GREEN), "built": (_SF_BUILT, DARK_GREEN),
@@ -3603,8 +3603,9 @@ pageno(s)
 s = prs.slides.add_slide(BLANK); ju(s)
 title(s, "SMART FEATURES 11–19 — SETUP, EVIDENCE AND SAFETY")
 tb(s, 0.4, 1.15, 12.55, 0.38,
-   "The features that make a run trustworthy rather than merely possible. Blue = built but not yet "
-   "seen on the rig; amber = blocked by optics, not by code.",
+   # No blue cards remain on this slide as of 2026-08-26, so the legend no longer explains one.
+   "The features that make a run trustworthy rather than merely possible. Green = built AND "
+   "rig-validated; amber = blocked by optics, not by code.",
    fs=11.5, italic=True, colour=GREY_TEXT)
 sf_overview([
     (11, "Auto-metadata link",
@@ -3629,7 +3630,8 @@ sf_overview([
      "always-on 10 kN / 30 mm / 900 s backstop.", "done"),
     (18, "Live Px₀ overlay",
      "Draws the frozen reference pair and the live pair straight on the camera feed, with a "
-     "caption whose Δ agrees with the strain readout.", "built"),
+     "caption whose Δ agrees with the strain readout. Screenshot on the rig: 1745 px frozen, "
+     "1745 px live, Δ 0 — overlay and caption agree.", "done"),
     (19, "Video + image capture",
      "PNG stills plus three AVI views — raw, contrast-boosted and adaptive speckle — recorded "
      "together. S25/S26: 3 127 stills and 3 × 3 127 frames, 0 dropped, 19.9 fps.", "done"),
@@ -3637,8 +3639,7 @@ sf_overview([
 # Row 5 is free on this slide (8 cards, not 10), so it carries the legend and the one sentence
 # that says what the set adds up to — better than leaving a band of white under the cards.
 for _i, (_lab, _st, _txt) in enumerate([
-        ("17", "done", "built AND rig-validated"),
-        ("1", "built", "built, waiting on a screenshot"),
+        ("18", "done", "built AND rig-validated"),
         ("1", "block", "blocked by hardware")]):
     _x = 0.40 + _i * 2.35
     _f, _fg = _SF_STATUS[_st]
@@ -3654,10 +3655,9 @@ for _i, (_lab, _st, _txt) in enumerate([
     tb(s, _x + 0.56, 6.06, 1.75, 0.26, _txt, fs=9.0, colour=GREY_TEXT)
 
 banner(s, 0.4, 6.46, 12.55, 0.50,
-       "SF12 turned green on 2026-08-22 — its sweep is shown running on the rig two slides on. "
-       "SF18 is the last blue card: the overlay HAS now been seen live under load during the TPU "
-       "runs, but no screenshot was kept, so it stays blue until one is. "
-       "SF14 is the only one hardware can block.", fill=LIGHT_BLUE, fg=BLACK, fs=10.5)
+       "EVERY BUILT FEATURE IS NOW RIG-VALIDATED. SF12 turned green on 2026-08-22 and SF18 on "
+       "2026-08-26, the last card that was waiting on a screenshot. SF14 is the only one left, "
+       "and hardware blocks it — not code.", fill=GREEN_PASS, fg=DARK_GREEN, fs=10.5)
 footer(s, "SF17 is absent by design: it was carded and retired the same day, because a card has to "
           "be something the OPERATOR invokes or that acts on the machine during a run.")
 pageno(s)

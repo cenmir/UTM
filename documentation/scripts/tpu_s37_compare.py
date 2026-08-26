@@ -41,14 +41,27 @@ def _style(ax):
         ax.spines[s].set_visible(False)
 
 
+def _s37_csv():
+    """S37's CSV, found by folder PREFIX rather than by exact name.
+
+    The folder has already been renamed once (a "_Video15" suffix appended after the run), which
+    silently broke both this path and the registry row. Matching on "Specimen_S37*" survives that
+    class of rename; anything that cannot be found is raised rather than guessed at.
+    """
+    hits = sorted(glob.glob(os.path.join(
+        ROOT, "Software", "UTM_PyQt6", "Test data", "8.6.20 - Tensile test to Failure",
+        "Specimen_S37*", "*.csv")))
+    if not hits:
+        raise FileNotFoundError("no S37 CSV under Test data/8.6.20 - Tensile test to Failure")
+    return hits[0]
+
+
 def load():
     reg = {r["specimen"]: r for r in
            json.load(open(os.path.join(ROOT, "Software", "UTM_PyQt6", "registry.json")))
            if r.get("specimen")}
     paths = {s: os.path.join(ROOT, reg[s]["csv"]) for s in ("S35", "S36")}
-    paths["S37"] = glob.glob(os.path.join(
-        ROOT, "Software", "UTM_PyQt6", "Test data", "8.6.20 - Tensile test to Failure",
-        "Specimen_S37_V5_TPU_Spray", "*.csv"))[0]
+    paths["S37"] = _s37_csv()
     out = {}
     for s, p in paths.items():
         gauge = float(read_meta(p).get("gauge") or 80.0)
@@ -116,9 +129,7 @@ def fig(out="tpu_s37.png"):
 
 def facts():
     """Everything the S37 slides quote, read from the CSV rather than typed in."""
-    p = glob.glob(os.path.join(
-        ROOT, "Software", "UTM_PyQt6", "Test data", "8.6.20 - Tensile test to Failure",
-        "Specimen_S37_V5_TPU_Spray", "*.csv"))[0]
+    p = _s37_csv()
     hdr = {}
     with open(p, encoding="utf-8", errors="replace") as fh:
         for line in fh:

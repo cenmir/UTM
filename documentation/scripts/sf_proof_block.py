@@ -42,13 +42,13 @@ _rows2 = [["SF", "Feature", "Where it is shown working", "Kind of evidence"],
           ["14", "Poisson / true Cauchy", "p166 · p187", "why the optics block it"],
           ["15", "Test registry", "p179 · p237", "the register, every run on record"],
           ["16", "Dead-DIC guard", "p175", "the halt at 1.0 s stale"],
-          ["18", "Live Px₀ overlay", "not yet", "needs one screenshot — card stays blue"],
+          ["18", "Live Px₀ overlay", "LAST OF THIS BLOCK", "overlay 1745 px = caption 1745 px"],
           ["19", "Video + image capture", "LAST TWO OF THIS BLOCK", "S26 frames and all 3 videos"],
-          ["—", "Capture formats & disk", "p256 · p257", "TIFF/PNG, FFV1/Y800, cost"]]
+          ["—", "Capture formats & disk", "p257 · p258", "TIFF/PNG, FFV1/Y800, cost"]]
 table(s, 6.8, 1.95, 6.15, 3.9, _rows2, cw=[0.5, 2.0, 2.0, 2.1], hf=9.5, bf=8.7)
 banner(s, 0.4, 6.1, 12.55, 0.5,
-       "THE THREE FEATURES WITH NO SCREENSHOT UNTIL NOW — AUTO-CALIBRATION, THE WIZARD AND "
-       "CAPTURE — ARE PROVEN ON THE NEXT FOUR SLIDES.",
+       "THE FOUR FEATURES WITH NO SCREENSHOT UNTIL NOW — AUTO-CALIBRATION, THE WIZARD, CAPTURE "
+       "AND THE Px₀ OVERLAY — ARE PROVEN ON THE NEXT FIVE SLIDES.",
        fill=LIGHT_BLUE, fg=BLACK, fs=10.5)
 footer(s, "SF17 is absent by design (see the previous slide). Page numbers are this deck's own, "
           "and were read back off the built deck rather than written by hand.")
@@ -159,3 +159,39 @@ tb(s, 6.6, 5.2, 6.25, 1.5,
 footer(s, "Specimen S26, run %s — %.1f GB of stills beside %.0f + %.0f + %.0f MB of lossless video."
           % (_CF["run"], _CF["still_mb"] / 1000.0, _RAW[1], _BST[1], _SPK[1]))
 pageno(s)
+
+# ---------------------------------------------------------------- F. SF18 live Px₀ overlay
+# The last card that was waiting on a screenshot. The point of the feature is that the number
+# drawn ON the feed and the number in the status bar come from different code paths, so seeing
+# them agree is the check that the strain readout measures the pair the overlay is drawing.
+s = prs.slides.add_slide(BLANK); ju(s)
+title(s, "SF18 · LIVE Px₀ OVERLAY — FROZEN PAIR vs LIVE PAIR")
+img_fit(s, "images/features/CalibratePxo_live marker.png", 0.4, 1.30, 12.55, 3.05)
+
+header(s, 0.45, 4.60, 6.15, "What is drawn, and what it is for")
+tb(s, 0.45, 4.98, 6.15, 1.85,
+   "Two rings and a dashed line: the marker pair as it is RIGHT NOW, over the separation frozen "
+   "at Calibrate Px₀. The caption carries both numbers and their difference.\n\n"
+   "It answers the question an operator actually has before starting a pull — “is the strain "
+   "reference the one I think it is?” Before this, Px₀ was a number in a status bar with nothing "
+   "tying it to what the camera could see.",
+   fs=9.6, colour=BLACK)
+
+header(s, 6.85, 4.60, 6.1, "Why agreement is the evidence")
+tb(s, 6.85, 4.98, 6.1, 1.85,
+   "The overlay reads Px₀ 1745 px → now 1745 px (−0). The status bar, computed separately, reads "
+   "Px₀ 1745.3 px @ 0 N with Eng ε −0.000029.\n\n"
+   "Those come from DIFFERENT code paths — one draws the blob centroids, the other divides the "
+   "live separation by the frozen one. Agreement to a fraction of a pixel is what says the strain "
+   "readout is measuring the pair the overlay is drawing, and not some other pair.\n\n"
+   "Badge alongside: DIC OK, 2/2 markers, track 100 %, jitter 0.0 px, margin 82.",
+   fs=9.6, colour=BLACK)
+
+banner(s, 0.4, 6.50, 12.55, 0.50,
+       "STATUS CHANGED: SF18 WAS THE LAST CARD WAITING ON A SCREENSHOT. WITH THIS, EVERY BUILT "
+       "SMART FEATURE IS RIG-VALIDATED — ONLY SF14 REMAINS, AND HARDWARE BLOCKS IT.",
+       fill=GREEN_PASS, fg=DARK_GREEN, fs=10.5)
+footer(s, "Operator screenshot on the rig, unloaded at 0 N (ε −2.9×10⁻⁵ — the noise floor). "
+          "White specimen mode, exposure 50 ms, threshold 150, 20 fps.")
+pageno(s)
+

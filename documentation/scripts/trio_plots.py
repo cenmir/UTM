@@ -40,8 +40,15 @@ LIT = {
 }
 GROUPS = {"PLA": ["S24", "S25", "S26", "S33", "S13", "S16"],
           "PETG": ["S30", "S31"],
-          "TPU": ["S35", "S36"]}
-REP = {"PLA": "S25", "PETG": "S30", "TPU": "S36"}      # the curve drawn for each material
+          # S37 added 2026-08-26. It is the cleanest TPU run by a wide margin — 95 % DIC coverage
+          # against S35's 33 % and S36's 21 %, and it reaches 18.9 % strain where both 80 mm runs
+          # stopped near 12 % when the travelling marker left the frame. Its 45 mm marker gauge
+          # does not disqualify it: DIC strain is a pixel ratio with no gauge term, and S37's
+          # modulus sits between S35 and S36 (within 0.8 % of S36, against 1.1 % between those two).
+          "TPU": ["S35", "S36", "S37"]}
+# The curve drawn for each material. TPU is S37 for the same reason: it is the only TPU run that
+# can be followed to the end of its test rather than to the point where tracking failed.
+REP = {"PLA": "S25", "PETG": "S30", "TPU": "S37"}
 
 
 def _style(ax):
@@ -183,8 +190,13 @@ def fig_curves(out="trio_curves.png"):
     ax.annotate("TPU is here", xy=(4.5, 1.35), xytext=(6.6, 11), fontsize=9, color=COL["TPU"],
                 arrowprops=dict(arrowstyle="->", color=COL["TPU"], lw=1.2))
     fig.tight_layout(rect=(0, 0.085, 1, 1))
-    fig.text(0.5, 0.035, "Every curve ENDS AT ITS FRACTURE POINT — PLA 4.2 %, PETG 7.8 %.   "
-             "TPU did not fracture: its run stops at the 15 mm travel target.",
+    # Computed, not typed: the TPU representative changed from S36 (stopped at 15 mm of travel)
+    # to S37 (26 mm), and a hard-coded "15 mm" silently became wrong the moment REP changed.
+    _ends = {m: curve(REP[m])[0].max() for m in ("PLA", "PETG", "TPU")}
+    fig.text(0.5, 0.035,
+             "Every curve ENDS AT ITS FRACTURE POINT — PLA %.1f %%, PETG %.1f %%.   TPU did not "
+             "fracture: %s ran to %.1f %% before the test was stopped by hand."
+             % (_ends["PLA"], _ends["PETG"], REP["TPU"], _ends["TPU"]),
              ha="center", fontsize=9.4, color=MUTED)
     p = os.path.join(HERE, "..", "figures", out)
     fig.savefig(p, dpi=160)

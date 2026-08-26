@@ -99,12 +99,22 @@ skip it and every offline path still runs. Without a camera the app starts but c
 
 ## What is NOT in this repository
 
-**The test data.** `Software/UTM_PyQt6/Test data/8.6.20 - Tensile test to Failure/` is gitignored — it is
-several GB of CSVs, camera frames and videos. `registry.json` references those paths, so analysis
-and deck scripts will not find their inputs on a fresh clone. Ask for the data folder separately
-if you need to reproduce a result rather than write new code.
+**The measured data itself.** `Software/UTM_PyQt6/Test data/` holds every test, in two folders
+(`8.6.20 - Tensile test to Failure/` and `Smart Features - Advanced Test Modes/`). The folder
+*structure* is committed, along with each run's `run.json`, generated report and photographs — but
+the bulk is not:
 
-Also excluded: captured frames and videos, generated reports, and `Validation docs/`.
+| excluded | pattern | why |
+|---|---|---|
+| test CSVs | `*.csv` | the measurements themselves |
+| capture stills | `**/frames*/`, `*.tif` | one specimen's stills run to 1.7 GB |
+| capture video | `*.avi`, `*.mkv` | lossless by design |
+| generated reports | `Software/UTM_PyQt6/reports/` | reproducible from the CSV |
+| MOT session pack | `Validation docs/` | multi-GB videos |
+
+The tree is ~54 GB in full. `registry.json` references the CSV paths, so analysis and deck scripts
+will not find their inputs on a fresh clone — ask for the data folder separately if you need to
+reproduce a result rather than write new code.
 
 ## Conventions worth knowing before you change anything
 

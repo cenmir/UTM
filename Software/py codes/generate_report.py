@@ -83,9 +83,20 @@ def parse_csv_header(filepath: str) -> dict:
             elif line.startswith('Max Stress:'):
                 match = re.search(r'([-\d.]+)', line)
                 metadata['max_stress'] = float(match.group(1)) if match else 0.0
-            elif line.startswith('Max Strain:'):
+            # "Max DIC Strain:" is the current label; "Max Strain:" is what CSVs written before
+            # 2026-08-26 carry — and on those it held MOTOR strain (crosshead travel / gauge),
+            # not the DIC measurement. Both are read so old files still parse, but the DIC line
+            # wins when a file has both.
+            elif line.startswith('Max DIC Strain:'):
                 match = re.search(r'([-\d.]+)', line)
                 metadata['max_strain'] = float(match.group(1)) if match else 0.0
+            elif line.startswith('Max Strain:') and 'max_strain' not in metadata:
+                match = re.search(r'([-\d.]+)', line)
+                metadata['max_strain'] = float(match.group(1)) if match else 0.0
+                metadata['max_strain_is_motor'] = True
+            elif line.startswith('Max Motor Strain:'):
+                match = re.search(r'([-\d.]+)', line)
+                metadata['motor_strain'] = float(match.group(1)) if match else 0.0
             elif line.startswith('App Version:'):
                 metadata['app_version'] = line.split(':', 1)[1].strip()
 

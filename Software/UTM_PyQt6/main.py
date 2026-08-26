@@ -4470,9 +4470,19 @@ class UTMApplication(QMainWindow):
 
         # Calculate max stress and strain
         max_stress = self.max_load / self.cross_sectional_area if self.cross_sectional_area > 0 else 0
-        # Find max strain (based on max position)
+        # MAX STRAIN IS THE DIC STRAIN, and it is labelled as such.
+        #
+        # This line used to report max_position / gauge_length — crosshead travel over gauge,
+        # i.e. MOTOR strain — under the bare name "Max Strain". Only ~30-65 % of crosshead travel
+        # ever reaches the gauge (the rest goes into shoulders, grips and load train), so that
+        # number always overstated the specimen's strain; on S37, with a 45 mm marker gauge, it
+        # read 57.9 % against a true DIC strain of 18.9 % and would have been misread by anyone
+        # skimming the header. Motor strain is not what this rig is measuring, so it is no longer
+        # what the header reports.
+        _dic = [v for v in self.load_plot_dic_cauchy if v is not None]
+        max_strain = max(_dic, key=abs) if _dic else 0.0
         max_position = max(self.load_plot_positions, key=abs) if self.load_plot_positions else 0
-        max_strain = max_position / self.gauge_length if self.gauge_length > 0 else 0
+        motor_strain = max_position / self.gauge_length if self.gauge_length > 0 else 0
 
         # Get comment from UI if available
         comment = ""
@@ -4551,7 +4561,9 @@ class UTMApplication(QMainWindow):
             f.write("#\n")
             f.write(f"# Max Load: {self.max_load:.2f} N\n")
             f.write(f"# Max Stress: {max_stress:.4f} MPa\n")
-            f.write(f"# Max Strain: {max_strain:.6f}\n")
+            f.write(f"# Max DIC Strain: {max_strain:.6f}   (marker separation — the measurement)\n")
+            f.write(f"# Max Motor Strain: {motor_strain:.6f}   (crosshead travel / gauge — NOT "
+                    f"specimen strain; only part of the travel reaches the gauge)\n")
             f.write("#\n")
             f.write(f"# App Version: {__version__}\n")
             f.write(f"# Firmware Version: {self.firmware_version}\n")

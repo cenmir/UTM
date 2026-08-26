@@ -94,10 +94,12 @@ tb(s, 6.85, 3.13, 6.1, 2.6,
    "GAUGE SHARE FELL TO %.0f %%, from ~62 %% on the 80 mm runs. Expected, not a fault: the marked "
    "span is a smaller fraction of the specimen, so it receives a smaller share of the crosshead. "
    "45/80 of 62 %% is 35 %% — the measured %.0f %% sits right there.\n\n"
-   "THE HEADER'S “Max Strain: 0.5788” IS NOT DIC STRAIN. It is Motor_Strain — travel divided by "
-   "gauge, %.1f mm / %.0f mm = %.1f %%. The DIC strain maxes at %.2f %%. On the 80 mm specimens "
-   "the two sat closer together and this never stood out; at 45 mm the header reads three times "
-   "the real strain, so a report skimmed from the header alone would be badly misread."
+   "THIS RUN'S HEADER SAYS “Max Strain: 0.5788”, AND THAT IS NOT DIC STRAIN. It was motor "
+   "strain — travel over gauge, %.1f mm / %.0f mm = %.1f %% — while the DIC strain maxes at "
+   "%.2f %%. On the 80 mm specimens the two sat close enough that it never stood out; at 45 mm "
+   "the header read three times the real strain.\n"
+   "FIXED SINCE: the app now writes “Max DIC Strain” and “Max Motor Strain” as two labelled "
+   "lines. S37 is the last run recorded under the old single label."
    % (_F["share"], _F["share"], _F["travel"], _F["gauge"], _F["motor_strain"], _F["eps_max"]),
    fs=9.5, colour=BLACK)
 

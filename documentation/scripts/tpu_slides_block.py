@@ -59,10 +59,11 @@ tb(s, 6.9, 3.45, 6.05, 1.4,
    "click and revert together. None of them is a constant edited before a run.",
    fs=10, colour=BLACK)
 
-kpi(s, 0.5, 5.0, 2.0, "Specimens", "S35, S36", fill=LIGHT_BLUE)
+kpi(s, 0.5, 5.0, 2.0, "Specimens", "S35 – S37", fill=LIGHT_BLUE)
 kpi(s, 2.65, 5.0, 2.0, "E (mean)", "%.1f MPa" % _mean("TPU", "E"), fill=GREEN_PASS)
-kpi(s, 4.8, 5.0, 2.0, "Run-to-run", "%.1f %% apart" % (100 * abs(
-    _S["TPU"]["E"][1] / _S["TPU"]["E"][0] - 1)), fill=GREEN_PASS)
+kpi(s, 4.8, 5.0, 2.0, "Run-to-run", "%.1f %% spread" % (
+    100 * (max(_S["TPU"]["E"]) - min(_S["TPU"]["E"])) / _np.mean(_S["TPU"]["E"])),
+    fill=GREEN_PASS)
 kpi(s, 6.95, 5.0, 2.0, "Peak stress", "%.2f MPa" % _mean("TPU", "sig"), fill=LIGHT_BLUE)
 kpi(s, 9.1, 5.0, 2.0, "Strain reached", "%.1f %%" % _mean("TPU", "eps"), fill=LIGHT_BLUE)
 footer(s, "TPU 95A, 100 % infill, same 80 mm gauge and 80 mm² section as every PLA and PETG "
@@ -95,7 +96,9 @@ banner(s, 0.4, 6.4, 12.55, 0.5,
        "THE SPECIMEN WAS INTACT AND STILL CARRYING RISING LOAD WHEN TRACKING ENDED. "
        "ELONGATION AT BREAK AND TOUGHNESS ARE THEREFORE LOWER BOUNDS, NOT MEASUREMENTS.",
        fill=YELLOW_WARN, fg=BLACK, fs=10.5)
-footer(s, "Drawn to scale from the measured marker positions of S36 (Px₀ 1690 px, 21.12 px/mm).")
+footer(s, "Drawn to scale from the measured marker positions of S36 (Px₀ 1690 px, 21.12 px/mm). "
+          "RESOLVED LATER BY S37 — not by moving the camera, which this rig cannot do, but by "
+          "shortening the marker pair to 45 mm so it travels fewer pixels per mm.")
 pageno(s)
 
 # ---------------------------------------------------------------- 3. S35 vs S36
@@ -160,11 +163,12 @@ table(s, 8.1, 1.75, 4.85, 1.35, _rows, cw=[1.2, 1.1, 1.2, 0.9], hf=9.5, bf=9)
 tb(s, 8.1, 3.35, 4.85, 2.6,
    "The modulus is the claim this campaign can actually make, and it is the strongest one:\n\n"
    "•  three materials, two decades apart, every one inside its published range\n"
-   "•  n=6 / 2 / 2, with run-to-run spread well inside the band width\n"
+   "•  n=%d / %d / %d, with run-to-run spread well inside the band width\n"
    "•  E is a SLOPE, so the force anchor cancels out of it entirely — the 20 N that was "
    "missing from TPU's stress never touched its modulus\n\n"
    "Stiffness ratio PLA : PETG : TPU = %.0f : %.0f : 1."
-   % (_mean("PLA", "E") / _mean("TPU", "E"), _mean("PETG", "E") / _mean("TPU", "E")),
+   % (_S["PLA"]["n"], _S["PETG"]["n"], _S["TPU"]["n"],
+      _mean("PLA", "E") / _mean("TPU", "E"), _mean("PETG", "E") / _mean("TPU", "E")),
    fs=9.8, colour=BLACK)
 banner(s, 0.4, 6.42, 12.55, 0.5,
        "PLA %.2f GPa · PETG %.2f GPa · TPU %.0f MPa — THE EXPECTED ORDER, AND EVERY VALUE "

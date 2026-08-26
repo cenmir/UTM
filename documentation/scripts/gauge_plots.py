@@ -50,16 +50,18 @@ def load():
     for k, g in GAUGE.items():
         path = os.path.join(ROOT, reg[k]["csv"])
         a = analyze(path, AREA, g)
-        rows = read_csv(path)
-        fr = a.get("fracture_i")
-        ok = [r for r in rows if r["lpx"] > 100]
-        if fr is not None:
-            tfr = rows[fr]["t"]
-            ok = [r for r in ok if r["t"] <= tfr]
-        e = np.array([r["ec"] for r in ok])
-        s = np.array([(r["F"] + a["anchor"]) / AREA for r in ok])
-        i = np.argsort(e)
-        out[k] = {"e": e[i], "s": s[i], "a": a, "L": g}
+        # analyze() already returns exactly this curve: strain zeroed at preload, stress with the
+        # anchor added back, cut at fracture AND back-stepped past any sample whose gauge stretch
+        # exceeds the crosshead travel.
+        #
+        # This used to re-derive it and gate on a.get("fracture_i") — a key analyze() does not
+        # return; it is "fr_i". So .get() returned None every time, the fracture cut never ran,
+        # and these curves carried post-fracture data, where the two halves are separate objects
+        # and marker separation is no longer a strain. Same bug as trio_plots had.
+        c = a["curve"]                       # [(strain %, stress MPa)], already ordered
+        e = np.array([p[0] for p in c]) / 100.0
+        s = np.array([p[1] for p in c])
+        out[k] = {"e": e, "s": s, "a": a, "L": g}
     return out
 
 
