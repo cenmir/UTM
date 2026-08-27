@@ -22,7 +22,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal, QPoint
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
                              QFileDialog, QDoubleSpinBox, QSpinBox, QGroupBox, QSplitter,
-                             QProgressBar, QMessageBox, QSlider, QCheckBox)
+                             QProgressBar, QMessageBox, QSlider, QCheckBox, QComboBox)
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -381,17 +381,31 @@ class PostProcTab(QWidget):
         self.search.setSuffix(" px")
         self.search.setToolTip("How far a box may travel from the reference frame. Must exceed the "
                                "largest expected movement, or the match will hit the window edge.")
+        self.method = QComboBox()
+        self.method.addItem("Marker centroid, intensity-weighted (best precision)", "auto")
+        self.method.addItem("Marker centroid, binary — MATCHES THE RIG", "rig")
+        self.method.addItem("Pattern correlation only (speckle)", "correlation")
+        self.method.setToolTip(
+            "How each frame's marker position is found.\n\n"
+            "Intensity-weighted is the most precise and the least sensitive to threshold.\n\n"
+            "MATCHES THE RIG reproduces camera_manager's own binary centroid. Use it when "
+            "comparing this video against a live run or against the extensometer — it is noisier, "
+            "and that is the point: it removes the estimator as a variable so the difference you "
+            "measure is physics rather than method.\n\n"
+            "Correlation only is for a speckle pattern, which has no discrete marker to take a "
+            "centroid of. It is selected automatically when no marker is found.")
         self.minCorr = QDoubleSpinBox(); self.minCorr.setRange(0.05, 0.99)
         self.minCorr.setSingleStep(0.05); self.minCorr.setValue(0.55)
         self.minCorr.setToolTip("Below this peak correlation the frame is not trusted: the tracker "
                                 "re-seeds and flags it rather than reporting a confident wrong value.")
         for r, (lab, wdg) in enumerate((("Gauge (A→B)", self.gauge), ("Box half-size", self.boxHalf),
                                         ("Search window", self.search),
-                                        ("Min correlation", self.minCorr)), start=1):
+                                        ("Min correlation", self.minCorr),
+                                        ("Tracking method", self.method)), start=1):
             gl.addWidget(QLabel(lab), r, 0); gl.addWidget(wdg, r, 1)
         self.l0Lbl = QLabel("place two boxes to set Px₀")
         self.l0Lbl.setStyleSheet("color:#4dabf7; font-weight:bold;")
-        gl.addWidget(self.l0Lbl, 5, 0, 1, 2)
+        gl.addWidget(self.l0Lbl, 6, 0, 1, 2)
         lv.addWidget(g)
 
         g2 = QGroupBox("Timebase"); g2l = QGridLayout(g2)
@@ -643,7 +657,7 @@ class PostProcTab(QWidget):
         return PP.Settings(gauge_mm=self.gauge.value(), box_half=self.boxHalf.value(),
                            search=self.search.value(), min_corr=self.minCorr.value(),
                            ref_frame=self.frameSlider.value(), fps=self.fps.value(),
-                           step=self.step.value())
+                           step=self.step.value(), refine=self.method.currentData())
 
     def on_run(self):
         a, b = self.boxes

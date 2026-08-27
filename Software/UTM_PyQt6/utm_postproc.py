@@ -81,6 +81,10 @@ class Settings:
     #               centroid gives the rig's precision on a dot.
     # "correlation" correlation only — the honest choice for a speckle pattern, which has no
     #               marker to take a centroid of.
+    # "rig"         the marker centroid computed exactly as camera_manager does it: a plain
+    #               binary contour centroid. Noisier, and that is the point — it removes the
+    #               estimator as a variable when post-processing is compared against a live run
+    #               or against the extensometer.
     refine: str = "auto"
 
 
@@ -263,7 +267,8 @@ def reference_threshold(patch, dark=True):
     return float(thr)
 
 
-def centroid_refine(gray, cx, cy, half, dark=True, thr=None, min_frac=0.02, max_frac=0.9):
+def centroid_refine(gray, cx, cy, half, dark=True, thr=None, min_frac=0.02, max_frac=0.9,
+                    weighted=True):
     """Re-locate a round marker by its intensity CENTROID, the way the live rig does.
 
     Correlation is what finds a patch that has moved; it is not the best way to pin down WHERE a
@@ -329,6 +334,10 @@ def centroid_refine(gray, cx, cy, half, dark=True, thr=None, min_frac=0.02, max_
     #     contour + weighting   16.3 ue     14.7 ue       32 / 208 ue
     #
     # against 28 ue for the live rig, which uses the binary form.
+    if not weighted:
+        # Rig-matched: the plain binary centroid, so a comparison against a live run differs by
+        # physics rather than by estimator.
+        return (x0 + best[0], y0 + best[1], best[2])
     mask = np.zeros(patch.shape, np.uint8)
     cv2.drawContours(mask, [best_c], -1, 255, cv2.FILLED)
     mask = cv2.dilate(mask, np.ones((5, 5), np.uint8))     # take in the soft edge, where the information is
@@ -440,14 +449,15 @@ def analyse(path, box_a, box_b, cfg=None, progress=None, should_stop=None, previ
     # marker centroid but L0 is taken from wherever the box was dropped, the difference becomes a
     # constant offset on every strain in the run — invisible, and wrong by however far the click
     # missed the centre.
-    if cfg.refine == "auto":
+    if cfg.refine in ("auto", "rig"):
         for pt, t in ((a0, tmpl_a), (b0, tmpl_b)):
             m_ = t.shape[0] // 2
             q_ = max(2, t.shape[0] // 6)
             mid_ = float(t[m_ - q_:m_ + q_ + 1, m_ - q_:m_ + q_ + 1].mean())
             bor_ = float(np.concatenate([t[0, :], t[-1, :], t[:, 0], t[:, -1]]).mean())
             got = centroid_refine(gray0, pt[0], pt[1], cfg.box_half, mid_ < bor_,
-                                  reference_threshold(t, mid_ < bor_))
+                                  reference_threshold(t, mid_ < bor_),
+                                  weighted=(cfg.refine != "rig"))
             if got:
                 pt[0], pt[1] = got[0], got[1]
     axis = b0 - a0
@@ -515,9 +525,11 @@ def analyse(path, box_a, box_b, cfg=None, progress=None, should_stop=None, previ
         # step; if it ever does, the centroid fails and correlation below recovers it.
         ra = rb = None
         corr = 0.0
-        if cfg.refine == "auto":
-            ca = centroid_refine(gray, last_a[0], last_a[1], cfg.box_half, dark_a, thr_a)
-            cb = centroid_refine(gray, last_b[0], last_b[1], cfg.box_half, dark_b, thr_b)
+        if cfg.refine in ("auto", "rig"):
+            ca = centroid_refine(gray, last_a[0], last_a[1], cfg.box_half, dark_a, thr_a,
+                                 weighted=(cfg.refine != "rig"))
+            cb = centroid_refine(gray, last_b[0], last_b[1], cfg.box_half, dark_b, thr_b,
+                                 weighted=(cfg.refine != "rig"))
             # A blob is only the marker if it is still about the size the marker was. Without this
             # the centroid will happily follow a dot that has merged with a shadow.
             if ca and cb and 0.5 * area_a < ca[2] < 2.0 * area_a \
