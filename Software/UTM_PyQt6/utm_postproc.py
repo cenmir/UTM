@@ -244,10 +244,15 @@ def _match(gray, tmpl, guess, search):
     return (x0 + mx + sx + r, y0 + my + sy + r, float(peak))
 
 
-def analyse(path, box_a, box_b, cfg=None, progress=None, should_stop=None):
+def analyse(path, box_a, box_b, cfg=None, progress=None, should_stop=None, preview=None):
     """Track both boxes through the video and yield a FrameResult per analysed frame.
 
     progress(done, total) is called for the UI; should_stop() aborts cleanly between frames.
+    preview(gray, a_xy, b_xy) hands the caller the decoded frame and where the boxes are NOW, so
+    the pull can be shown while it is measured — the frame is already in memory here, and asking
+    the UI to re-read it would fight the sequential decoder this loop depends on. The callback is
+    handed the live array, not a copy: a caller that keeps it must copy it itself, because the
+    decoder reuses the buffer.
     The generator's return value is a Summary (use `yield from` / .value via StopIteration).
     """
     cfg = cfg or Settings()
@@ -341,6 +346,10 @@ def analyse(path, box_a, box_b, cfg=None, progress=None, should_stop=None):
 
         summary.n += 1
         summary.rows.append(res)
+        if preview is not None:
+            # Where the boxes are NOW, so the drawn overlay follows the markers apart rather than
+            # sitting where they started. On a lost frame these are the last good positions.
+            preview(gray, tuple(last_a), tuple(last_b))
         yield res
         done += 1
         if progress:

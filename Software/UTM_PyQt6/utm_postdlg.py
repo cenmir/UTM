@@ -15,6 +15,7 @@ Placing the extensometer:
     it only makes the px/mm readout meaningless.
 """
 import os
+import time
 
 import numpy as np
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QPoint
@@ -50,6 +51,17 @@ class FrameView(QLabel):
         self._redraw()
 
     def set_boxes(self, a, b, half):
+        self._boxes = [a, b]
+        self._half = half
+        self._redraw()
+
+    def play(self, gray, a, b, half):
+        """One repaint for a frame AND its box positions — used while the analysis runs.
+
+        set_frame() followed by set_boxes() would redraw twice per frame, which at 25 Hz on a
+        2348 px frame is enough scaling work to make the GUI feel heavy for no benefit.
+        """
+        self._gray = gray
         self._boxes = [a, b]
         self._half = half
         self._redraw()
@@ -104,20 +116,67 @@ class Worker(QThread):
     done = pyqtSignal(object)
     failed = pyqtSignal(str)
     progress = pyqtSignal(int, int)
+    frame = pyqtSignal(object, object, object, float)   # gray, box A now, box B now, half-size
 
-    def __init__(self, path, a, b, cfg):
+    # The analysis runs several times faster than the recording (S26: ~126 fps against a 19.9 fps
+    # capture), so every frame must NOT be shipped to the GUI thread. Two brakes: a time throttle
+    # for a steady display rate, and a pending flag so a slow repaint applies back-pressure
+    # instead of letting a queue of 1 MB frames build up behind it.
+    PREVIEW_HZ = 25.0
+    # Downscale BEFORE crossing the thread. The preview pane is a few hundred pixels tall, so
+    # shipping a full 2348 px frame 25 times a second copies ~1 MB and then throws most of it
+    # away in the scaler — measured at a 4x slowdown of the analysis itself. Shrinking here costs
+    # one resize and keeps the displayed detail the pane can actually show. Box coordinates are
+    # scaled with it, so the view still draws them in frame coordinates.
+    PREVIEW_MAX_PX = 720
+
+    def __init__(self, path, a, b, cfg, preview=True):
         super().__init__()
         self.path, self.a, self.b, self.cfg = path, a, b, cfg
         self._stop = False
+        self._preview = preview
+        self._last_emit = 0.0
+        self._pending = False
 
     def stop(self):
         self._stop = True
+
+    def frame_shown(self):
+        """Called from the GUI thread once a preview frame has actually been painted."""
+        self._pending = False
+
+    def _on_frame(self, gray, a_xy, b_xy):
+        if not self._preview or self._pending:
+            return
+        now = time.monotonic()
+        if now - self._last_emit < 1.0 / self.PREVIEW_HZ:
+            return
+        self._last_emit = now
+        self._pending = True
+        import cv2
+        h, w = gray.shape
+        k = min(1.0, self.PREVIEW_MAX_PX / float(max(h, w)))
+        if k < 1.0:
+            small = cv2.resize(gray, (max(1, int(w * k)), max(1, int(h * k))),
+                               interpolation=cv2.INTER_AREA)
+            a_xy = (a_xy[0] * k, a_xy[1] * k)
+            b_xy = (b_xy[0] * k, b_xy[1] * k)
+        else:
+            small, k = gray, 1.0
+        # cv2.resize returns a fresh array; the full-size path still needs a copy because the
+        # decoder reuses its buffer and this crosses a thread.
+        # The drawn box must shrink with the frame, or it would be drawn at full-frame size
+        # over a downscaled image and stop matching the patch that is actually being correlated.
+        self.frame.emit(np.ascontiguousarray(small) if k < 1.0
+                        else np.ascontiguousarray(gray).copy(),
+                        a_xy, b_xy, self.cfg.box_half * k)
 
     def run(self):
         try:
             gen = PP.analyse(self.path, self.a, self.b, self.cfg,
                              progress=lambda d, t: self.progress.emit(d, t),
-                             should_stop=lambda: self._stop)
+                             should_stop=lambda: self._stop,
+                             preview=self._on_frame)
             while True:
                 try:
                     self.row.emit(next(gen))
@@ -130,6 +189,7 @@ class Worker(QThread):
 
 class PostProcTab(QWidget):
     log = pyqtSignal(str)
+    PLOT_HZ = 8.0            # live plot refresh; the data is kept in full regardless
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -139,7 +199,9 @@ class PostProcTab(QWidget):
         self._next_box = 0
         self.worker = None
         self.summary = None
-        self._t, self._e = [], []
+        self._t, self._e, self._tr = [], [], []
+        self._line_c = self._line_t = None
+        self._last_plot = 0.0
         self._build()
 
     # ------------------------------------------------------------------ UI
@@ -217,6 +279,13 @@ class PostProcTab(QWidget):
         g2l.addWidget(self.fpsWarn, 2, 0, 1, 2)
         lv.addWidget(g2)
 
+        self.playChk = QCheckBox("Play the video while analysing")
+        self.playChk.setChecked(True)
+        self.playChk.setToolTip("Show each frame with the tracking boxes following the markers, so "
+                                "the pull can be watched as it is measured. Turn it off for a "
+                                "slightly faster run on a long video.")
+        lv.addWidget(self.playChk)
+
         rr = QHBoxLayout()
         self.runBtn = QPushButton("Run analysis"); self.runBtn.setEnabled(False)
         self.runBtn.clicked.connect(self.on_run)
@@ -247,12 +316,31 @@ class PostProcTab(QWidget):
         split.setStretchFactor(0, 3); split.setStretchFactor(1, 4)
         lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.addWidget(split)
 
+    def _want_true(self):
+        """The checkbox is built after the axes, so this must survive not existing yet."""
+        c = getattr(self, "showTrue", None)
+        return bool(c and c.isChecked())
+
     def _reset_plot(self):
+        """Rebuild the axes once. During a run the LINES are updated, never the whole figure.
+
+        Clearing and re-plotting on every update redraws the axes, ticks, grid and legend as well
+        as the data; measured on a 561-frame run that cost more time than decoding and correlating
+        the video did. Keeping the Line2D objects and calling set_data() is the difference between
+        a plot that keeps up and one that throttles the analysis behind it.
+        """
         self.ax.clear()
         self.ax.set_xlabel("time (s)")
         self.ax.set_ylabel("DIC strain (%)")
         self.ax.set_title("DIC strain vs time")
         self.ax.grid(alpha=0.3)
+        self._line_c, = self.ax.plot([], [], color="#e8590c", lw=1.5,
+                                     label="engineering (Cauchy)")
+        self._line_t, = self.ax.plot([], [], color="#1f6fb4", lw=1.2, ls="--",
+                                     label="true (log)")
+        self._line_t.set_visible(self._want_true())
+        self.ax.legend(frameon=False, fontsize=9)
+        self._last_plot = 0.0
         self.fig.tight_layout()
         self.canvas.draw_idle()
 
@@ -391,10 +479,12 @@ class PostProcTab(QWidget):
         self.runBtn.setEnabled(False); self.stopBtn.setEnabled(True); self.expBtn.setEnabled(False)
         cfg = self._cfg()
         self.worker = Worker(self.path, PP.Box(a[0], a[1], cfg.box_half),
-                             PP.Box(b[0], b[1], cfg.box_half), cfg)
+                             PP.Box(b[0], b[1], cfg.box_half), cfg,
+                             preview=self.playChk.isChecked())
         self.worker.row.connect(self.on_row)
         self.worker.done.connect(self.on_done)
         self.worker.failed.connect(self.on_failed)
+        self.worker.frame.connect(self.on_frame)
         self.worker.progress.connect(lambda d, t: self.bar.setValue(int(100 * d / max(1, t))))
         self.worker.start()
         self.log.emit("[PostProc] analysing %s from frame %d at %.4f fps"
@@ -403,6 +493,12 @@ class PostProcTab(QWidget):
     def on_stop(self):
         if self.worker:
             self.worker.stop()
+
+    def on_frame(self, gray, a, b, half):
+        """Paint one frame of the pull, then tell the worker it may send the next."""
+        self.view.play(gray, a, b, half)
+        if self.worker:
+            self.worker.frame_shown()
 
     def on_row(self, r):
         if r.ok:
@@ -413,27 +509,33 @@ class PostProcTab(QWidget):
                "—" if r.l_px != r.l_px else "%.2f" % r.l_px,
                "—" if r.cauchy != r.cauchy else "%.4f %%" % (r.cauchy * 100),
                r.corr, ("   " + r.note) if r.note else ""))
-        if len(self._t) % 10 == 0:
-            self._redraw_plot()
+        self._redraw_plot(force=False)
 
-    def _redraw_plot(self):
-        self.ax.clear()
-        self.ax.set_xlabel("time (s)"); self.ax.set_ylabel("DIC strain (%)")
-        self.ax.set_title("DIC strain vs time")
-        self.ax.grid(alpha=0.3)
+    def _redraw_plot(self, force=True):
+        """Update the two lines in place. force=False obeys a time throttle, for live updates."""
+        if getattr(self, "_line_c", None) is None:
+            return
+        if not force:
+            now = time.monotonic()
+            if now - getattr(self, "_last_plot", 0.0) < 1.0 / self.PLOT_HZ:
+                return
+            self._last_plot = now
+        self._line_c.set_data(self._t, [v * 100 for v in self._e])
+        self._line_t.set_data(self._t, [v * 100 for v in self._tr])
+        self._line_t.set_visible(self._want_true())
         if self._t:
-            self.ax.plot(self._t, [v * 100 for v in self._e], color="#e8590c", lw=1.5,
-                         label="engineering (Cauchy)")
-            if self.showTrue.isChecked():
-                self.ax.plot(self._t, [v * 100 for v in self._tr], color="#1f6fb4", lw=1.2,
-                             ls="--", label="true (log)")
-            self.ax.legend(frameon=False, fontsize=9)
-        self.fig.tight_layout()
+            self.ax.relim()
+            self.ax.autoscale_view()
         self.canvas.draw_idle()
 
     def on_done(self, summary):
         self.summary = summary
         self._redraw_plot()
+        # Put the preview back to the reference frame with the boxes where they were PLACED.
+        # Leaving the last analysed frame up is misleading: the boxes sit at their final,
+        # stretched-apart positions, which reads as the setup rather than the outcome.
+        if self.path:
+            self._show_frame(self.frameSlider.value())
         self.runBtn.setEnabled(True); self.stopBtn.setEnabled(False)
         self.expBtn.setEnabled(bool(summary and summary.rows))
         peak = max((v for v in self._e), default=0.0) * 100
