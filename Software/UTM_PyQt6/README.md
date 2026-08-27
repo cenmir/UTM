@@ -79,6 +79,25 @@ Two things it gets right that are easy to get wrong:
   true rate from the capture folder's `frames/index.csv` (or `run.json`) and says where it got it.
   Videos from another camera have no sidecar, and the tab says so instead of assuming.
 
+**Comparing several videos.** Add any number; each keeps its own extensometer, frame rate, box
+size and tracking method, because two videos never have their markers in the same place and an
+extensometer recording shares neither the frame rate nor the scale of ours. `Run all pending`
+measures them one after another and every completed run stays on the plot with its own colour and
+legend label. That is how an extensometer recording is put beside one of ours on the same axes,
+measured with the same pixel-to-strain rule.
+
+**Tracking method** is selectable, and the choice matters when comparing:
+
+| mode | what it does | when |
+|---|---|---|
+| intensity-weighted centroid | contour selects the marker, intensity weights the centre | default — most precise |
+| binary centroid | exactly what `camera_manager` does | comparing against a live run: removes the estimator as a variable |
+| correlation | matches the pattern, no marker needed | speckle; chosen automatically when no marker is found |
+
+Measured on S25/S26 over a matched strain window: intensity-weighted 15–17 µε, binary ~25 µε,
+live rig 28 µε. Note the box size dominates all of it — a 24 px half-box on a 60 px dot gives
+313 µε, because it sees only flat interior. Auto-detect and snapping now size the box to the marker.
+
 Validated against S26: post-processing its `video.avi` reproduces that run's own live DIC to
 **273 µε RMS over a 5.6 % strain range** (~0.5 % of reading), with L₀ agreeing to 0.005 %.
 

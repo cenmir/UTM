@@ -10,19 +10,35 @@ that produced it cannot disagree about what strain means.
 
 Placing the extensometer:
     Click the frame to drop box A, click again for box B, or press Auto-detect for sprayed dots.
+    A click near a marker snaps to its computed centre; a click in open space stays where it is
+    put, which is what a speckle pattern needs. Drag a box to move it freely, and nudge it with
+    the arrow keys — one frame pixel at a time, ten with Shift.
+
     The gauge length in mm is the physical distance BETWEEN THE BOXES — it sets px/mm and nothing
     else. Strain is a pixel ratio, so an unknown or wrong gauge cannot corrupt the strain trace;
     it only makes the px/mm readout meaningless.
+
+Comparing several videos:
+    Add as many as you like. Each keeps its OWN extensometer, frame rate, box size and method —
+    two videos never have their markers in the same place, and an extensometer recording shares
+    neither the frame rate nor the scale of ours. Set each up, then Run all pending: they are
+    measured one after another, and every completed run stays on the plot with its own colour and
+    legend label. Rename a run by double-clicking it; the label is what the legend shows.
+
+    Sequential rather than parallel on purpose. The point is watching each pull as it is measured,
+    and several videos decoding at once would compete for the same disk while showing nothing.
 """
 import os
 import time
+from dataclasses import dataclass
 
 import numpy as np
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QPoint
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
                              QFileDialog, QDoubleSpinBox, QSpinBox, QGroupBox, QSplitter,
-                             QProgressBar, QMessageBox, QSlider, QCheckBox, QComboBox)
+                             QProgressBar, QMessageBox, QSlider, QCheckBox, QComboBox,
+                             QListWidget, QListWidgetItem, QInputDialog)
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -314,22 +330,119 @@ class Worker(QThread):
             self.failed.emit(str(e))
 
 
+@dataclass
+class Run:
+    """One video and everything that decides how it is measured, plus its result.
+
+    Each video needs its OWN extensometer: two videos never have their markers in the same place,
+    and an extensometer recording has neither the same frame rate nor the same scale as ours. So
+    the boxes and every setting belong to the run, not to the tab — selecting a run in the list
+    swaps the whole setup, and running it cannot pick up a stray value left over from another.
+    """
+    path: str
+    info: dict
+    label: str
+    colour: str
+    boxes: list = None
+    box_half: int = 24
+    search: int = 40
+    min_corr: float = 0.55
+    ref_frame: int = 0
+    fps: float = 30.0
+    step: int = 1
+    refine: str = "auto"
+    fps_note: str = ""
+    t: list = None
+    e: list = None
+    tr: list = None
+    summary: object = None
+
+    def __post_init__(self):
+        if self.boxes is None:
+            self.boxes = [None, None]
+        for k in ("t", "e", "tr"):
+            if getattr(self, k) is None:
+                setattr(self, k, [])
+
+    @property
+    def ready(self):
+        return bool(self.boxes[0] and self.boxes[1])
+
+    @property
+    def done(self):
+        return self.summary is not None and bool(self.t)
+
+    def status(self):
+        if self.done:
+            return "%.3f %% peak, %.0f %% tracked" % (max(self.e) * 100, self.summary.coverage)
+        return "ready to run" if self.ready else "needs two boxes"
+
+
 class PostProcTab(QWidget):
     log = pyqtSignal(str)
     PLOT_HZ = 8.0            # live plot refresh; the data is kept in full regardless
+    # Distinguishable at a glance and colourblind-safe enough to name in conversation.
+    PALETTE = ("#e8590c", "#1f6fb4", "#2f9e44", "#7048e8", "#c92a2a",
+               "#0c8599", "#e8a80c", "#5f3dc4")
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.path = None
-        self.info = None
-        self.boxes = [None, None]
+        self.runs = []
+        self._cur = -1
         self._next_box = 0
         self.worker = None
-        self.summary = None
-        self._t, self._e, self._tr = [], [], []
+        self._queue = []                 # indices still to run in a Run-all sweep
+        self._running = None             # index being measured right now, for the legend tag
         self._line_c = self._line_t = None
         self._last_plot = 0.0
+        self._loading = False            # guard: writing widgets must not write back to the run
         self._build()
+
+    # ---- the current run, and the working views onto it -------------------------------
+    @property
+    def run(self):
+        return self.runs[self._cur] if 0 <= self._cur < len(self.runs) else None
+
+    @property
+    def path(self):
+        r = self.run
+        return r.path if r else None
+
+    @property
+    def info(self):
+        r = self.run
+        return r.info if r else None
+
+    @property
+    def boxes(self):
+        r = self.run
+        return r.boxes if r else [None, None]
+
+    @boxes.setter
+    def boxes(self, v):
+        r = self.run
+        if r:
+            r.boxes = v
+
+    @property
+    def summary(self):
+        r = self.run
+        return r.summary if r else None
+
+    @property
+    def _t(self):
+        r = self.run
+        return r.t if r else []
+
+    @property
+    def _e(self):
+        r = self.run
+        return r.e if r else []
+
+    @property
+    def _tr(self):
+        r = self.run
+        return r.tr if r else []
 
     # ------------------------------------------------------------------ UI
     def _build(self):
@@ -339,11 +452,26 @@ class PostProcTab(QWidget):
         left = QWidget(); lv = QVBoxLayout(left); lv.setContentsMargins(6, 6, 6, 6)
 
         row = QHBoxLayout()
-        self.loadBtn = QPushButton("Load video…")
+        self.loadBtn = QPushButton("Add video(s)…")
+        self.loadBtn.setToolTip("Select one or several videos. Each keeps its own extensometer, "
+                                "frame rate and settings, and all completed runs are plotted "
+                                "together for comparison.")
         self.loadBtn.clicked.connect(self.on_load)
-        self.fileLbl = QLabel("no video loaded"); self.fileLbl.setStyleSheet("color:#8a8f98;")
-        row.addWidget(self.loadBtn); row.addWidget(self.fileLbl, 1)
+        self.removeBtn = QPushButton("Remove"); self.removeBtn.clicked.connect(self.on_remove)
+        self.clearAllBtn = QPushButton("Clear all"); self.clearAllBtn.clicked.connect(self.on_clear_all)
+        row.addWidget(self.loadBtn, 1); row.addWidget(self.removeBtn); row.addWidget(self.clearAllBtn)
         lv.addLayout(row)
+
+        self.runList = QListWidget()
+        self.runList.setMaximumHeight(112)
+        self.runList.setToolTip("Each video and its state. Select one to set it up; double-click "
+                                "to rename it — the name is what appears in the plot legend.")
+        self.runList.currentRowChanged.connect(self.on_select_run)
+        self.runList.itemDoubleClicked.connect(self.on_rename)
+        lv.addWidget(self.runList)
+
+        self.fileLbl = QLabel("no video loaded"); self.fileLbl.setStyleSheet("color:#8a8f98;")
+        lv.addWidget(self.fileLbl)
 
         self.view = FrameView()
         self.view.clicked.connect(self.on_click)
@@ -422,6 +550,10 @@ class PostProcTab(QWidget):
         g2l.addWidget(self.fpsWarn, 2, 0, 1, 2)
         lv.addWidget(g2)
 
+        for _w in (self.boxHalf, self.search, self.minCorr, self.step, self.fps):
+            _w.valueChanged.connect(lambda *_: self._store_widgets())
+        self.method.currentIndexChanged.connect(lambda *_: self._store_widgets())
+
         self.playChk = QCheckBox("Play the video while analysing")
         self.playChk.setChecked(True)
         self.playChk.setToolTip("Show each frame with the tracking boxes following the markers, so "
@@ -430,13 +562,18 @@ class PostProcTab(QWidget):
         lv.addWidget(self.playChk)
 
         rr = QHBoxLayout()
-        self.runBtn = QPushButton("Run analysis"); self.runBtn.setEnabled(False)
+        self.runBtn = QPushButton("Run this video"); self.runBtn.setEnabled(False)
         self.runBtn.clicked.connect(self.on_run)
+        self.runAllBtn = QPushButton("Run all pending"); self.runAllBtn.setEnabled(False)
+        self.runAllBtn.setToolTip("Run every video that has its boxes placed and has not been run "
+                                  "yet, one after another, plotting each as it finishes.")
+        self.runAllBtn.clicked.connect(self.on_run_all)
         self.stopBtn = QPushButton("Stop"); self.stopBtn.setEnabled(False)
         self.stopBtn.clicked.connect(self.on_stop)
         self.expBtn = QPushButton("Export CSV"); self.expBtn.setEnabled(False)
         self.expBtn.clicked.connect(self.on_export)
-        rr.addWidget(self.runBtn); rr.addWidget(self.stopBtn); rr.addWidget(self.expBtn)
+        rr.addWidget(self.runBtn); rr.addWidget(self.runAllBtn)
+        rr.addWidget(self.stopBtn); rr.addWidget(self.expBtn)
         lv.addLayout(rr)
         self.bar = QProgressBar(); self.bar.setValue(0)
         lv.addWidget(self.bar)
@@ -465,70 +602,179 @@ class PostProcTab(QWidget):
         return bool(c and c.isChecked())
 
     def _reset_plot(self):
-        """Rebuild the axes once. During a run the LINES are updated, never the whole figure.
-
-        Clearing and re-plotting on every update redraws the axes, ticks, grid and legend as well
-        as the data; measured on a 561-frame run that cost more time than decoding and correlating
-        the video did. Keeping the Line2D objects and calling set_data() is the difference between
-        a plot that keeps up and one that throttles the analysis behind it.
-        """
         self.ax.clear()
         self.ax.set_xlabel("time (s)")
         self.ax.set_ylabel("DIC strain (%)")
         self.ax.set_title("DIC strain vs time")
         self.ax.grid(alpha=0.3)
-        self._line_c, = self.ax.plot([], [], color="#e8590c", lw=1.5,
-                                     label="engineering (Cauchy)")
-        self._line_t, = self.ax.plot([], [], color="#1f6fb4", lw=1.2, ls="--",
-                                     label="true (log)")
-        self._line_t.set_visible(self._want_true())
-        self.ax.legend(frameon=False, fontsize=9)
         self._last_plot = 0.0
         self.fig.tight_layout()
         self.canvas.draw_idle()
 
     # ------------------------------------------------------------------ actions
+    @staticmethod
+    def _label_for(path):
+        """A legend name a human would choose: the specimen if the path names one, else the file.
+
+        Our captures live under Specimen_S26_V2_Spray_Video3/, so "S26" is right there. Anything
+        else — an extensometer recording, a phone video — falls back to the file name.
+        """
+        import re
+        m = re.search(r"Specimen_(S\d+)", path.replace("\\", "/"))
+        if m:
+            return m.group(1)
+        return os.path.splitext(os.path.basename(path))[0][:28]
+
     def on_load(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Open a recorded video", "",
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Add recorded video(s)", "",
             "Video (*.avi *.mp4 *.mkv *.mov *.wmv *.m4v *.mpg *.mpeg);;All files (*)")
-        if not path:
+        added = 0
+        for path in paths or []:
+            try:
+                info = PP.probe(path)
+            except Exception as e:
+                QMessageBox.warning(self, "Cannot open video", "%s\n\n%s" % (path, e))
+                continue
+            fps, note = self._fps_for(path, info)
+            r = Run(path=path, info=info, label=self._label_for(path),
+                    colour=self.PALETTE[len(self.runs) % len(self.PALETTE)],
+                    fps=fps, fps_note=note,
+                    box_half=self.boxHalf.value(), search=self.search.value(),
+                    min_corr=self.minCorr.value(), step=self.step.value(),
+                    refine=self.method.currentData())
+            self.runs.append(r)
+            added += 1
+            self.log.emit("[PostProc] added %s as \"%s\" — %d frames, %.4f fps"
+                          % (info["name"], r.label, info["frames"], fps))
+        if not added:
             return
-        try:
-            self.info = PP.probe(path)
-        except Exception as e:
-            QMessageBox.warning(self, "Cannot open video", str(e)); return
-        self.path = path
-        self.fileLbl.setText("%s — %d frames, %dx%d"
-                             % (self.info["name"], self.info["frames"],
-                                self.info["w"], self.info["h"]))
-        self.frameSlider.setEnabled(True)
-        self.frameSlider.setRange(0, max(0, self.info["frames"] - 1))
-        self.frameSlider.setValue(0)
-        # The container's fps is only a fallback. If this video came out of one of our own
-        # captures, the folder beside it records what the camera ACTUALLY did — prefer that, and
-        # say so, rather than letting a wrong declared rate quietly stretch the time axis.
-        if self.info["fps"] > 0:
-            self.fps.setValue(self.info["fps"])
+        self._refresh_list()
+        self.runList.setCurrentRow(len(self.runs) - 1)
+
+    @staticmethod
+    def _fps_for(path, info):
+        """The frame rate to use, and a sentence saying where it came from.
+
+        The container's value is only a fallback: every video this rig has produced declares 35 fps
+        and none recorded at it. A capture folder beside the video records what the camera actually
+        did; a video from another camera has no such record and is flagged as unverified rather
+        than quietly believed.
+        """
+        fps = info["fps"] if info["fps"] > 0 else 30.0
         true = PP.true_fps_from_sidecar(path)
         if true:
             fps_true, src, _n = true
-            self.fps.setValue(round(fps_true, 4))
-            if self.info["fps"] > 0 and abs(fps_true - self.info["fps"]) / self.info["fps"] > 0.02:
-                self.fpsWarn.setText(
+            if info["fps"] > 0 and abs(fps_true - info["fps"]) / info["fps"] > 0.02:
+                return round(fps_true, 4), (
                     "Using %.4f fps measured from %s. The file itself declares %.2f fps — "
                     "believing it would scale time by %.2f×."
-                    % (fps_true, src, self.info["fps"], self.info["fps"] / fps_true))
-            else:
-                self.fpsWarn.setText("Frame rate %.4f fps confirmed from %s." % (fps_true, src))
+                    % (fps_true, src, info["fps"], info["fps"] / fps_true))
+            return round(fps_true, 4), "Frame rate %.4f fps confirmed from %s." % (fps_true, src)
+        return fps, (PP.fps_warning(info)
+                     or "No capture sidecar beside this video — the frame rate is the file's own "
+                        "claim. Check it before trusting the time axis.")
+
+    def _refresh_list(self):
+        """Rebuild the list without disturbing which row is current."""
+        cur = self.runList.currentRow()
+        self.runList.blockSignals(True)
+        self.runList.clear()
+        for r in self.runs:
+            it = QListWidgetItem("%s   —   %s" % (r.label, r.status()))
+            it.setForeground(QColor(r.colour))
+            self.runList.addItem(it)
+        if 0 <= cur < self.runList.count():
+            self.runList.setCurrentRow(cur)
+        self.runList.blockSignals(False)
+        pending = sum(1 for r in self.runs if r.ready and not r.done)
+        self.runAllBtn.setEnabled(pending > 0 and not self._busy())
+        self.runAllBtn.setText("Run all pending (%d)" % pending if pending else "Run all pending")
+        self.expBtn.setEnabled(any(r.done for r in self.runs))
+
+    def _busy(self):
+        return bool(self.worker and self.worker.isRunning())
+
+    def _store_widgets(self):
+        """Write the controls back into the selected run, so each keeps its own setup."""
+        r = self.run
+        if r is None or self._loading:
+            return
+        r.box_half = self.boxHalf.value()
+        r.search = self.search.value()
+        r.min_corr = self.minCorr.value()
+        r.ref_frame = self.frameSlider.value()
+        r.fps = self.fps.value()
+        r.step = self.step.value()
+        r.refine = self.method.currentData()
+
+    def on_select_run(self, i):
+        if self._busy():
+            return
+        self._cur = i
+        r = self.run
+        if r is None:
+            return
+        self._loading = True
+        try:
+            self.gauge.blockSignals(True)
+            self.boxHalf.setValue(r.box_half); self.search.setValue(r.search)
+            self.minCorr.setValue(r.min_corr); self.fps.setValue(r.fps)
+            self.step.setValue(r.step)
+            k = self.method.findData(r.refine)
+            if k >= 0:
+                self.method.setCurrentIndex(k)
+            self.gauge.blockSignals(False)
+            self.fpsWarn.setText(r.fps_note)
+            self.fileLbl.setText("%s — %d frames, %dx%d"
+                                 % (r.info["name"], r.info["frames"], r.info["w"], r.info["h"]))
+            self.frameSlider.setEnabled(True)
+            self.frameSlider.blockSignals(True)
+            self.frameSlider.setRange(0, max(0, r.info["frames"] - 1))
+            self.frameSlider.setValue(r.ref_frame)
+            self.frameSlider.blockSignals(False)
+            self.frameLbl.setText(str(r.ref_frame))
+            self._next_box = 0
+            self._show_frame(r.ref_frame)
+        finally:
+            self._loading = False
+        self._refresh_l0()
+        self.status.setText("%s — %s" % (r.label, r.status()))
+
+    def on_rename(self, item):
+        r = self.run
+        if r is None:
+            return
+        name, ok = QInputDialog.getText(self, "Rename", "Legend label:", text=r.label)
+        if ok and name.strip():
+            r.label = name.strip()
+            self._refresh_list()
+            self._redraw_plot()
+
+    def on_remove(self):
+        if self._busy() or self.run is None:
+            return
+        i = self._cur
+        self.runs.pop(i)
+        self._cur = min(i, len(self.runs) - 1)
+        self._refresh_list()
+        if self.runs:
+            self.runList.setCurrentRow(self._cur)
+            self.on_select_run(self._cur)
         else:
-            self.fpsWarn.setText(PP.fps_warning(self.info)
-                                 or "No capture sidecar beside this video — the frame rate is the "
-                                    "file's own claim. Check it before trusting the time axis.")
-        self.on_clear()
-        self._show_frame(0)
-        self.log.emit("[PostProc] loaded %s (%d frames, %.2f fps declared)"
-                      % (self.info["name"], self.info["frames"], self.info["fps"]))
+            self.view.set_frame(np.zeros((10, 10), np.uint8))
+            self.fileLbl.setText("no video loaded")
+        self._redraw_plot()
+
+    def on_clear_all(self):
+        if self._busy():
+            return
+        self.runs = []
+        self._cur = -1
+        self._refresh_list()
+        self.fileLbl.setText("no video loaded")
+        self.runBtn.setEnabled(False)
+        self._reset_plot()
 
     def _show_frame(self, idx):
         g = PP.read_frame(self.path, idx)
@@ -640,6 +886,7 @@ class PostProcTab(QWidget):
     def _refresh_boxes(self):
         self.view.set_boxes(self.boxes[0], self.boxes[1], self.boxHalf.value())
         self._refresh_l0()
+        self._refresh_list()
 
     def _refresh_l0(self):
         a, b = self.boxes
@@ -659,16 +906,17 @@ class PostProcTab(QWidget):
                            ref_frame=self.frameSlider.value(), fps=self.fps.value(),
                            step=self.step.value(), refine=self.method.currentData())
 
-    def on_run(self):
-        a, b = self.boxes
-        if not (a and b and self.path):
+    def on_run(self, _checked=False, queued=False):
+        r = self.run
+        if r is None or not r.ready or self._busy():
             return
-        self._t, self._e, self._tr = [], [], []
-        self.summary = None
-        self._reset_plot()
-        self.runBtn.setEnabled(False); self.stopBtn.setEnabled(True); self.expBtn.setEnabled(False)
+        self._store_widgets()
+        r.t, r.e, r.tr, r.summary = [], [], [], None
+        a, b = r.boxes
+        self.runBtn.setEnabled(False); self.runAllBtn.setEnabled(False)
+        self.stopBtn.setEnabled(True)
         cfg = self._cfg()
-        self.worker = Worker(self.path, PP.Box(a[0], a[1], cfg.box_half),
+        self.worker = Worker(r.path, PP.Box(a[0], a[1], cfg.box_half),
                              PP.Box(b[0], b[1], cfg.box_half), cfg,
                              preview=self.playChk.isChecked())
         self.worker.row.connect(self.on_row)
@@ -676,11 +924,43 @@ class PostProcTab(QWidget):
         self.worker.failed.connect(self.on_failed)
         self.worker.frame.connect(self.on_frame)
         self.worker.progress.connect(lambda d, t: self.bar.setValue(int(100 * d / max(1, t))))
+        self._running = self._cur
         self.worker.start()
-        self.log.emit("[PostProc] analysing %s from frame %d at %.4f fps"
-                      % (self.info["name"], cfg.ref_frame, cfg.fps))
+        self.log.emit("[PostProc] analysing \"%s\" (%s) from frame %d at %.4f fps, %s"
+                      % (r.label, r.info["name"], cfg.ref_frame, cfg.fps, cfg.refine))
+
+    def on_run_all(self):
+        """Queue every ready, un-run video and work through them one at a time.
+
+        Sequential rather than parallel on purpose: the point is watching each pull as it is
+        measured, and four videos decoding at once would compete for the same disk and CPU while
+        showing nothing useful.
+        """
+        if self._busy():
+            return
+        self._queue = [i for i, r in enumerate(self.runs) if r.ready and not r.done]
+        if not self._queue:
+            QMessageBox.information(self, "Nothing to run",
+                                    "Every video with its boxes placed has already been run.\n\n"
+                                    "Add another video, or place boxes on one that still needs them.")
+            return
+        self.log.emit("[PostProc] running %d video(s) back to back" % len(self._queue))
+        self._next_in_queue()
+
+    def _next_in_queue(self):
+        while self._queue:
+            i = self._queue.pop(0)
+            if 0 <= i < len(self.runs) and self.runs[i].ready and not self.runs[i].done:
+                self.runList.setCurrentRow(i)
+                self.on_select_run(i)
+                self.on_run(queued=True)
+                return
+        self._refresh_list()
 
     def on_stop(self):
+        # Stop means stop the SWEEP, not just this video — otherwise the next one starts
+        # immediately and the button appears not to have worked.
+        self._queue = []
         if self.worker:
             self.worker.stop()
 
@@ -691,8 +971,9 @@ class PostProcTab(QWidget):
             self.worker.frame_shown()
 
     def on_row(self, r):
-        if r.ok:
-            self._t.append(r.t); self._e.append(r.cauchy); self._tr.append(r.true)
+        cur = self.run
+        if r.ok and cur is not None:
+            cur.t.append(r.t); cur.e.append(r.cauchy); cur.tr.append(r.true)
         self.status.setText(
             "frame %d   t %.2f s   L %s px   ε %s   corr %.2f%s"
             % (r.idx, r.t,
@@ -702,71 +983,108 @@ class PostProcTab(QWidget):
         self._redraw_plot(force=False)
 
     def _redraw_plot(self, force=True):
-        """Update the two lines in place. force=False obeys a time throttle, for live updates."""
-        if getattr(self, "_line_c", None) is None:
-            return
+        """One line per run, plus the one being measured. force=False obeys a time throttle.
+
+        Lines are rebuilt rather than kept as fixed handles because runs are added and removed;
+        the throttle is what keeps that affordable during a live run.
+        """
         if not force:
             now = time.monotonic()
             if now - getattr(self, "_last_plot", 0.0) < 1.0 / self.PLOT_HZ:
                 return
             self._last_plot = now
-        self._line_c.set_data(self._t, [v * 100 for v in self._e])
-        self._line_t.set_data(self._t, [v * 100 for v in self._tr])
-        self._line_t.set_visible(self._want_true())
-        if self._t:
-            self.ax.relim()
-            self.ax.autoscale_view()
+        self.ax.clear()
+        self.ax.set_xlabel("time (s)")
+        self.ax.set_ylabel("DIC strain (%)")
+        self.ax.set_title("DIC strain vs time")
+        self.ax.grid(alpha=0.3)
+        any_data = False
+        for i, r in enumerate(self.runs):
+            if not r.t:
+                continue
+            any_data = True
+            live = (i == self._running)
+            self.ax.plot(r.t, [v * 100 for v in r.e], color=r.colour, lw=1.6,
+                         label=r.label + (" (running)" if live else ""))
+            if self._want_true():
+                self.ax.plot(r.t, [v * 100 for v in r.tr], color=r.colour, lw=1.0, ls="--",
+                             alpha=0.7, label="%s — true" % r.label)
+        if any_data:
+            self.ax.legend(frameon=False, fontsize=9)
+        self.fig.tight_layout()
         self.canvas.draw_idle()
 
     def on_done(self, summary):
-        self.summary = summary
+        r = self.run
+        self._running = None
+        if r is not None:
+            r.summary = summary
         self._redraw_plot()
-        # Stop on the LAST frame, with the boxes where they finished. The preview is throttled,
-        # so the last frame PAINTED is not necessarily the last frame ANALYSED — read that final
-        # frame explicitly rather than leaving whichever one the throttle happened to allow.
         # The FRAME is the last one analysed — on a fracture run that is the broken specimen, and
         # it is the picture worth ending on. The BOXES are from the last frame that actually
-        # tracked, because after a fracture there is no honest position to draw.
-        if summary.rows and self.path:
+        # tracked, because after a fracture there is no honest position to draw. The preview is
+        # throttled, so the last frame PAINTED is not the last frame ANALYSED; read it explicitly.
+        if summary.rows and r is not None:
             end = summary.rows[-1]
-            pos = next((r for r in reversed(summary.rows) if r.ok), end)
-            g = PP.read_frame(self.path, end.idx)
+            pos = next((x for x in reversed(summary.rows) if x.ok), end)
+            g = PP.read_frame(r.path, end.idx)
             if g is not None:
                 self.view.play(g, pos.a, pos.b, self.boxHalf.value())
-                self._markers = []      # these are tracked positions, not detections to snap to
+                self._markers = []      # tracked positions, not detections to snap to
                 self._markers_frame = None
                 self.view.set_markers([])
-                if pos is not end:
-                    self.log.emit("[PostProc] showing the final frame (%d); the boxes are from "
-                                  "frame %d, the last one that tracked."
-                                  % (end.idx, pos.idx))
-        self.runBtn.setEnabled(True); self.stopBtn.setEnabled(False)
-        self.expBtn.setEnabled(bool(summary and summary.rows))
-        peak = max((v for v in self._e), default=0.0) * 100
-        msg = ("Done — %d frames, %d tracked (%.1f %%), %d re-seed(s). Px₀ %.2f px, peak strain "
-               "%.3f %%." % (summary.n, summary.tracked, summary.coverage, summary.reseeds,
-                             summary.l0_px, peak))
+        self.stopBtn.setEnabled(False)
+        self.runBtn.setEnabled(bool(r and r.ready))
+        peak = max((v for v in (r.e if r else [])), default=0.0) * 100
+        msg = ("%s — %d frames, %d tracked (%.1f %%), %d re-seed(s). Px₀ %.2f px, peak strain "
+               "%.3f %%." % (r.label if r else "?", summary.n, summary.tracked, summary.coverage,
+                             summary.reseeds, summary.l0_px, peak))
         self.status.setText(msg)
         self.log.emit("[PostProc] " + msg)
         if summary.coverage < 90:
             self.log.emit("[PostProc] coverage below 90 % — try a larger box, a wider search "
                           "window, or a lower minimum correlation.")
+        self._refresh_list()
+        # Back to back: the next queued video starts as soon as this one is drawn.
+        if self._queue:
+            self._next_in_queue()
 
     def on_failed(self, err):
+        self._running = None
         self.runBtn.setEnabled(True); self.stopBtn.setEnabled(False)
+        if self._queue:
+            self.log.emit("[PostProc] skipping to the next queued video after the failure")
+            self._next_in_queue()
+            return
         self.status.setText("failed: " + err)
         self.log.emit("[PostProc] FAILED: " + err)
         QMessageBox.warning(self, "Analysis failed", err)
 
     def on_export(self):
-        if not self.summary:
+        """Write one CSV per completed run, into a folder the operator picks.
+
+        One file each rather than a merged table: the runs have different frame rates, different
+        L0 and different lengths, so a single sheet would need padding or resampling — and a
+        resampled export is a derived product masquerading as data.
+        """
+        done = [r for r in self.runs if r.done]
+        if not done:
             return
-        base = os.path.splitext(os.path.basename(self.path))[0] + "_dic_postproc.csv"
-        path, _ = QFileDialog.getSaveFileName(self, "Save the analysis", base, "CSV (*.csv)")
-        if not path:
+        folder = QFileDialog.getExistingDirectory(self, "Choose a folder for the CSV files")
+        if not folder:
             return
-        try:
-            PP.to_csv(self.summary, path, source_video=self.path, cfg=self._cfg())
-            self.log.emit("[PostProc] wrote " + path)
-        except Exception as e:
-            QMessageBox.warning(self, "Could not write the CSV", str(e))
+        written = []
+        for r in done:
+            cfg = PP.Settings(gauge_mm=self.gauge.value(), box_half=r.box_half, search=r.search,
+                              min_corr=r.min_corr, ref_frame=r.ref_frame, fps=r.fps,
+                              step=r.step, refine=r.refine)
+            safe = "".join(c if c.isalnum() or c in "-_ " else "_" for c in r.label).strip()
+            out = os.path.join(folder, "%s_dic_postproc.csv" % (safe or "run"))
+            try:
+                PP.to_csv(r.summary, out, source_video=r.path, cfg=cfg)
+                written.append(os.path.basename(out))
+            except Exception as e:
+                QMessageBox.warning(self, "Could not write a CSV", "%s\n\n%s" % (out, e))
+        if written:
+            self.log.emit("[PostProc] wrote %d file(s) to %s: %s"
+                          % (len(written), folder, ", ".join(written)))
