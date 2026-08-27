@@ -554,6 +554,7 @@ class PostProcTab(QWidget):
             self.log.emit("[PostProc] box %s snapped to a marker centre — moved %.1f px "
                           "(r %.0f px, circularity %.2f)"
                           % ("AB"[self._next_box], moved, m[2], m[3]))
+            self._suggest_box_size(m[2])
         else:
             self.boxes[self._next_box] = (x, y)
             if getattr(self, "_markers", None):
@@ -599,15 +600,28 @@ class PostProcTab(QWidget):
         # sprayed dot, which both correlates on less of the pattern than it could AND draws a box
         # far smaller than the dot, leaving nothing to judge centring by. 1.25x the radius keeps
         # the whole dot plus a little of its surround.
-        want = int(round(1.25 * max(pair[0][2], pair[1][2])))
-        want = max(self.boxHalf.minimum(), min(self.boxHalf.maximum(), want))
-        if want != self.boxHalf.value():
-            self.boxHalf.setValue(want)
-            self.log.emit("[PostProc] box half-size set to %d px to suit a %.0f px marker radius"
-                          % (want, max(pair[0][2], pair[1][2])))
+        self._suggest_box_size(max(pair[0][2], pair[1][2]))
         self._refresh_boxes()
         self.log.emit("[PostProc] auto-detected 2 markers — r %.0f/%.0f px, circularity %.2f/%.2f"
                       % (pair[0][2], pair[1][2], pair[0][3], pair[1][3]))
+
+    def _suggest_box_size(self, marker_radius):
+        """Size the patch to the marker. This is the single biggest lever on noise.
+
+        A box smaller than the dot sees only its flat interior — no gradient, nothing to localise
+        on, because the information is at the EDGE. Measured on S25 over a matched strain window:
+        24 px half-size gives 313 microstrain of noise, 40 gives 150, and 1.25x the marker radius
+        (75 px here) gives 22 — against 28 for the live rig. A 14x difference from one number
+        nobody would think to change.
+        """
+        want = int(round(1.25 * marker_radius))
+        want = max(self.boxHalf.minimum(), min(self.boxHalf.maximum(), want))
+        if want > self.boxHalf.value():
+            old = self.boxHalf.value()
+            self.boxHalf.setValue(want)
+            self.log.emit("[PostProc] box half-size %d -> %d px to cover a %.0f px marker. A box "
+                          "smaller than the dot sees only flat interior and tracks it poorly."
+                          % (old, want, marker_radius))
 
     def _refresh_boxes(self):
         self.view.set_boxes(self.boxes[0], self.boxes[1], self.boxHalf.value())

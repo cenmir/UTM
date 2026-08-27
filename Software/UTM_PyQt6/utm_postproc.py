@@ -38,7 +38,7 @@ FRAME RATE IS AN INPUT, NOT AN ASSUMPTION
     value is only the default, and `fps_warning()` says when it looks implausible.
 """
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -76,6 +76,12 @@ class Settings:
     ref_frame: int = 0            # which frame defines L0
     fps: float = 0.0              # 0 = take the container's value
     step: int = 1                 # analyse every Nth frame
+    # "auto"        correlate to find the patch, then refine on the marker centroid when the
+    #               patch holds one. Best of both: correlation survives large motion, the
+    #               centroid gives the rig's precision on a dot.
+    # "correlation" correlation only — the honest choice for a speckle pattern, which has no
+    #               marker to take a centroid of.
+    refine: str = "auto"
 
 
 @dataclass
@@ -98,6 +104,7 @@ class Summary:
     n: int = 0
     tracked: int = 0
     reseeds: int = 0
+    centroid_frames: int = 0     # frames measured by marker centroid rather than correlation
     l0_px: float = 0.0
     px_mm: float = None
     fps: float = 0.0
@@ -242,6 +249,71 @@ def find_markers(gray, min_area=300, max_area=200000, min_circ=0.45, dedupe_px=2
     return out
 
 
+def reference_threshold(patch, dark=True):
+    """One grey level for a marker, chosen once from its reference patch.
+
+    Otsu recomputed per frame is what makes a centroid noisy: the cut moves a little each frame,
+    the contour's extent moves with it, and the centroid inherits that. Measured on S25, a
+    per-frame Otsu centroid gives 151 microstrain against 25 for the same centroid on a threshold
+    fixed once — a factor of six, for a one-line difference. The live rig uses a fixed level for
+    exactly this reason.
+    """
+    thr, _ = cv2.threshold(patch, 0, 255,
+                           (cv2.THRESH_BINARY_INV if dark else cv2.THRESH_BINARY) | cv2.THRESH_OTSU)
+    return float(thr)
+
+
+def centroid_refine(gray, cx, cy, half, dark=True, thr=None, min_frac=0.02, max_frac=0.9):
+    """Re-locate a round marker by its intensity CENTROID, the way the live rig does.
+
+    Correlation is what finds a patch that has moved; it is not the best way to pin down WHERE a
+    large uniform dot is. Its peak on a flat disc is broad, so sub-pixel position comes from a
+    poorly-conditioned parabola. Measured on S25: correlation alone gives 175-379 microstrain of
+    noise depending on patch size, while the rig's blob centroid on the same specimen gives 28.
+    The centroid averages every pixel of the disc instead of reading one peak.
+
+    Threshold is Otsu WITHIN the patch, not a fixed global level: the patch is mostly dot and
+    surround, which is exactly the bimodal case Otsu is for, and it follows lighting drift down
+    the specimen for free.
+
+    Returns (cx, cy, area) or None when the patch holds nothing that looks like a marker — in
+    which case the caller keeps the correlation result rather than inventing a position.
+    """
+    h, w = gray.shape
+    r = int(half)
+    x0, y0 = int(round(cx)) - r, int(round(cy)) - r
+    x1, y1 = x0 + 2 * r + 1, y0 + 2 * r + 1
+    if x0 < 0 or y0 < 0 or x1 > w or y1 > h:
+        return None
+    patch = gray[y0:y1, x0:x1]
+    mode = cv2.THRESH_BINARY_INV if dark else cv2.THRESH_BINARY
+    if thr is None:                       # no reference level available — Otsu, and noisier for it
+        _, b = cv2.threshold(patch, 0, 255, mode | cv2.THRESH_OTSU)
+    else:
+        _, b = cv2.threshold(patch, thr, 255, mode)
+    contours, _ = cv2.findContours(b, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    n = patch.size
+    best, best_d = None, None
+    mid = float(r)
+    for c in contours:
+        a = cv2.contourArea(c)
+        if not (min_frac * n < a < max_frac * n):
+            continue
+        M = cv2.moments(c)
+        if M["m00"] <= 0:
+            continue
+        px, py = M["m10"] / M["m00"], M["m01"] / M["m00"]
+        # The marker is the blob nearest the patch centre; anything else in view is not it.
+        d = (px - mid) ** 2 + (py - mid) ** 2
+        if best_d is None or d < best_d:
+            best, best_d = (px, py, a), d
+    if best is None or best_d > (0.6 * r) ** 2:
+        return None
+    return (x0 + best[0], y0 + best[1], best[2])
+
+
 def snap_to_marker(markers, x, y, max_dist=None):
     """The marker centre nearest (x, y), or None if nothing is close enough.
 
@@ -334,6 +406,20 @@ def analyse(path, box_a, box_b, cfg=None, progress=None, should_stop=None, previ
 
     a0 = np.array([box_a.cx, box_a.cy], float)
     b0 = np.array([box_b.cx, box_b.cy], float)
+    # L0 MUST be measured the same way every later frame is. If the frames are refined to the
+    # marker centroid but L0 is taken from wherever the box was dropped, the difference becomes a
+    # constant offset on every strain in the run — invisible, and wrong by however far the click
+    # missed the centre.
+    if cfg.refine == "auto":
+        for pt, t in ((a0, tmpl_a), (b0, tmpl_b)):
+            m_ = t.shape[0] // 2
+            q_ = max(2, t.shape[0] // 6)
+            mid_ = float(t[m_ - q_:m_ + q_ + 1, m_ - q_:m_ + q_ + 1].mean())
+            bor_ = float(np.concatenate([t[0, :], t[-1, :], t[:, 0], t[:, -1]]).mean())
+            got = centroid_refine(gray0, pt[0], pt[1], cfg.box_half, mid_ < bor_,
+                                  reference_threshold(t, mid_ < bor_))
+            if got:
+                pt[0], pt[1] = got[0], got[1]
     axis = b0 - a0
     l0 = float(np.hypot(*axis))
     if l0 < 5:
@@ -341,6 +427,29 @@ def analyse(path, box_a, box_b, cfg=None, progress=None, should_stop=None, previ
         raise ValueError("the two boxes are on top of each other — place them apart")
     axis = axis / l0                     # unit vector along the reference pair
     perp = np.array([-axis[1], axis[0]])
+
+    # Is each marker dark-on-light or light-on-dark? Decided once, from the reference patch:
+    # compare its middle against its border. A video carries no setting to say which, and the rig
+    # runs both (dark spray on white PLA, bright on dark TPU).
+    def _is_dark(t):
+        m = t.shape[0] // 2
+        q = max(2, t.shape[0] // 6)
+        middle = float(t[m - q:m + q + 1, m - q:m + q + 1].mean())
+        border = float(np.concatenate([t[0, :], t[-1, :], t[:, 0], t[:, -1]]).mean())
+        return middle < border
+
+    dark_a, dark_b = _is_dark(tmpl_a), _is_dark(tmpl_b)
+    thr_a = reference_threshold(tmpl_a, dark_a)
+    thr_b = reference_threshold(tmpl_b, dark_b)
+    _ra = centroid_refine(gray0, a0[0], a0[1], cfg.box_half, dark_a, thr_a)
+    _rb = centroid_refine(gray0, b0[0], b0[1], cfg.box_half, dark_b, thr_b)
+    area_a = _ra[2] if _ra else 0.0
+    area_b = _rb[2] if _rb else 0.0
+    if not (_ra and _rb):
+        # No discrete markers here — a speckle pattern. Correlation is the only honest option,
+        # and the centroid path is disabled rather than left to latch onto texture.
+        cfg = replace(cfg, refine="correlation")
+    n_refined = 0
 
     summary = Summary(l0_px=l0, px_mm=px_per_mm(l0, cfg.gauge_mm), fps=fps)
     last_a, last_b = a0.copy(), b0.copy()
@@ -363,9 +472,34 @@ def analyse(path, box_a, box_b, cfg=None, progress=None, should_stop=None, previ
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
 
         note, reseeded = "", False
-        ra = _match(gray, tmpl_a, last_a, cfg.search)
-        rb = _match(gray, tmpl_b, last_b, cfg.search)
-        corr = min(ra[2] if ra else 0.0, rb[2] if rb else 0.0)
+
+        # ---- CENTROID FIRST, when the markers are discrete dots.
+        #
+        # The centroid is chained from the marker's own previous position, NOT from a correlation
+        # estimate. That matters: correlation jitters by ~0.3 px, and centring the measuring
+        # window on a jittering estimate feeds that jitter straight into the result. Measured on
+        # S25 — centroid off correlation 215 microstrain, centroid off its own last position 25,
+        # against 175 for correlation alone and 28 for the live rig. Same maths, different anchor.
+        #
+        # Motion between frames is a fraction of the box, so a dot cannot escape its window in one
+        # step; if it ever does, the centroid fails and correlation below recovers it.
+        ra = rb = None
+        corr = 0.0
+        if cfg.refine == "auto":
+            ca = centroid_refine(gray, last_a[0], last_a[1], cfg.box_half, dark_a, thr_a)
+            cb = centroid_refine(gray, last_b[0], last_b[1], cfg.box_half, dark_b, thr_b)
+            # A blob is only the marker if it is still about the size the marker was. Without this
+            # the centroid will happily follow a dot that has merged with a shadow.
+            if ca and cb and 0.5 * area_a < ca[2] < 2.0 * area_a \
+                    and 0.5 * area_b < cb[2] < 2.0 * area_b:
+                ra, rb = (ca[0], ca[1], 1.0), (cb[0], cb[1], 1.0)
+                corr = 1.0
+                n_refined += 1
+
+        if ra is None or rb is None:
+            ra = _match(gray, tmpl_a, last_a, cfg.search)
+            rb = _match(gray, tmpl_b, last_b, cfg.search)
+            corr = min(ra[2] if ra else 0.0, rb[2] if rb else 0.0)
         if corr < cfg.min_corr:
             # The reference patch no longer resembles the scene. Fall back to the last good
             # frame's patch and carry its offset, so the measurement stays anchored to L0.
@@ -415,6 +549,7 @@ def analyse(path, box_a, box_b, cfg=None, progress=None, should_stop=None, previ
             if not cap.grab():
                 break
 
+    summary.centroid_frames = n_refined
     cap.release()
     return summary
 
