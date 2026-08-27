@@ -474,6 +474,18 @@ class PostProcTab(QWidget):
         self.fileLbl = QLabel("no video loaded"); self.fileLbl.setStyleSheet("color:#8a8f98;")
         lv.addWidget(self.fileLbl)
 
+        # ---- the separation, live, directly above the specimen it is measured from.
+        # Px0 and the current L are the two numbers the whole measurement reduces to, and seeing
+        # them move while the specimen stretches is what makes the tracking believable — a strain
+        # trace alone gives no way to tell a real 2 % from a marker that has quietly slipped.
+        self.pxLbl = QLabel("Px₀ —    L —    ΔL —    ε —")
+        self.pxLbl.setStyleSheet(
+            "background:#161a1f; border:1px solid #2b3138; border-radius:3px; padding:4px 6px;"
+            "color:#c9d1d9; font-family:Consolas,'DejaVu Sans Mono',monospace; font-size:11px;")
+        self.pxLbl.setToolTip("Px₀ is the separation frozen at the reference frame. L is the "
+                              "separation right now. Strain is (L − Px₀)/Px₀ — nothing else.")
+        lv.addWidget(self.pxLbl)
+
         self.view = FrameView()
         self.view.clicked.connect(self.on_click)
         self.view.moved.connect(self.on_box_moved)
@@ -482,10 +494,24 @@ class PostProcTab(QWidget):
 
         fr = QHBoxLayout()
         fr.addWidget(QLabel("Reference frame"))
+        # Scrub the video without analysing it — for choosing a reference frame, checking that the
+        # markers survive the whole pull before committing to a run, and seeing where a video ends.
+        self.playPauseBtn = QPushButton("▶")
+        self.playPauseBtn.setFixedWidth(30)
+        self.playPauseBtn.setToolTip("Play / pause the video. This only scrubs frames — it does "
+                                     "not measure anything.")
+        self.playPauseBtn.setEnabled(False)
+        self.playPauseBtn.clicked.connect(self.on_play_pause)
+        self.stopPlayBtn = QPushButton("■")
+        self.stopPlayBtn.setFixedWidth(30)
+        self.stopPlayBtn.setToolTip("Stop and return to the reference frame.")
+        self.stopPlayBtn.setEnabled(False)
+        self.stopPlayBtn.clicked.connect(self.on_stop_play)
         self.frameSlider = QSlider(Qt.Orientation.Horizontal)
         self.frameSlider.setEnabled(False)
         self.frameSlider.valueChanged.connect(self.on_ref_frame)
         self.frameLbl = QLabel("0")
+        fr.addWidget(self.playPauseBtn); fr.addWidget(self.stopPlayBtn)
         fr.addWidget(self.frameSlider, 1); fr.addWidget(self.frameLbl)
         lv.addLayout(fr)
 
@@ -573,8 +599,13 @@ class PostProcTab(QWidget):
         self.stopBtn.clicked.connect(self.on_stop)
         self.expBtn = QPushButton("Export CSV"); self.expBtn.setEnabled(False)
         self.expBtn.clicked.connect(self.on_export)
+        self.reportBtn = QPushButton("Generate report"); self.reportBtn.setEnabled(False)
+        self.reportBtn.setToolTip("One page carrying the plot, the results table and the settings "
+                                  "behind them, as PDF and PNG — plus the table and every run's "
+                                  "per-frame data as CSV, in a folder you choose.")
+        self.reportBtn.clicked.connect(self.on_report)
         rr.addWidget(self.runBtn); rr.addWidget(self.runAllBtn)
-        rr.addWidget(self.stopBtn); rr.addWidget(self.expBtn)
+        rr.addWidget(self.stopBtn); rr.addWidget(self.expBtn); rr.addWidget(self.reportBtn)
         lv.addLayout(rr)
         self.bar = QProgressBar(); self.bar.setValue(0)
         lv.addWidget(self.bar)
@@ -724,9 +755,99 @@ class PostProcTab(QWidget):
         self.runAllBtn.setEnabled(pending > 0 and not self._busy())
         self.runAllBtn.setText("Run all pending (%d)" % pending if pending else "Run all pending")
         self.expBtn.setEnabled(any(r.done for r in self.runs))
+        self.reportBtn.setEnabled(any(r.done for r in self.runs))
 
     def _busy(self):
         return bool(self.worker and self.worker.isRunning())
+
+    # ------------------------------------------------------------------ scrub playback
+    def _ensure_play_timer(self):
+        if getattr(self, "_playTimer", None) is None:
+            from PyQt6.QtCore import QTimer
+            self._playTimer = QTimer(self)
+            self._playTimer.timeout.connect(self._play_tick)
+            self._play_at = 0
+        return self._playTimer
+
+    def on_play_pause(self):
+        """Scrub the video. Deliberately NOT an analysis — nothing is measured while it plays.
+
+        Its job is letting the operator see whether the markers survive the whole pull before
+        spending a run on it, and find a sensible reference frame.
+        """
+        if self.run is None or self._busy():
+            return
+        t = self._ensure_play_timer()
+        if t.isActive():
+            t.stop()
+            self.playPauseBtn.setText("▶")
+            return
+        self._play_at = self.frameSlider.value()
+        self._play_from = self.frameSlider.value()
+        # Real time where the frame rate is known, capped so a 200 fps file does not thrash the UI.
+        fps = max(1.0, min(60.0, self.fps.value() or 25.0))
+        t.start(int(1000.0 / fps))
+        self.playPauseBtn.setText("❚❚")
+        self.stopPlayBtn.setEnabled(True)
+
+    def _play_tick(self):
+        r = self.run
+        if r is None:
+            self.on_stop_play(); return
+        self._play_at += max(1, self.step.value())
+        if self._play_at >= r.info["frames"]:
+            self.on_stop_play(); return
+        g = PP.read_frame(r.path, self._play_at)
+        if g is None:
+            self.on_stop_play(); return
+        self.view.set_frame(g)
+        self.frameLbl.setText("%d  (playing)" % self._play_at)
+        self._update_px_label(frame_idx=self._play_at)
+
+    def on_stop_play(self):
+        t = getattr(self, "_playTimer", None)
+        if t is not None:
+            t.stop()
+        self.playPauseBtn.setText("▶")
+        self.stopPlayBtn.setEnabled(False)
+        if self.run is not None:
+            # Back to the reference frame: that is the one the boxes belong to.
+            self.frameLbl.setText(str(self.frameSlider.value()))
+            self._show_frame(self.frameSlider.value())
+
+    # ------------------------------------------------------------------ live pixel readout
+    def _update_px_label(self, l_px=None, frame_idx=None, corr=None):
+        """Px₀ and the separation right now, above the specimen.
+
+        Called from three places: when boxes move (the reference value), every analysed frame
+        (the measured value), and while scrubbing (where only Px₀ is known — the label says so
+        rather than showing a stale L from a previous run).
+        """
+        r = self.run
+        if r is None or not r.ready:
+            self.pxLbl.setText("Px₀ —    L —    ΔL —    ε —")
+            return
+        a, b = r.boxes
+        l0 = float(np.hypot(b[0] - a[0], b[1] - a[1]))
+        # The RUN's L0, not the raw box separation, once one is known. analyse() refines the
+        # reference by centroid exactly as it does every frame, so the two differ by a fraction of
+        # a pixel — enough to show a non-zero ΔL on the first frame of a run, which reads as the
+        # specimen already being strained. Recovered exactly from the pair: L0 = L / (1 + cauchy).
+        if l_px is not None and self._e:
+            c0 = self._e[-1]
+            if c0 > -1.0:
+                l0 = l_px / (1.0 + c0)
+        elif r.summary is not None and r.summary.l0_px:
+            l0 = r.summary.l0_px
+        if l_px is None:
+            tail = "L —    ΔL —    ε —" if frame_idx is not None else \
+                   "L = Px₀ at the reference frame"
+            self.pxLbl.setText("Px₀ = %8.2f px    %s" % (l0, tail))
+            return
+        d = l_px - l0
+        self.pxLbl.setText("Px₀ = %8.2f px    L = %8.2f px    ΔL = %+7.2f px    ε = %+7.4f %%%s"
+                           % (l0, l_px, d, 100.0 * d / l0 if l0 else 0.0,
+                              "" if corr is None else "    corr %.2f" % corr))
 
     # ------------------------------------------------------------------ results table
     def _table_rows(self):
@@ -810,6 +931,47 @@ class PostProcTab(QWidget):
         except Exception as e:
             QMessageBox.warning(self, "Could not write the table", str(e))
 
+    def _run_dicts(self):
+        """The completed runs in the plain form utm_postproc.build_report wants.
+
+        An adapter rather than passing Run objects: utm_postproc must stay free of Qt so it can
+        be tested and scripted without a display.
+        """
+        out = []
+        for r in self.runs:
+            if not r.done:
+                continue
+            out.append({"label": r.label, "colour": r.colour, "path": r.path,
+                        "t": r.t, "e": r.e, "tr": r.tr, "summary": r.summary,
+                        "cfg": PP.Settings(gauge_mm=self.gauge.value(), box_half=r.box_half,
+                                           search=r.search, min_corr=r.min_corr,
+                                           ref_frame=r.ref_frame, fps=r.fps, step=r.step,
+                                           refine=r.refine)})
+        return out
+
+    def on_report(self):
+        runs = self._run_dicts()
+        if not runs:
+            return
+        folder = QFileDialog.getExistingDirectory(self, "Choose a folder for the report")
+        if not folder:
+            return
+        try:
+            files = PP.build_report(runs, folder,
+                                    title="DIC post-processing — %s"
+                                          % " vs ".join(r["label"] for r in runs),
+                                    note="%d run(s)" % len(runs))
+        except Exception as e:
+            QMessageBox.warning(self, "Could not build the report", str(e))
+            return
+        self.log.emit("[PostProc] report written to %s:" % folder)
+        for f in files:
+            self.log.emit("           " + os.path.basename(f))
+        QMessageBox.information(
+            self, "Report written",
+            "%d file(s) in:\n%s\n\n%s"
+            % (len(files), folder, "\n".join(os.path.basename(f) for f in files)))
+
     def on_save_plot(self):
         path, _ = QFileDialog.getSaveFileName(
             self, "Save the plot", "dic_strain_vs_time.png",
@@ -858,6 +1020,7 @@ class PostProcTab(QWidget):
             self.fileLbl.setText("%s — %d frames, %dx%d"
                                  % (r.info["name"], r.info["frames"], r.info["w"], r.info["h"]))
             self.frameSlider.setEnabled(True)
+            self.playPauseBtn.setEnabled(True)
             self.frameSlider.blockSignals(True)
             self.frameSlider.setRange(0, max(0, r.info["frames"] - 1))
             self.frameSlider.setValue(r.ref_frame)
@@ -1028,9 +1191,11 @@ class PostProcTab(QWidget):
             self.l0Lbl.setText("Px₀ = %.2f px    →    %.4f px/mm at %.2f mm"
                                % (l0, ppm, self.gauge.value()))
             self.runBtn.setEnabled(self.path is not None and not (self.worker and self.worker.isRunning()))
+            self._update_px_label()
         else:
             self.l0Lbl.setText("place two boxes to set Px₀")
             self.runBtn.setEnabled(False)
+            self._update_px_label()
 
     def _cfg(self):
         return PP.Settings(gauge_mm=self.gauge.value(), box_half=self.boxHalf.value(),
@@ -1045,6 +1210,8 @@ class PostProcTab(QWidget):
         self._store_widgets()
         r.t, r.e, r.tr, r.summary = [], [], [], None
         a, b = r.boxes
+        self.on_stop_play()                    # scrubbing and measuring must not share the file
+        self.playPauseBtn.setEnabled(False)
         self.runBtn.setEnabled(False); self.runAllBtn.setEnabled(False)
         self.stopBtn.setEnabled(True)
         cfg = self._cfg()
@@ -1106,6 +1273,7 @@ class PostProcTab(QWidget):
         cur = self.run
         if r.ok and cur is not None:
             cur.t.append(r.t); cur.e.append(r.cauchy); cur.tr.append(r.true)
+            self._update_px_label(l_px=r.l_px, corr=r.corr)
         self.status.setText(
             "frame %d   t %.2f s   L %s px   ε %s   corr %.2f%s"
             % (r.idx, r.t,
@@ -1166,6 +1334,7 @@ class PostProcTab(QWidget):
                 self._markers_frame = None
                 self.view.set_markers([])
         self.stopBtn.setEnabled(False)
+        self.playPauseBtn.setEnabled(bool(r))
         self.runBtn.setEnabled(bool(r and r.ready))
         peak = max((v for v in (r.e if r else [])), default=0.0) * 100
         msg = ("%s — %d frames, %d tracked (%.1f %%), %d re-seed(s). Px₀ %.2f px, peak strain "

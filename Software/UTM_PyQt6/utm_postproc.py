@@ -38,6 +38,7 @@ FRAME RATE IS AN INPUT, NOT AN ASSUMPTION
     value is only the default, and `fps_warning()` says when it looks implausible.
 """
 import os
+import time
 from dataclasses import dataclass, field, replace
 
 import numpy as np
@@ -672,8 +673,19 @@ def to_csv(summary, path, source_video="", cfg=None):
                 % (cfg.box_half, cfg.search, cfg.min_corr))
         f.write("# Frames analysed: %d   tracked: %d (%.1f %%)   re-seeds: %d\n"
                 % (summary.n, summary.tracked, summary.coverage, summary.reseeds))
-        f.write("# Strain is (L - L0)/L0 via utm_dic.dic_strain - the same function the live rig uses.\n#\n")
-        f.write("Frame,Time_s,Ax,Ay,Bx,By,L_px,dx_px,DIC_Cauchy,DIC_True,Correlation,Tracked,Note\n")
+        f.write("# DIC_Cauchy    = (L - L0)/L0   engineering strain\n")
+        f.write("# DIC_LogStrain = ln(L / L0)    log / Hencky strain (the rig's CSVs call this\n")
+        f.write("#                 DIC_True, which is the same quantity under a misleading name:\n")
+        f.write("#                 it needs only the markers, not the cross-section)\n")
+        f.write("# Both via utm_dic.dic_strain - the same function the live rig uses.\n#\n")
+        # DIC_LogStrain, not "DIC_True". The rig's own CSVs call this column DIC_True and keep
+        # that name for backward compatibility with every test since S1 — but the name has always
+        # been misleading. It is ln(L/L0): a KINEMATIC quantity needing nothing but the two
+        # markers. What genuinely cannot be measured on this rig is true (Cauchy) STRESS, which
+        # needs the current cross-section. Nothing reads this export's header, so it is named for
+        # what it actually is.
+        f.write("Frame,Time_s,Ax,Ay,Bx,By,L_px,dx_px,DIC_Cauchy,DIC_LogStrain,"
+                "Correlation,Tracked,Note\n")
         for r in summary.rows:
             f.write("%d,%.4f,%.3f,%.3f,%.3f,%.3f,%s,%s,%s,%s,%.4f,%d,%s\n"
                     % (r.idx, r.t, r.a[0], r.a[1], r.b[0], r.b[1],
@@ -683,3 +695,125 @@ def to_csv(summary, path, source_video="", cfg=None):
                        "" if r.true != r.true else "%.8f" % r.true,
                        r.corr, 1 if r.ok else 0, r.note.replace(",", ";")))
     return path
+
+
+# ===================================================================================
+#  Report — one page carrying the plot, the numbers and their provenance.
+#
+#  Deliberately self-contained: a report that needs the app open to be understood is
+#  not a record. Everything on the page was computed from the videos named on it.
+# ===================================================================================
+BLUE, GREY = "#1f77b4", "#555555"
+
+
+def build_report(runs, out_dir, title="DIC post-processing", note=""):
+    """Write a one-page PDF+PNG comparing every completed run, plus a CSV of the table.
+
+    `runs` is a list of dicts: {label, colour, path, t, e, tr, summary, cfg}. The tab hands its
+    own Run objects through a small adapter rather than this module importing Qt.
+
+    Returns the list of files written. PDF first, because it is the one that stays sharp in a
+    document; the PNG is for pasting into a message.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    matplotlib.rcParams["pdf.fonttype"] = 42        # embedded TrueType: selectable, editable text
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    runs = [r for r in runs if r.get("t")]
+    if not runs:
+        raise ValueError("no completed runs to report")
+    os.makedirs(out_dir, exist_ok=True)
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    stem = os.path.join(out_dir, "dic_postproc_%s" % stamp)
+
+    fig = Figure(figsize=(11.69, 8.27))             # A4 landscape
+    FigureCanvasAgg(fig)
+    fig.patch.set_facecolor("white")
+
+    fig.text(0.035, 0.960, title, fontsize=17, fontweight="bold")
+    fig.text(0.035, 0.934,
+             "Strain from recorded video. Marker separation in pixels -> strain via "
+             "utm_dic.dic_strain, the same function the live rig uses.",
+             fontsize=9.2, color=GREY)
+    fig.text(0.035, 0.916, time.strftime("%Y-%m-%d %H:%M") + ("   ·   " + note if note else ""),
+             fontsize=8.6, color=GREY)
+
+    # ---- the plot. Left 55 % of the page; the table owns the right.
+    ax = fig.add_axes([0.06, 0.46, 0.47, 0.42])
+    for r in runs:
+        ax.plot(r["t"], [v * 100 for v in r["e"]], color=r["colour"], lw=1.6, label=r["label"])
+    ax.set_xlabel("time (s)"); ax.set_ylabel("DIC strain (%)")
+    ax.set_title("DIC strain vs time", fontsize=11)
+    ax.grid(alpha=0.3)
+    ax.legend(frameon=False, fontsize=9)
+
+    # ---- what each run is, two short lines each so nothing reaches the table's column
+    y = 0.395
+    fig.text(0.06, y, "Runs", fontsize=11, fontweight="bold"); y -= 0.030
+    for r in runs:
+        s_ = r["summary"]
+        fig.text(0.062, y, "■", fontsize=11, color=r["colour"])
+        fig.text(0.082, y, "%s — %s" % (r["label"], os.path.basename(r["path"])),
+                 fontsize=9, fontweight="bold")
+        y -= 0.024
+        fig.text(0.082, y, "%d of %d frames tracked (%.1f %%)   ·   Px0 %.2f px   ·   %.4f fps"
+                 % (s_.tracked, s_.n, s_.coverage, s_.l0_px, s_.fps), fontsize=8.4, color=GREY)
+        y -= 0.022
+        fig.text(0.082, y, "peak %.3f %% engineering   ·   %.3f %% log   ·   %s"
+                 % (max(r["e"]) * 100, max(r["tr"]) * 100, r["cfg"].refine),
+                 fontsize=8.4, color=GREY)
+        y -= 0.034
+
+    # ---- the table, as text so it stays selectable in the PDF
+    rows = report_table(runs)
+    x0, y0 = 0.575, 0.885
+    pw = 0.145                                     # parameter column
+    avail = 0.985 - x0 - pw
+    colw = avail / max(1, len(rows[0]) - 1)
+    fig.text(x0, y0 + 0.026, "Results", fontsize=11, fontweight="bold")
+    for ri, row in enumerate(rows):
+        yy = y0 - ri * 0.0232
+        head = (ri == 0)
+        fig.text(x0, yy, row[0], fontsize=7.4, color="#222" if head else GREY,
+                 fontweight="bold" if head else "normal")
+        for ci, val in enumerate(row[1:]):
+            fig.text(x0 + pw + ci * colw, yy, str(val), fontsize=7.4,
+                     color=runs[ci]["colour"], fontweight="bold" if head else "normal")
+
+    out = []
+    for ext, kw in ((".pdf", {}), (".png", {"dpi": 160})):
+        p = stem + "_report" + ext
+        fig.savefig(p, facecolor="white", **kw)
+        out.append(p)
+
+    # the same table as data, so nobody has to retype it out of a PDF
+    tcsv = stem + "_results.csv"
+    with open(tcsv, "w", encoding="utf-8", newline="") as f:
+        import csv as _csv
+        w = _csv.writer(f)
+        w.writerow(["# UTM DIC post-processing results", time.strftime("%Y-%m-%d %H:%M")])
+        w.writerow([])
+        for row in rows:
+            w.writerow(row)
+    out.append(tcsv)
+
+    # and every run's per-frame data beside it
+    for r in runs:
+        safe = "".join(c if c.isalnum() or c in "-_ " else "_" for c in r["label"]).strip()
+        p = "%s_%s.csv" % (stem, safe or "run")
+        to_csv(r["summary"], p, source_video=r["path"], cfg=r["cfg"])
+        out.append(p)
+    return out
+
+
+def report_table(runs):
+    """The comparison table as rows: parameters down the side, one column per run."""
+    cols = [metrics(r["summary"], r["cfg"], label=r["label"], source_video=r["path"])
+            for r in runs]
+    names = [n for n, _ in cols[0]]
+    rows = [["Parameter"] + [r["label"] for r in runs]]
+    for i, n in enumerate(names):
+        rows.append([n] + [(c[i][1] if i < len(c) else "-") for c in cols])
+    return rows
