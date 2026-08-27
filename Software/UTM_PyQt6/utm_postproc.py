@@ -596,6 +596,67 @@ def analyse(path, box_a, box_b, cfg=None, progress=None, should_stop=None, previ
     return summary
 
 
+def metrics(summary, cfg=None, label="", source_video=""):
+    """Headline numbers for one analysed video, as an ordered list of (name, value) pairs.
+
+    Two of these are worth more than the rest for comparing instruments, and both follow the
+    convention this project's deck already uses so the numbers are directly comparable with the
+    MOT extensometer slides:
+
+      STRAIN RATE and NOISE are measured over the 0.05-0.35 % strain window. That window is
+      small and nearly straight, so a straight-line fit leaves NOISE rather than model error.
+      Detrending a whole fracture curve with a polynomial measures how badly the polynomial fits,
+      which is a mistake that has already been made once in this project.
+
+    Settings are included because provenance matters: a peak strain means nothing without the
+    frame rate, box size and method that produced it.
+    """
+    cfg = cfg or Settings()
+    ok = [r for r in summary.rows if r.ok]
+    out = [("Label", label or "-"),
+           ("Video", os.path.basename(source_video) if source_video else "-")]
+    if not ok:
+        out.append(("Result", "nothing tracked"))
+        return out
+    L = np.array([r.l_px for r in ok], float)
+    e = np.array([r.cauchy for r in ok], float)
+    et = np.array([r.true for r in ok], float)
+    t = np.array([r.t for r in ok], float)
+
+    rate = noise = float("nan")
+    m = (e >= 0.0005) & (e <= 0.0035)
+    if m.sum() >= 20:
+        sl, ic = np.polyfit(t[m], e[m], 1)
+        rate = float(sl)
+        noise = float((L[m] - np.polyval(np.polyfit(np.arange(m.sum()), L[m], 1),
+                                         np.arange(m.sum()))).std() / summary.l0_px * 1e6)
+    span = t[-1] - t[0]
+    out += [
+        ("Frames analysed", "%d" % summary.n),
+        ("Frames tracked", "%d  (%.1f %%)" % (summary.tracked, summary.coverage)),
+        ("Measured by centroid", "%d" % summary.centroid_frames),
+        ("Re-seeds", "%d" % summary.reseeds),
+        ("Duration", "%.2f s" % span),
+        ("Frame rate used", "%.4f fps" % summary.fps),
+        ("Px0 (L0)", "%.2f px" % summary.l0_px),
+        ("Gauge", "%.2f mm" % cfg.gauge_mm),
+        ("px per mm", ("%.4f" % summary.px_mm) if summary.px_mm else "-"),
+        ("L at peak", "%.2f px" % L.max()),
+        ("Peak strain (engineering)", "%.4f %%" % (e.max() * 100)),
+        ("Peak strain (true/log)", "%.4f %%" % (et.max() * 100)),
+        ("Mean rate over the run", "%.3e /s" % ((e[-1] - e[0]) / span) if span > 0 else "-"),
+        ("Strain rate, 0.05-0.35 %", ("%.3e /s" % rate) if rate == rate else "too few points"),
+        ("Noise, 0.05-0.35 %", ("%.1f ue" % noise) if noise == noise else "too few points"),
+        ("Tracking method", cfg.refine),
+        ("Box half-size", "%d px" % cfg.box_half),
+        ("Search window", "%d px" % cfg.search),
+        ("Min correlation", "%.2f" % cfg.min_corr),
+        ("Reference frame", "%d" % cfg.ref_frame),
+        ("Analysed every", "%d frame(s)" % cfg.step),
+    ]
+    return out
+
+
 def to_csv(summary, path, source_video="", cfg=None):
     """Write the run out in the same spirit as the rig's CSV: a header that says how, then rows."""
     cfg = cfg or Settings()

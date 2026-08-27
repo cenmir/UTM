@@ -38,7 +38,8 @@ from PyQt6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
                              QFileDialog, QDoubleSpinBox, QSpinBox, QGroupBox, QSplitter,
                              QProgressBar, QMessageBox, QSlider, QCheckBox, QComboBox,
-                             QListWidget, QListWidgetItem, QInputDialog)
+                             QListWidget, QListWidgetItem, QInputDialog,
+                             QTableWidget, QTableWidgetItem)
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -581,20 +582,52 @@ class PostProcTab(QWidget):
         self.status.setStyleSheet("color:#c9d1d9;")
         lv.addWidget(self.status)
 
-        # ---- RIGHT: the answer
-        right = QWidget(); rv = QVBoxLayout(right); rv.setContentsMargins(6, 6, 6, 6)
+        # ---- RIGHT: the answer — plot above, the numbers behind it below.
+        # A vertical splitter rather than a fixed split: on a short screen the table can be
+        # collapsed away entirely, and when comparing six runs it can be pulled up instead.
+        right = QSplitter(Qt.Orientation.Vertical)
+
+        plotBox = QWidget(); rv = QVBoxLayout(plotBox); rv.setContentsMargins(6, 6, 6, 6)
         self.fig = Figure(figsize=(6, 5))
         self.canvas = FigureCanvas(self.fig)
         self.ax = self.fig.add_subplot(111)
         self._reset_plot()
         rv.addWidget(self.canvas, 1)
+        prow = QHBoxLayout()
         self.showTrue = QCheckBox("also plot true (log) strain")
         self.showTrue.stateChanged.connect(lambda *_: self._redraw_plot())
-        rv.addWidget(self.showTrue)
+        self.savePlotBtn = QPushButton("Save plot…")
+        self.savePlotBtn.setToolTip("Write the plot exactly as shown to PNG, PDF or SVG. "
+                                    "PDF and SVG stay sharp at any size — use them for a report.")
+        self.savePlotBtn.clicked.connect(self.on_save_plot)
+        prow.addWidget(self.showTrue, 1); prow.addWidget(self.savePlotBtn)
+        rv.addLayout(prow)
+        right.addWidget(plotBox)
+
+        tableBox = QWidget(); tv = QVBoxLayout(tableBox); tv.setContentsMargins(6, 0, 6, 6)
+        hdr = QHBoxLayout()
+        hdr.addWidget(QLabel("Results — one column per run"))
+        hdr.addStretch(1)
+        self.copyBtn = QPushButton("Copy table")
+        self.copyBtn.setToolTip("Copy as tab-separated text — pastes straight into Excel.")
+        self.copyBtn.clicked.connect(self.on_copy_table)
+        self.saveTableBtn = QPushButton("Save table…")
+        self.saveTableBtn.clicked.connect(self.on_save_table)
+        hdr.addWidget(self.copyBtn); hdr.addWidget(self.saveTableBtn)
+        tv.addLayout(hdr)
+        self.table = QTableWidget(0, 0)
+        self.table.setAlternatingRowColors(True)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        self.table.verticalHeader().setVisible(False)
+        tv.addWidget(self.table, 1)
+        right.addWidget(tableBox)
+        right.setStretchFactor(0, 3); right.setStretchFactor(1, 2)
 
         split.addWidget(left); split.addWidget(right)
         split.setStretchFactor(0, 3); split.setStretchFactor(1, 4)
         lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.addWidget(split)
+        self._refresh_table()
 
     def _want_true(self):
         """The checkbox is built after the axes, so this must survive not existing yet."""
@@ -695,6 +728,102 @@ class PostProcTab(QWidget):
     def _busy(self):
         return bool(self.worker and self.worker.isRunning())
 
+    # ------------------------------------------------------------------ results table
+    def _table_rows(self):
+        """[[header...], [row...], ...] — parameters down the side, one column per completed run.
+
+        This orientation because the table is read on screen to compare a handful of runs, and a
+        human compares two numbers faster side by side than down a long column. Copy and Save emit
+        exactly what is shown, so a pasted table matches the screen.
+        """
+        done = [r for r in self.runs if r.done]
+        if not done:
+            return []
+        cols = []
+        for r in done:
+            cfg = PP.Settings(gauge_mm=self.gauge.value(), box_half=r.box_half, search=r.search,
+                              min_corr=r.min_corr, ref_frame=r.ref_frame, fps=r.fps,
+                              step=r.step, refine=r.refine)
+            cols.append(PP.metrics(r.summary, cfg, label=r.label, source_video=r.path))
+        names = [n for n, _ in cols[0]]
+        rows = [["Parameter"] + [r.label for r in done]]
+        for i, n in enumerate(names):
+            rows.append([n] + [(c[i][1] if i < len(c) else "-") for c in cols])
+        return rows
+
+    def _refresh_table(self):
+        rows = self._table_rows()
+        self.table.clear()
+        if not rows:
+            self.table.setRowCount(0); self.table.setColumnCount(0)
+            for b in (self.copyBtn, self.saveTableBtn):
+                b.setEnabled(False)
+            return
+        hdr, body = rows[0], rows[1:]
+        self.table.setColumnCount(len(hdr))
+        self.table.setRowCount(len(body))
+        self.table.setHorizontalHeaderLabels(hdr)
+        done = [r for r in self.runs if r.done]
+        for ri, row in enumerate(body):
+            for ci, val in enumerate(row):
+                it = QTableWidgetItem(str(val))
+                if ci == 0:
+                    it.setForeground(QColor("#8a8f98"))
+                else:
+                    # Colour each column to its trace, so a column and a curve are obviously the
+                    # same run without reading the header.
+                    it.setForeground(QColor(done[ci - 1].colour))
+                self.table.setItem(ri, ci, it)
+        self.table.resizeColumnsToContents()
+        for b in (self.copyBtn, self.saveTableBtn):
+            b.setEnabled(True)
+
+    def on_copy_table(self):
+        rows = self._table_rows()
+        if not rows:
+            return
+        text = "\n".join("\t".join(str(c) for c in r) for r in rows)
+        from PyQt6.QtWidgets import QApplication as _QA
+        _QA.clipboard().setText(text)
+        self.log.emit("[PostProc] results table copied (%d rows x %d columns)"
+                      % (len(rows) - 1, len(rows[0]) - 1))
+
+    def on_save_table(self):
+        rows = self._table_rows()
+        if not rows:
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Save the results table",
+                                              "dic_postproc_results.csv", "CSV (*.csv)")
+        if not path:
+            return
+        try:
+            import csv as _csv
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                w = _csv.writer(f)
+                w.writerow(["# UTM DIC post-processing — results"])
+                w.writerow(["# Strain rate and noise are measured over the 0.05-0.35 % strain "
+                            "window, the same convention this project's deck uses."])
+                w.writerow([])
+                for r in rows:
+                    w.writerow(r)
+            self.log.emit("[PostProc] wrote " + path)
+        except Exception as e:
+            QMessageBox.warning(self, "Could not write the table", str(e))
+
+    def on_save_plot(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save the plot", "dic_strain_vs_time.png",
+            "PNG image (*.png);;PDF (*.pdf);;SVG (*.svg)")
+        if not path:
+            return
+        try:
+            # facecolor from the figure so a dark-themed canvas does not save as a grey slab.
+            self.fig.savefig(path, dpi=200, bbox_inches="tight",
+                             facecolor=self.fig.get_facecolor())
+            self.log.emit("[PostProc] wrote " + path)
+        except Exception as e:
+            QMessageBox.warning(self, "Could not write the image", str(e))
+
     def _store_widgets(self):
         """Write the controls back into the selected run, so each keeps its own setup."""
         r = self.run
@@ -749,6 +878,7 @@ class PostProcTab(QWidget):
         if ok and name.strip():
             r.label = name.strip()
             self._refresh_list()
+            self._refresh_table()
             self._redraw_plot()
 
     def on_remove(self):
@@ -758,6 +888,7 @@ class PostProcTab(QWidget):
         self.runs.pop(i)
         self._cur = min(i, len(self.runs) - 1)
         self._refresh_list()
+        self._refresh_table()
         if self.runs:
             self.runList.setCurrentRow(self._cur)
             self.on_select_run(self._cur)
@@ -774,6 +905,7 @@ class PostProcTab(QWidget):
         self._refresh_list()
         self.fileLbl.setText("no video loaded")
         self.runBtn.setEnabled(False)
+        self._refresh_table()
         self._reset_plot()
 
     def _show_frame(self, idx):
@@ -1045,6 +1177,7 @@ class PostProcTab(QWidget):
             self.log.emit("[PostProc] coverage below 90 % — try a larger box, a wider search "
                           "window, or a lower minimum correlation.")
         self._refresh_list()
+        self._refresh_table()
         # Back to back: the next queued video starts as soon as this one is drawn.
         if self._queue:
             self._next_in_queue()
