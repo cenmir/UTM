@@ -31,8 +31,23 @@ import utm_postproc as PP
 
 
 class FrameView(QLabel):
-    """The video frame, with the two tracking boxes drawn on it and placed by clicking."""
+    """The video frame, the two tracking boxes, and everything needed to place them precisely.
+
+    Three ways to position a box, because clicking alone is not enough on every specimen:
+      * click       — places the next box, snapping to a marker centre when one is near
+      * drag        — grab an existing box and move it freely, no snapping, for a speckle pattern
+                      or a marker the detector will not find
+      * arrow keys  — nudge the selected box one frame-pixel at a time (ten with Shift)
+
+    The centre is drawn as a crosshair, not just a box outline. The box is usually much smaller
+    than the dot it sits on, so an outline alone gives the eye nothing to judge centring against —
+    which is exactly the complaint that prompted the drag and the crosshair.
+    """
     clicked = pyqtSignal(float, float)          # in FRAME pixel coordinates
+    moved = pyqtSignal(int, float, float)       # box index dragged to a new frame position
+    selected = pyqtSignal(int)
+
+    GRAB_SLACK_PX = 14.0                        # extra grab radius, in WIDGET pixels
 
     def __init__(self):
         super().__init__()
@@ -40,11 +55,16 @@ class FrameView(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background:#101317; border:1px solid #2b3138;")
         self.setText("Load a video to begin")
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)   # so the arrow keys reach us
+        self.setMouseTracking(True)
         self._gray = None
         self._boxes = [None, None]
         self._half = 24
         self._scale = 1.0
         self._ox = self._oy = 0
+        self._drag = None            # index of the box being dragged
+        self._sel = None             # index of the selected box, for the arrow keys
+        self._markers = []           # drawn as faint rings, so the operator sees what will snap
 
     def set_frame(self, gray):
         self._gray = gray
@@ -83,31 +103,138 @@ class FrameView(QLabel):
         self._ox = (self.width() - pm.width()) // 2
         self._oy = (self.height() - pm.height()) // 2
         p = QPainter(pm)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        # Every marker the snap knows about, as a faint ring. Without this the operator cannot
+        # tell whether a click will snap or land free — the detector's opinion is invisible.
+        p.setPen(QPen(QColor(77, 171, 247, 130), 1, Qt.PenStyle.DotLine))
+        for m in self._markers:
+            mx, my, mr = m[0] * self._scale, m[1] * self._scale, m[2] * self._scale
+            p.drawEllipse(int(mx - mr), int(my - mr), int(2 * mr), int(2 * mr))
+
         cols = (QColor("#2ecc71"), QColor("#e8590c"))
         pts = []
         for i, bx in enumerate(self._boxes):
             if bx is None:
                 continue
             cx, cy = bx[0] * self._scale, bx[1] * self._scale
-            r = self._half * self._scale
+            r = max(3.0, self._half * self._scale)
             pts.append((cx, cy))
-            p.setPen(QPen(cols[i], 2))
+            sel = (i == self._sel)
+            p.setPen(QPen(cols[i], 3 if sel else 2))
             p.drawRect(int(cx - r), int(cy - r), int(2 * r), int(2 * r))
-            p.drawText(int(cx - r), int(cy - r) - 4, "AB"[i])
+            # The crosshair IS the placement: it marks the exact pixel that becomes L0's endpoint.
+            p.setPen(QPen(cols[i], 1))
+            p.drawLine(int(cx - r - 6), int(cy), int(cx + r + 6), int(cy))
+            p.drawLine(int(cx), int(cy - r - 6), int(cx), int(cy + r + 6))
+            p.setPen(QPen(QColor("#ffffff"), 1))
+            p.drawPoint(int(cx), int(cy))
+            p.setPen(QPen(cols[i], 2))
+            p.drawText(int(cx + r + 4), int(cy - r - 4), "AB"[i] + (" ◄" if sel else ""))
         if len(pts) == 2:
             p.setPen(QPen(QColor("#4dabf7"), 1, Qt.PenStyle.DashLine))
             p.drawLine(int(pts[0][0]), int(pts[0][1]), int(pts[1][0]), int(pts[1][1]))
         p.end()
         self.setPixmap(pm)
 
-    def mousePressEvent(self, e):
+    def set_markers(self, markers):
+        self._markers = list(markers or [])
+        self._redraw()
+
+    def select(self, i):
+        self._sel = i
+        self._redraw()
+
+    def _to_frame(self, pos):
         if self._gray is None or self._scale <= 0:
-            return
-        x = (e.position().x() - self._ox) / self._scale
-        y = (e.position().y() - self._oy) / self._scale
+            return None
+        x = (pos.x() - self._ox) / self._scale
+        y = (pos.y() - self._oy) / self._scale
         h, w = self._gray.shape
-        if 0 <= x < w and 0 <= y < h:
-            self.clicked.emit(float(x), float(y))
+        return (float(min(max(x, 0), w - 1)), float(min(max(y, 0), h - 1)))
+
+    def _box_under(self, pos):
+        """Which box is under the cursor, in WIDGET pixels — so the grab feels the same at any zoom."""
+        for i, bx in enumerate(self._boxes):
+            if bx is None:
+                continue
+            cx = bx[0] * self._scale + self._ox
+            cy = bx[1] * self._scale + self._oy
+            reach = max(8.0, self._half * self._scale) + self.GRAB_SLACK_PX
+            if abs(pos.x() - cx) <= reach and abs(pos.y() - cy) <= reach:
+                return i
+        return None
+
+    def mousePressEvent(self, e):
+        p = self._to_frame(e.position())
+        if p is None:
+            return
+        self.setFocus()
+        hit = self._box_under(e.position())
+        if hit is not None:
+            # Grabbing an existing box MOVES it, and never snaps: this is the manual override for
+            # a speckle pattern, or a marker the detector will not find.
+            self._drag = hit
+            self._sel = hit
+            self.selected.emit(hit)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            self._redraw()
+            return
+        self.clicked.emit(*p)
+
+    def mouseMoveEvent(self, e):
+        if self._drag is None:
+            if self._gray is not None:
+                over = self._box_under(e.position())
+                self.setCursor(Qt.CursorShape.OpenHandCursor if over is not None
+                               else Qt.CursorShape.CrossCursor)
+            return
+        p = self._to_frame(e.position())
+        if p is None:
+            return
+        self._boxes[self._drag] = p
+        self.moved.emit(self._drag, p[0], p[1])
+        self._redraw()
+
+    def mouseReleaseEvent(self, e):
+        if self._drag is not None:
+            self._drag = None
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+
+    def keyPressEvent(self, e):
+        """Arrow keys nudge the selected box by one FRAME pixel — ten with Shift.
+
+        The mouse cannot address a single frame pixel once the frame is scaled down to fit the
+        pane: one widget pixel is several frame pixels. This is how a placement is finished.
+        """
+        if self._sel is None or self._boxes[self._sel] is None:
+            super().keyPressEvent(e); return
+        step = 10.0 if e.modifiers() & Qt.KeyboardModifier.ShiftModifier else 1.0
+        dx = dy = 0.0
+        k = e.key()
+        if k == Qt.Key.Key_Left:
+            dx = -step
+        elif k == Qt.Key.Key_Right:
+            dx = step
+        elif k == Qt.Key.Key_Up:
+            dy = -step
+        elif k == Qt.Key.Key_Down:
+            dy = step
+        elif k in (Qt.Key.Key_Tab, Qt.Key.Key_Space):
+            other = 1 - self._sel
+            if self._boxes[other] is not None:
+                self._sel = other
+                self.selected.emit(other)
+                self._redraw()
+            return
+        else:
+            super().keyPressEvent(e); return
+        x, y = self._boxes[self._sel]
+        h, w = self._gray.shape
+        x = float(min(max(x + dx, 0), w - 1)); y = float(min(max(y + dy, 0), h - 1))
+        self._boxes[self._sel] = (x, y)
+        self.moved.emit(self._sel, x, y)
+        self._redraw()
 
 
 class Worker(QThread):
@@ -220,6 +347,8 @@ class PostProcTab(QWidget):
 
         self.view = FrameView()
         self.view.clicked.connect(self.on_click)
+        self.view.moved.connect(self.on_box_moved)
+        self.view.selected.connect(lambda i: self._refresh_l0())
         lv.addWidget(self.view, 1)
 
         fr = QHBoxLayout()
@@ -395,6 +524,8 @@ class PostProcTab(QWidget):
         # Found once per displayed frame, not once per click: the sweep is the expensive part and
         # the frame does not change between clicks.
         self._markers = PP.find_markers(g)
+        self._markers_frame = idx
+        self.view.set_markers(self._markers)
         self._refresh_boxes()
 
     def on_ref_frame(self, v):
@@ -409,6 +540,13 @@ class PostProcTab(QWidget):
         therefore means that dot's computed centroid. On a speckle pattern there are no discrete
         markers, nothing is close enough, and the click stands exactly where it was made.
         """
+        if getattr(self, "_markers_frame", None) != self.frameSlider.value():
+            # The view is showing the last analysed frame after a run, or the markers are stale.
+            # Boxes are always placed on the REFERENCE frame, so put that back before placing —
+            # otherwise the click would be measured against a picture it does not belong to.
+            self._show_frame(self.frameSlider.value())
+            self.log.emit("[PostProc] back to the reference frame (%d) to place a box"
+                          % self.frameSlider.value())
         snapped = PP.snap_to_marker(getattr(self, "_markers", []), x, y)
         if snapped:
             cx, cy, moved, m = snapped
@@ -423,6 +561,11 @@ class PostProcTab(QWidget):
                               "range" % "AB"[self._next_box])
         self._next_box = 1 - self._next_box
         self._refresh_boxes()
+
+    def on_box_moved(self, i, x, y):
+        """A drag or an arrow-key nudge — free placement, deliberately without snapping."""
+        self.boxes[i] = (x, y)
+        self._refresh_l0()
 
     def on_clear(self):
         self.boxes = [None, None]
@@ -452,6 +595,16 @@ class PostProcTab(QWidget):
         pair = sorted(markers[:2], key=lambda m: m[1])
         self.boxes = [(pair[0][0], pair[0][1]), (pair[1][0], pair[1][1])]
         self._next_box = 0
+        # Size the patch to the marker it is tracking. The 24 px default is a fraction of a 60 px
+        # sprayed dot, which both correlates on less of the pattern than it could AND draws a box
+        # far smaller than the dot, leaving nothing to judge centring by. 1.25x the radius keeps
+        # the whole dot plus a little of its surround.
+        want = int(round(1.25 * max(pair[0][2], pair[1][2])))
+        want = max(self.boxHalf.minimum(), min(self.boxHalf.maximum(), want))
+        if want != self.boxHalf.value():
+            self.boxHalf.setValue(want)
+            self.log.emit("[PostProc] box half-size set to %d px to suit a %.0f px marker radius"
+                          % (want, max(pair[0][2], pair[1][2])))
         self._refresh_boxes()
         self.log.emit("[PostProc] auto-detected 2 markers — r %.0f/%.0f px, circularity %.2f/%.2f"
                       % (pair[0][2], pair[1][2], pair[0][3], pair[1][3]))
@@ -553,6 +706,8 @@ class PostProcTab(QWidget):
             if g is not None:
                 self.view.play(g, pos.a, pos.b, self.boxHalf.value())
                 self._markers = []      # these are tracked positions, not detections to snap to
+                self._markers_frame = None
+                self.view.set_markers([])
                 if pos is not end:
                     self.log.emit("[PostProc] showing the final frame (%d); the boxes are from "
                                   "frame %d, the last one that tracked."
