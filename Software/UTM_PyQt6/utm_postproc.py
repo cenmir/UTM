@@ -295,7 +295,7 @@ def centroid_refine(gray, cx, cy, half, dark=True, thr=None, min_frac=0.02, max_
     if not contours:
         return None
     n = patch.size
-    best, best_d = None, None
+    best, best_c, best_d = None, None, None
     mid = float(r)
     for c in contours:
         a = cv2.contourArea(c)
@@ -308,9 +308,39 @@ def centroid_refine(gray, cx, cy, half, dark=True, thr=None, min_frac=0.02, max_
         # The marker is the blob nearest the patch centre; anything else in view is not it.
         d = (px - mid) ** 2 + (py - mid) ** 2
         if best_d is None or d < best_d:
-            best, best_d = (px, py, a), d
+            best, best_c, best_d = (px, py, a), c, d
     if best is None or best_d > (0.6 * r) ** 2:
         return None
+
+    # ---- INTENSITY-WEIGHTED centre, inside the contour that was just selected.
+    #
+    # A binary centroid weights every pixel inside the threshold equally, so where the threshold
+    # cuts through the marker's soft edge decides the answer: move the level and the contour grows
+    # on whichever side is darker, taking the centre with it. Measured on one S25 frame, sweeping
+    # the threshold 125-185 moves a binary centre by 0.18 px (105 microstrain of L0); on S26,
+    # 0.84 px (500).
+    #
+    # Weighting by how dark each pixel is uses the edge profile instead of guessing where it ends.
+    # The contour still SELECTS which blob is the marker — dropping that is what makes a plain
+    # grey-weighted centroid fragile, because anything else dark in the patch pulls on it.
+    #
+    #     estimator            S25 noise   S26 noise   threshold drift (S25 / S26)
+    #     binary contour        25.1 ue     22.5 ue      105 / 500 ue
+    #     contour + weighting   16.3 ue     14.7 ue       32 / 208 ue
+    #
+    # against 28 ue for the live rig, which uses the binary form.
+    mask = np.zeros(patch.shape, np.uint8)
+    cv2.drawContours(mask, [best_c], -1, 255, cv2.FILLED)
+    mask = cv2.dilate(mask, np.ones((5, 5), np.uint8))     # take in the soft edge, where the information is
+    outside = patch[mask == 0]
+    bg = float(np.median(outside)) if outside.size else float(patch.max())
+    pf = patch.astype(np.float32)
+    w = np.where(mask > 0, (bg - pf) if dark else (pf - bg), 0.0)
+    np.clip(w, 0, None, out=w)
+    tot = float(w.sum())
+    if tot > 1e-6:
+        ys, xs = np.mgrid[0:patch.shape[0], 0:patch.shape[1]]
+        return (x0 + float((xs * w).sum() / tot), y0 + float((ys * w).sum() / tot), best[2])
     return (x0 + best[0], y0 + best[1], best[2])
 
 
