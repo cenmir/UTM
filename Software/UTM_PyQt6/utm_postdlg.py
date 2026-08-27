@@ -392,6 +392,9 @@ class PostProcTab(QWidget):
         if g is None:
             return
         self.view.set_frame(g)
+        # Found once per displayed frame, not once per click: the sweep is the expensive part and
+        # the frame does not change between clicks.
+        self._markers = PP.find_markers(g)
         self._refresh_boxes()
 
     def on_ref_frame(self, v):
@@ -400,7 +403,24 @@ class PostProcTab(QWidget):
             self._show_frame(v)
 
     def on_click(self, x, y):
-        self.boxes[self._next_box] = (x, y)
+        """Place a box — on the nearest marker's CENTRE when there is one near the click.
+
+        The centre is what sets L0, and hitting it by eye is guesswork. A click near a dot
+        therefore means that dot's computed centroid. On a speckle pattern there are no discrete
+        markers, nothing is close enough, and the click stands exactly where it was made.
+        """
+        snapped = PP.snap_to_marker(getattr(self, "_markers", []), x, y)
+        if snapped:
+            cx, cy, moved, m = snapped
+            self.boxes[self._next_box] = (cx, cy)
+            self.log.emit("[PostProc] box %s snapped to a marker centre — moved %.1f px "
+                          "(r %.0f px, circularity %.2f)"
+                          % ("AB"[self._next_box], moved, m[2], m[3]))
+        else:
+            self.boxes[self._next_box] = (x, y)
+            if getattr(self, "_markers", None):
+                self.log.emit("[PostProc] box %s placed as clicked — no marker within snapping "
+                              "range" % "AB"[self._next_box])
         self._next_box = 1 - self._next_box
         self._refresh_boxes()
 
@@ -410,42 +430,31 @@ class PostProcTab(QWidget):
         self._refresh_boxes()
 
     def on_auto(self):
-        """Find two markers the way the rig does — both polarities, so it works on either specimen."""
+        """Find the two markers with the shared finder, so it agrees with click-to-snap."""
         if not self.path:
             return
-        import cv2
         g = PP.read_frame(self.path, self.frameSlider.value())
-        best = None
-        for mode, name in ((cv2.THRESH_BINARY_INV, "dark dots on a light specimen"),
-                           (cv2.THRESH_BINARY, "bright dots on a dark specimen")):
-            for thr in (110, 130, 150, 170, 190):
-                _, b = cv2.threshold(g, thr, 255, mode)
-                cs, _ = cv2.findContours(b, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                pts = []
-                for c in cs:
-                    a = cv2.contourArea(c)
-                    per = cv2.arcLength(c, True)
-                    circ = 4 * np.pi * a / per ** 2 if per > 0 else 0
-                    M = cv2.moments(c)
-                    if 500 < a < 200000 and circ > 0.45 and M["m00"] > 0:
-                        pts.append((M["m10"] / M["m00"], M["m01"] / M["m00"], circ))
-                if len(pts) == 2:
-                    score = min(p[2] for p in pts)
-                    if best is None or score > best[0]:
-                        best = (score, pts, thr, name)
-        if not best:
+        markers = PP.find_markers(g)
+        self._markers = markers
+        # Drop specks: a marker pair is made of the BIG round things. Without this a 13 px
+        # artefact at the frame edge competes with a 60 px sprayed dot on circularity alone.
+        if markers:
+            rmax = max(m[2] for m in markers)
+            markers = [m for m in markers if m[2] >= 0.35 * rmax]
+        if len(markers) < 2:
             QMessageBox.information(
                 self, "No marker pair found",
-                "Could not find exactly two round markers in this frame.\n\n"
+                "Could not find two round markers in this frame.\n\n"
                 "That is expected on a speckle pattern, which has no discrete dots — click the "
-                "frame twice to place the boxes by hand instead.")
+                "frame twice to place the boxes by hand instead. Clicks snap to a marker centre "
+                "when there is one, and stay where you put them when there is not.")
             return
-        _, pts, thr, name = best
-        pts = sorted(pts, key=lambda p: p[1])
-        self.boxes = [(pts[0][0], pts[0][1]), (pts[1][0], pts[1][1])]
+        pair = sorted(markers[:2], key=lambda m: m[1])
+        self.boxes = [(pair[0][0], pair[0][1]), (pair[1][0], pair[1][1])]
         self._next_box = 0
         self._refresh_boxes()
-        self.log.emit("[PostProc] auto-detected 2 markers (%s, threshold %d)" % (name, thr))
+        self.log.emit("[PostProc] auto-detected 2 markers — r %.0f/%.0f px, circularity %.2f/%.2f"
+                      % (pair[0][2], pair[1][2], pair[0][3], pair[1][3]))
 
     def _refresh_boxes(self):
         self.view.set_boxes(self.boxes[0], self.boxes[1], self.boxHalf.value())
@@ -531,11 +540,23 @@ class PostProcTab(QWidget):
     def on_done(self, summary):
         self.summary = summary
         self._redraw_plot()
-        # Put the preview back to the reference frame with the boxes where they were PLACED.
-        # Leaving the last analysed frame up is misleading: the boxes sit at their final,
-        # stretched-apart positions, which reads as the setup rather than the outcome.
-        if self.path:
-            self._show_frame(self.frameSlider.value())
+        # Stop on the LAST frame, with the boxes where they finished. The preview is throttled,
+        # so the last frame PAINTED is not necessarily the last frame ANALYSED — read that final
+        # frame explicitly rather than leaving whichever one the throttle happened to allow.
+        # The FRAME is the last one analysed — on a fracture run that is the broken specimen, and
+        # it is the picture worth ending on. The BOXES are from the last frame that actually
+        # tracked, because after a fracture there is no honest position to draw.
+        if summary.rows and self.path:
+            end = summary.rows[-1]
+            pos = next((r for r in reversed(summary.rows) if r.ok), end)
+            g = PP.read_frame(self.path, end.idx)
+            if g is not None:
+                self.view.play(g, pos.a, pos.b, self.boxHalf.value())
+                self._markers = []      # these are tracked positions, not detections to snap to
+                if pos is not end:
+                    self.log.emit("[PostProc] showing the final frame (%d); the boxes are from "
+                                  "frame %d, the last one that tracked."
+                                  % (end.idx, pos.idx))
         self.runBtn.setEnabled(True); self.stopBtn.setEnabled(False)
         self.expBtn.setEnabled(bool(summary and summary.rows))
         peak = max((v for v in self._e), default=0.0) * 100

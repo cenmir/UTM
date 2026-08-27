@@ -202,6 +202,62 @@ def read_frame(path, idx):
     return cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
 
 
+def find_markers(gray, min_area=300, max_area=200000, min_circ=0.45, dedupe_px=25.0):
+    """Every round blob in the frame, at either polarity. [(cx, cy, radius, circ)], best first.
+
+    Used for two things that must agree: Auto-detect, which wants exactly two, and click-to-snap,
+    which wants the one nearest the cursor. One finder means a marker cannot be good enough to
+    auto-detect but invisible to the snap, or the reverse.
+
+    Both polarities are swept because the rig runs both — dark sprayed dots on white PLA, and
+    bright dots on dark TPU — and a post-processed video carries no setting to say which. Several
+    thresholds are tried because one fixed value does not survive a change of lighting; blobs
+    found more than once are collapsed by proximity so a marker seen at four thresholds counts as
+    one marker, ranked by its best circularity.
+    """
+    import cv2 as _cv
+    found = []
+    for mode in (_cv.THRESH_BINARY_INV, _cv.THRESH_BINARY):
+        for thr in (90, 110, 130, 150, 170, 190, 210):
+            _, b = _cv.threshold(gray, thr, 255, mode)
+            contours, _ = _cv.findContours(b, _cv.RETR_EXTERNAL, _cv.CHAIN_APPROX_SIMPLE)
+            for c in contours:
+                area = _cv.contourArea(c)
+                per = _cv.arcLength(c, True)
+                if per <= 0 or not (min_area < area < max_area):
+                    continue
+                circ = 4 * np.pi * area / (per * per)
+                if circ < min_circ:
+                    continue
+                M = _cv.moments(c)
+                if M["m00"] <= 0:
+                    continue
+                found.append((M["m10"] / M["m00"], M["m01"] / M["m00"],
+                              float(np.sqrt(area / np.pi)), float(circ)))
+    found.sort(key=lambda m: -m[3])
+    out = []
+    for m in found:
+        if all(np.hypot(m[0] - o[0], m[1] - o[1]) > dedupe_px for o in out):
+            out.append(m)
+    return out
+
+
+def snap_to_marker(markers, x, y, max_dist=None):
+    """The marker centre nearest (x, y), or None if nothing is close enough.
+
+    Clicking the exact centre of a dot by eye is guesswork, and the centre is what sets L0 — so a
+    click near a marker should mean that marker's centroid, computed, not the pixel the cursor
+    happened to be over. Falls back to None on a speckle pattern, which has no discrete markers
+    and must stay free-placed.
+    """
+    if not markers:
+        return None
+    best = min(markers, key=lambda m: np.hypot(m[0] - x, m[1] - y))
+    d = float(np.hypot(best[0] - x, best[1] - y))
+    limit = max_dist if max_dist is not None else max(30.0, best[2] * 2.5)
+    return (best[0], best[1], d, best) if d <= limit else None
+
+
 def _subpixel(corr, mx, my):
     """Parabola through the correlation peak and its neighbours, per axis.
 
