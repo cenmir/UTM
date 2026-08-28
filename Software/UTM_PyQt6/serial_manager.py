@@ -92,6 +92,56 @@ class SerialManager(QObject):
         ports = QSerialPortInfo.availablePorts()
         port_names = [port.portName() for port in ports]
         return port_names
+
+    UTM_USB_IDS = {
+        (0x10C4, 0xEA60),   # Silicon Labs CP2102 / CP2104  <- Lolin D32
+        (0x1A86, 0x7523),   # WCH CH340
+        (0x1A86, 0x55D4),   # WCH CH9102
+        (0x0403, 0x6001),   # FTDI FT232R
+        (0x303A, 0x1001),   # Espressif native USB (S2/S3)
+    }
+
+    @staticmethod
+    def scan_ports_detailed():
+        """Every serial port, with the USB identity Qt already knows about.
+
+        scan_ports() throws all of this away and returns bare names, which is why the
+        operator had to guess. QSerialPortInfo carries vendor/product IDs and the device
+        serial number; we only ever had to ask for them.
+
+        Returns:
+            list[dict]: name, vid, pid, serial, description, manufacturer, is_utm
+        """
+        out = []
+        for p in QSerialPortInfo.availablePorts():
+            vid = p.vendorIdentifier() if p.hasVendorIdentifier() else None
+            pid = p.productIdentifier() if p.hasProductIdentifier() else None
+            out.append({
+                "name": p.portName(),
+                "vid": vid,
+                "pid": pid,
+                "serial": p.serialNumber() or None,
+                "description": p.description() or "",
+                "manufacturer": p.manufacturer() or "",
+                "is_utm": (vid, pid) in SerialManager.UTM_USB_IDS,
+            })
+        return out
+
+    @staticmethod
+    def identify_utm_ports(preferred_serial=None):
+        """Ports that look like the rig, best candidate first.
+
+        This NARROWS the search; it does not prove anything. The proof is the firmware
+        handshake ("Welcome to ...") that the connection sequence already waits for - a
+        matching VID/PID is only a reason to try this port before the others.
+
+        A remembered serial number wins, because it identifies the exact board and
+        survives the COM renumbering that replugging or a USB hub will cause.
+        """
+        utm = [p for p in SerialManager.scan_ports_detailed() if p["is_utm"]]
+        if preferred_serial:
+            utm.sort(key=lambda p: p["serial"] != preferred_serial)
+        return utm
     
     def connect(self, port_name, baud_rate=9600):
         """
@@ -122,6 +172,36 @@ class SerialManager(QObject):
         self._open_worker.start()
 
         return True
+
+    def cancel_connect(self):
+        """Abort a connection attempt that has not completed.
+
+        Toggling the switch off used to do nothing unless the port was already open, so an
+        attempt against a dead or wrong port could not be stopped - the worker thread and
+        the handshake timer both kept running. This tears down every part of the attempt.
+        """
+        cancelled = False
+
+        if self._open_worker is not None and self._open_worker.isRunning():
+            self._open_worker.terminate()
+            self._open_worker.wait(1000)
+            cancelled = True
+        self._open_worker = None
+
+        for timer_name in ("handshake_timer", "_connect_timer"):
+            t = getattr(self, timer_name, None)
+            if t is not None and t.isActive():
+                t.stop()
+                cancelled = True
+
+        if self.serial_port.isOpen():
+            self.serial_port.close()
+            cancelled = True
+
+        self._pending_port = None
+        self.connected = False
+        self.connection_changed.emit(False)
+        return cancelled
 
     def _on_port_open_result(self, success, error_msg):
         """Called when the port open worker completes"""

@@ -11,6 +11,11 @@ APPLICATION VERSION - UPDATE ON EVERY COMMIT!
 
 __version__ = "0.5.4"
 
+# --demo: pretend the rig is connected so every control renders in its ENABLED state.
+# Set from main(); read by update_controls_enabled_state(). UI work only - a demo session
+# can never write to a serial port (enter_demo_mode replaces send_command).
+DEMO_MODE = False
+
 
 import sys
 import time            # module-level: _live_blob_count/_on_dic_blobs need it at signal time
@@ -892,6 +897,8 @@ class UTMApplication(QMainWindow):
         # Right panel - Connection controls
         self.scanPortsButton.clicked.connect(self.on_scan_ports)
         self.connectionSwitch.clicked.connect(self.on_connection_toggle)
+        self.comPortComboBox.currentIndexChanged.connect(
+            lambda _: self._update_connect_enabled())
 
         # Right panel - Data stream toggles (control console display, not polling)
         # Polling is automatic - these control whether data is printed to console
@@ -1961,24 +1968,116 @@ class UTMApplication(QMainWindow):
 
     # ========== Connection Functions ==========
 
-    def on_scan_ports(self):
-        """Scan for available COM ports"""
-        self.append_to_console("Scanning for COM ports...")
-        ports = SerialManager.scan_ports()
-        
-        self.comPortComboBox.clear()
-        
-        if ports:
-            self.comPortComboBox.addItems(ports)
-            self.append_to_console(f"Found {len(ports)} COM port(s): {', '.join(ports)}")
+    def _selected_port(self):
+        """The port name behind the current combo entry.
+
+        The combo now SHOWS a label ("COM3  -  UTM rig (CH340)") and carries the bare port
+        name as item data, so never read currentText() for a port name.
+        """
+        idx = self.comPortComboBox.currentIndex()
+        if idx >= 0:
+            data = self.comPortComboBox.itemData(idx)
+            if data:
+                return data
+        return self.comPortComboBox.currentText().split("  -  ")[0].strip()
+
+    def _update_connect_enabled(self):
+        """Connect is only clickable when there is a port to connect to.
+
+        Previously the switch could be flipped with nothing selected; it wrote an error to
+        the Console and reset itself, which is invisible from any other tab and reads as
+        'the button does nothing'.
+        """
+        has_port = self.comPortComboBox.count() > 0 and bool(self._selected_port())
+        self.connectionSwitch.setEnabled(has_port or self.connected)
+        if has_port:
+            self.connectionSwitch.setToolTip("Connect to the rig")
         else:
+            self.connectionSwitch.setToolTip("No COM port available - press 'Scan for COM ports'")
+
+    def on_scan_ports(self):
+        """Scan for available COM ports, and mark the one that looks like the rig."""
+        self.append_to_console("Scanning for COM ports...")
+        ports = SerialManager.scan_ports_detailed()
+
+        self.comPortComboBox.clear()
+
+        if not ports:
             self.append_to_console("No COM ports found")
+            self._update_connect_enabled()
+            return
+
+        # rig candidates first, so index 0 is the one to try
+        ports.sort(key=lambda p: not p["is_utm"])
+        for p in ports:
+            if p["is_utm"]:
+                desc = p["description"] or "USB serial"
+                label = f"{p['name']}  -  UTM rig ({desc})"
+            elif p["description"]:
+                label = f"{p['name']}  -  {p['description']}"
+            else:
+                label = p["name"]
+            self.comPortComboBox.addItem(label, p["name"])
+
+        names = ", ".join(p["name"] for p in ports)
+        self.append_to_console(f"Found {len(ports)} COM port(s): {names}")
+
+        likely = [p for p in ports if p["is_utm"]]
+        if likely:
+            self.comPortComboBox.setCurrentIndex(0)
+            self.append_to_console(
+                f"{likely[0]['name']} looks like the rig "
+                f"(USB {likely[0]['vid']:#06x}:{likely[0]['pid']:#06x}) - selected."
+            )
+        else:
+            self.append_to_console(
+                "No port matches a known ESP32 USB bridge. Pick one by hand if you know it."
+            )
+        self._update_connect_enabled()
+
+    def try_autoconnect(self, announce=True):
+        """Find the rig and connect to it, with no scanning or picking by the operator.
+
+        Identification is two-stage and only the second stage proves anything: USB VID/PID
+        NARROWS the candidates, then the firmware handshake ("Welcome to ...") CONFIRMS.
+        A matching bridge chip is only a reason to try a port first.
+        """
+        self.on_scan_ports()
+        candidates = SerialManager.identify_utm_ports()
+
+        if not candidates:
+            if announce:
+                self.append_to_console(
+                    "Autoconnect: no rig found. Check the USB cable, then press "
+                    "'Scan for COM ports'."
+                )
+            return False
+
+        if len(candidates) > 1:
+            names = ", ".join(c["name"] for c in candidates)
+            self.append_to_console(
+                f"Autoconnect: {len(candidates)} possible rigs ({names}) - trying "
+                f"{candidates[0]['name']} first."
+            )
+
+        target = candidates[0]["name"]
+        for i in range(self.comPortComboBox.count()):
+            if self.comPortComboBox.itemData(i) == target:
+                self.comPortComboBox.setCurrentIndex(i)
+                break
+
+        self.append_to_console(f"Autoconnect: trying {target}...")
+        self.connectionSwitch.setChecked(True)
+        self.on_connection_toggle(True)
+        return True
 
     def on_connection_toggle(self, checked):
         """Handle connection switch toggle"""
         if checked:
-            port = self.comPortComboBox.currentText()
+            port = self._selected_port()
             if not port:
+                # Show the Console, or this message lands on a tab nobody is looking at.
+                self.tabWidget.setCurrentIndex(0)
                 self.append_to_console("Error: No COM port selected")
                 # Reset switch without triggering signal
                 self.connectionSwitch.blockSignals(True)
@@ -1989,6 +2088,9 @@ class UTMApplication(QMainWindow):
             # TODO: Get baud rate from UI (for now using default 9600)
             baud_rate = 9600
 
+            # The whole connection story - handshake, firmware banner, failure reason -
+            # is written to the Console, so put the operator in front of it.
+            self.tabWidget.setCurrentIndex(0)
             self.append_to_console(f"Connecting to {port} at {baud_rate} baud...")
             self.set_status(f"Connecting to {port}...")
 
@@ -2013,10 +2115,17 @@ class UTMApplication(QMainWindow):
             # Note: Switch stays on during connection attempt
             # It will be reset by on_connection_state_changed if connection fails
         else:
-            # Only disconnect if we're actually connected or port is open
             if self.connected or self.serial_manager.port_open:
                 self.append_to_console("Disconnecting...")
                 self.serial_manager.disconnect()
+            else:
+                # An attempt that never completed. This branch used to do NOTHING, so a
+                # connect against a dead port could not be stopped - the worker thread and
+                # the handshake timer both kept running and the switch stayed on.
+                if self.serial_manager.cancel_connect():
+                    self.append_to_console("Connection attempt cancelled.")
+                    self.set_status("Connection cancelled")
+            self._update_connect_enabled()
 
     def update_status_lamp(self, connected):
         """Update the status lamp color"""
@@ -2029,9 +2138,35 @@ class UTMApplication(QMainWindow):
                 "QLabel { background-color: black; border-radius: 15px; border: 2px solid #555; }"
             )
 
+    def enter_demo_mode(self):
+        """UI-only mode: render the panel as if the rig were connected, with no rig.
+
+        Twelve controls gate on `connected`, so a disconnected app shows half the panel
+        greyed out and layout problems cannot be judged. This forces that state and makes
+        the serial write path inert, so a demo session cannot command the machine.
+        """
+        global DEMO_MODE
+        DEMO_MODE = True
+
+        def _blocked(command):
+            self.append_to_console(f"[DEMO] not sent: {command}")
+            return False
+
+        self.serial_manager.send_command = _blocked   # nothing reaches a port
+
+        self.setWindowTitle(f"UTM Control v{__version__}  -  DEMO MODE (no hardware)")
+        self.update_status_lamp(True)
+        self.update_controls_enabled_state()
+        self.append_to_console(
+            "[DEMO] UI demo mode. Controls are enabled for layout work; "
+            "no command is sent and no measurement is real."
+        )
+
     def update_controls_enabled_state(self):
         """Update enabled/disabled state of all controls based on connection and motor state"""
-        connected = self.connected
+        # `or DEMO_MODE` rather than forcing self.connected: the connection monitor
+        # rewrites self.connected on a timer and would undo it.
+        connected = self.connected or DEMO_MODE
         motors_enabled = self.motorsSwitch.isChecked()
 
         # Data Streams group - toggles enabled when connected
@@ -2476,13 +2611,8 @@ class UTMApplication(QMainWindow):
         rel_row.addWidget(self.releaseToPreloadButton)
         rel_row.addWidget(self.releaseButton)
         lay = self.motorControlGroup.layout()
-        idx = lay.indexOf(self.emergencyStopButton)
-        if idx >= 0:
-            lay.insertLayout(idx, row)
-            lay.insertLayout(idx + 1, rel_row)
-        else:
-            lay.addLayout(row)
-            lay.addLayout(rel_row)
+        lay.addLayout(row)          # E-STOP is pinned outside the scroll area, so append
+        lay.addLayout(rel_row)
         self.preloadButton.clicked.connect(self.on_preload_start)
         self.preloadButton.setEnabled(False)
         self.preloadTargetSpinBox.setEnabled(False)
@@ -2950,8 +3080,7 @@ class UTMApplication(QMainWindow):
                                          "specimen; needs the DIC camera running (green 2/2).")
         row.addWidget(self.strainRateSpinBox); row.addWidget(self.strainRateButton)
         lay = self.motorControlGroup.layout()
-        idx = lay.indexOf(self.emergencyStopButton)
-        lay.insertLayout(idx, row) if idx >= 0 else lay.addLayout(row)
+        lay.addLayout(row)          # E-STOP is pinned outside the scroll area, so append
         self.strainRateButton.clicked.connect(self.on_strain_rate_start)
         self.strainRateButton.setEnabled(False)
 
@@ -3112,8 +3241,7 @@ class UTMApplication(QMainWindow):
                                            "settings stay greyed so they cannot be changed by accident.")
 
         lay = self.motorControlGroup.layout()
-        idx = lay.indexOf(self.emergencyStopButton)
-        lay.insertWidget(idx, self.advancedModesGroup) if idx >= 0 else lay.addWidget(self.advancedModesGroup)
+        lay.addWidget(self.advancedModesGroup)   # E-STOP is pinned outside, so append
         self._update_control_mode_enabled()                 # start greyed until the operator enables it
 
     def _update_control_mode_enabled(self):
@@ -3641,8 +3769,6 @@ class UTMApplication(QMainWindow):
 
         lay = self.motorControlGroup.layout()
         idx = lay.indexOf(self.advancedModesGroup)          # sit ABOVE the advanced modes
-        if idx < 0:
-            idx = lay.indexOf(self.emergencyStopButton)
         if idx >= 0:
             lay.insertWidget(idx, self.specimenTestGroup)
         else:
@@ -7489,6 +7615,12 @@ def main():
     # Create and show the main window. fit_to_screen() runs AFTER construction so it sees the
     # finished layout's minimums, and BEFORE show() so the window never flashes at the wrong size.
     window = UTMApplication()
+    if "--demo" in sys.argv:
+        window.enter_demo_mode()
+    elif "--no-autoconnect" not in sys.argv:
+        # Find and open the rig without the operator scanning or picking a port.
+        # Falls back silently to the manual controls if nothing is found.
+        QTimer.singleShot(0, window.try_autoconnect)
     window.fit_to_screen()
     window.show()
 

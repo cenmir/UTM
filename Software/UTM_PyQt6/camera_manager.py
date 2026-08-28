@@ -6,7 +6,16 @@ from datetime import datetime
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 import numpy as np
 import cv2
-from pypylon import pylon
+# pypylon is the ONLY hardware-specific dependency, and it needs the Basler Pylon runtime.
+# A student laptop has neither and does not need them: the post-processing tab measures strain
+# from recorded video with OpenCV, and the analysis modules are stdlib-only. Import it softly so
+# the app still starts; connect_camera() is the single place that needs it and it says so clearly.
+try:
+    from pypylon import pylon
+    PYLON_AVAILABLE = True
+except ImportError:          # no pypylon, or no Pylon runtime behind it
+    pylon = None
+    PYLON_AVAILABLE = False
 
 
 class CaptureThread(QThread):
@@ -400,6 +409,12 @@ class CameraManager(QObject):
               f"{self.PAIR_MIN_FRAC:.2f}-{self.PAIR_MAX_FRAC:.2f} x Px0)")
 
     def connect_camera(self) -> bool:
+        if not PYLON_AVAILABLE:
+            msg = ("pypylon is not installed - this build has no camera support. "
+                   "Recorded video still works in the DIC Post-Processing tab.")
+            print(f"[Camera] {msg}")
+            self.error_occurred.emit(msg)
+            return False
         try:
             self.camera = pylon.InstantCamera(
                 pylon.TlFactory.GetInstance().CreateFirstDevice()
