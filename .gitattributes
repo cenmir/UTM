@@ -1,0 +1,7 @@
+# Shell scripts must keep LF or they will not run on macOS/Linux
+# ("bad interpreter: /usr/bin/env bash^M"). This repo is developed on Windows,
+# where core.autocrlf would otherwise rewrite them on checkout.
+*.sh text eol=lf
+
+# PowerShell is Windows-side; CRLF is fine and expected there.
+*.ps1 text eol=crlf
