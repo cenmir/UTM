@@ -123,6 +123,31 @@ Full mechanical context in `MECHANICAL_TODO.md` §3.
 
 ---
 
+## Stall guard — redesign or retire
+
+**Disabled by default 2026-08-28.** Operator switch in Motor Control. Full write-up in
+`Software/UTM_PyQt6/docs/STALL_GUARD.md`.
+
+The velocity guard was written 2026-06-22 while the rig stalled near 2.6 kN. That was a
+**mechanical** fault — loose load holders, binding crossheads — found and fixed 2026-08-12
+(`9061daf`: *"a fastener, not a purchase and not a code change"*). The guard outlived the
+repair and now E-Stops healthy motion.
+
+- [ ] **Compare against COMMANDED speed, not a fixed 0.5 RPM.** Expected RPM is known
+      (`mm_s / 5 * 20 * 60`). The current constant is 0.00208 mm/s at the crosshead whatever
+      was asked for, so any test below ~0.002 mm/s cannot run with the guard on.
+- [ ] **Detect the DROP, not the level** — the operator's suggestion, and the right one. A
+      stall is a collapse from a held speed; a ramp is a rise from zero. Sign and
+      "has this move ever reached speed" separate them.
+- [ ] **Arm only once the move has reached speed**, instead of a flat 1 s grace period that has
+      no relation to `setRampLen(100)`.
+- [ ] **Cross-check the second encoder** rather than trusting one sensor — see
+      `MECHANICAL_TODO.md` §2. Two encoders disagreeing is a better stall signal, and it also
+      catches the racking that caused the original fault.
+- [ ] **Do not re-enable by default** until at least the first two are done.
+
+---
+
 ## UI / UX — before the students arrive (highest value per hour)
 
 The panel grew feature by feature and the grouping now reflects **build order, not operator order**.

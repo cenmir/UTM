@@ -22,6 +22,7 @@ import time            # module-level: _live_blob_count/_on_dic_blobs need it at
 import math            # DIC overlay geometry (dashed line / marker travel)
 import os              # capture folder paths
 import json            # remembered custom materials and their strain caps
+import re              # load-cell line filter in on_serial_data_received
 from utm_autocal import MIN_MARGIN as _AC_MIN_MARGIN   # "fragile" line for the DIC health badge
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QProgressDialog, QVBoxLayout, QFileDialog
@@ -120,6 +121,9 @@ class UTMApplication(QMainWindow):
                 self.connectionCheckBox.hide()
                 self.connectionCheckBox.deleteLater()
                 layout.insertWidget(i, self.connectionSwitch)
+                # Trailing stretch, or the expanding QLabel eats the row and shoves the
+                # fixed-width switch to the far right with a gap you have to read across.
+                layout.addStretch(1)
                 break
 
         # Replace the motors checkbox with custom FluentSwitch
@@ -134,13 +138,23 @@ class UTMApplication(QMainWindow):
                 self.motorsCheckBox.hide()
                 self.motorsCheckBox.deleteLater()
                 layout.insertWidget(i, self.motorsSwitch)
+                layout.addStretch(1)          # keep the switch beside its label
                 break
+
+        self._add_stall_guard_checkbox()
+        self._add_load_envelope_controls()
+
+        # Keep the E-STOP exactly as wide as the control panel above it. A static
+        # 300-350 range gets it close, but the scroll area's vertical scrollbar steals
+        # ~15 px from the panel whenever it appears, and the mismatch is visible.
+        self.controlPanelFrame.installEventFilter(self)
 
         # Replace Data Stream checkboxes with FluentSwitch toggles
         # These control whether data is displayed to console (polling is automatic)
         self._replace_checkbox_with_switch_horizontal('loadCellCheckBox', 'loadCellSwitch', 'horizontalLayout_dataStreams')
         self._replace_checkbox_with_switch_horizontal('positionCheckBox', 'positionSwitch', 'horizontalLayout_dataStreams')
         self._replace_checkbox_with_switch_horizontal('velocityCheckBox', 'velocitySwitch', 'horizontalLayout_dataStreams')
+        self._space_data_stream_pairs()
 
         # Replace speed unit checkbox with radio buttons
         self._setup_speed_unit_controls()
@@ -150,6 +164,167 @@ class UTMApplication(QMainWindow):
 
         # ...then put that gauge BESIDE the speed controls rather than above them
         self._compact_speed_control()
+
+    def _add_stall_guard_checkbox(self):
+        """Operator switch for the velocity stall guard, in Motor Control. Default OFF.
+
+        It compares BOTH the instantaneous and averaged motor RPM against a fixed 0.5 RPM and
+        E-Stops after three consecutive readings under it. The averaged term lags the ramp
+        badly at both ends, and 0.5 RPM is 0.00208 mm/s at the crosshead regardless of what
+        speed was commanded, so the test does not scale with the move. It exists because the
+        rig used to bind mechanically; that fault was fixed 2026-08-12.
+        """
+        from PyQt6.QtWidgets import QCheckBox
+        lay = getattr(self, "verticalLayout_motorControl", None)
+        if lay is None:
+            return
+        self.stallGuardCheckBox = QCheckBox("Stall guard (velocity)")
+        # apply_styles() runs BEFORE init_state(), so the flag may not exist yet. Default
+        # False here and init_state() sets the same value a moment later - they agree.
+        self.stallGuardCheckBox.setChecked(getattr(self, "stall_detection_enabled", False))
+        self.stallGuardCheckBox.setToolTip(
+            "E-Stop if the motor reports under 0.5 RPM for three readings while a direction is "
+            "commanded.\nOFF by default: it was added for a binding fault that was fixed "
+            "mechanically on 2026-08-12, and it misfires on the acceleration ramp."
+        )
+        self.stallGuardCheckBox.toggled.connect(self._on_stall_guard_toggled)
+        lay.addWidget(self.stallGuardCheckBox)
+
+    def _add_load_envelope_controls(self):
+        """Force envelope in Motor Control: motion is only permitted toward F_min..F_max."""
+        from PyQt6.QtWidgets import QCheckBox, QDoubleSpinBox, QHBoxLayout, QLabel
+        lay = getattr(self, "verticalLayout_motorControl", None)
+        if lay is None:
+            return
+
+        self.loadLimitCheckBox = QCheckBox("Load limits")
+        self.loadLimitCheckBox.setToolTip(
+            "Refuse any motor motion that would push the force further outside F_min..F_max.\n\n"
+            "Inside the band, both directions work normally. Outside it, only the direction that "
+            "brings the force back is allowed, and a move already running is stopped.\n\n"
+            "Requires the Load Cell stream: without force readings this cannot be enforced, so "
+            "motion is refused outright rather than run blind.")
+        self.loadLimitCheckBox.toggled.connect(self._on_load_limit_toggled)
+
+        self.loadMinSpin = QDoubleSpinBox()
+        self.loadMinSpin.setRange(-30000.0, 30000.0)
+        self.loadMinSpin.setDecimals(0)
+        self.loadMinSpin.setSingleStep(50.0)
+        self.loadMinSpin.setValue(0.0)
+        self.loadMinSpin.setSuffix(" N")
+        self.loadMinSpin.setToolTip("Lower bound. Below this only TENSION (Up) is permitted.")
+
+        self.loadMaxSpin = QDoubleSpinBox()
+        self.loadMaxSpin.setRange(-30000.0, 30000.0)
+        self.loadMaxSpin.setDecimals(0)
+        self.loadMaxSpin.setSingleStep(50.0)
+        self.loadMaxSpin.setValue(1500.0)
+        self.loadMaxSpin.setSuffix(" N")
+        self.loadMaxSpin.setToolTip("Upper bound. Above this only RELEASE (Down) is permitted.")
+
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        row.addWidget(self.loadLimitCheckBox)
+        row.addWidget(QLabel("min"))
+        row.addWidget(self.loadMinSpin)
+        row.addWidget(QLabel("max"))
+        row.addWidget(self.loadMaxSpin)
+        row.addStretch(1)
+        lay.addLayout(row)
+        self._envelope_tripped = False
+
+    def _on_load_limit_toggled(self, on):
+        if on and not self.loadCellSwitch.isChecked():
+            self.append_to_console(
+                "Load limits ARMED but the Load Cell stream is off — motion is refused until "
+                "it is on, because the limit cannot be enforced without force readings.")
+        else:
+            self.append_to_console(
+                "Load limits %s (%.0f..%.0f N)" % ("ARMED" if on else "off",
+                                                   self.loadMinSpin.value(),
+                                                   self.loadMaxSpin.value()))
+        self._envelope_tripped = False
+
+    # ---------------------------------------------------------------- enforcement
+    def _load_envelope_allows(self, tension):
+        """May the rig move? `tension` True = toward higher load (GUI Up), False = release.
+
+        Returns (allowed, reason). Refuses rather than guesses whenever force is unknown: an
+        envelope that silently stops enforcing is worse than no envelope, because it is trusted.
+        """
+        if not getattr(self, "loadLimitCheckBox", None) or not self.loadLimitCheckBox.isChecked():
+            return True, ""
+
+        if not self.loadCellSwitch.isChecked():
+            return False, ("load limits are armed but the Load Cell stream is off — "
+                           "turn it on, or clear Load limits")
+
+        f = float(getattr(self, "current_load", 0.0))
+        lo, hi = self.loadMinSpin.value(), self.loadMaxSpin.value()
+        if lo > hi:
+            return False, "load limits are inverted (min > max)"
+
+        if tension and f >= hi:
+            return False, "%.0f N is at or above the %.0f N limit — only release is allowed" % (f, hi)
+        if (not tension) and f <= lo:
+            return False, "%.0f N is at or below the %.0f N limit — only tension is allowed" % (f, lo)
+        return True, ""
+
+    def _enforce_load_envelope(self):
+        """Called on every force sample. Stops a move that has left the band."""
+        cb = getattr(self, "loadLimitCheckBox", None)
+        if cb is None or not cb.isChecked() or not self.connected:
+            return
+        if self.stopRadioButton.isChecked():
+            self._envelope_tripped = False
+            return
+
+        tension = self.upRadioButton.isChecked()
+        ok, why = self._load_envelope_allows(tension)
+        if ok:
+            self._envelope_tripped = False
+            return
+        if self._envelope_tripped:
+            return                                   # already stopped; do not spam
+        self._envelope_tripped = True
+
+        self.serial_manager.send_command("Stop")
+        self.stopRadioButton.blockSignals(True)
+        self.stopRadioButton.setChecked(True)
+        self.stopRadioButton.blockSignals(False)
+        self.append_to_console("LOAD LIMIT — motors stopped: %s" % why)
+        self.set_status("Load limit reached — motors stopped", is_warning=True)
+
+    def _on_stall_guard_toggled(self, on):
+        self.stall_detection_enabled = bool(on)
+        self.stall_count = 0
+        self.append_to_console(
+            "Velocity stall guard %s" % ("ENABLED" if on else "disabled"))
+
+    def _space_data_stream_pairs(self):
+        """Bind each Data Streams label to its own switch.
+
+        The row is a flat QHBoxLayout - label, switch, label, switch, label, switch - and a
+        QHBoxLayout spaces every item IDENTICALLY. So the gap between "Load Cell" and its
+        switch was the same as the gap between that switch and "Position", and the reader
+        cannot tell which switch belongs to which label. Tighten inside each pair, and open
+        up a real gap between pairs, so the grouping is visible rather than guessed.
+        """
+        lay = getattr(self, "horizontalLayout_dataStreams", None)
+        if lay is None:
+            return
+        lay.setSpacing(6)                       # label sits against its own switch
+
+        # insert back-to-front so earlier indices stay valid
+        for lbl in (getattr(self, "velocityLabel", None),
+                    getattr(self, "positionLabel", None)):
+            if lbl is None:
+                continue
+            idx = lay.indexOf(lbl)
+            if idx > 0:
+                lay.insertSpacing(idx, 22)      # gap BETWEEN pairs
+
+        lay.addStretch(1)                       # keep the row left-aligned
 
     def _replace_checkbox_with_switch_horizontal(self, checkbox_name, switch_name, layout_name):
         """Helper to replace a checkbox with FluentSwitch in a horizontal layout"""
@@ -612,7 +787,10 @@ class UTMApplication(QMainWindow):
     def _setup_main_splitter(self):
         """Replace the HBoxLayout between tabs and right panel with a draggable QSplitter"""
         from PyQt6.QtWidgets import QSplitter
-        parent_layout = self.scrollAreaWidgetContents.layout()
+        # The outer mainScrollArea was removed (2026-08-28): scrolling the whole window
+        # dragged the tabs and plots along with the one column that is genuinely too tall.
+        # The splitter now sits directly in the window's own vertical layout.
+        parent_layout = self.verticalLayout_outer
         # The horizontalLayout_main holds tabWidget and controlPanelFrame
         # Remove them from the layout, wrap in a splitter
         self.tabWidget.setParent(None)
@@ -1070,6 +1248,8 @@ class UTMApplication(QMainWindow):
         self._setup_camera_display()
 
         # Auto-preload controls (target-force jog) in the Motor Control group
+        self._setup_control_groups()      # Preload / Testing panes must exist first
+        self._add_new_specimen_button()
         self._setup_preload_controls()
         self._setup_testmode_controls()
         self._setup_control_modes_segment()
@@ -1082,6 +1262,8 @@ class UTMApplication(QMainWindow):
         # Connect camera buttons (must be after _setup_camera_display creates them)
         self.startCameraButton.clicked.connect(self.on_start_camera)
         self.stopCameraButton.clicked.connect(self.on_stop_camera)
+        self.selectBlobsButton.toggled.connect(self.on_select_blobs)
+        self.selectBlobsButtonLP.toggled.connect(self.on_select_blobs)
         self.tareDICButton.clicked.connect(self.on_calibrate_px0)
         self.tareDICAliasButton.clicked.connect(self.on_tare_dic_now)
         self.specimenModeCombo.currentTextChanged.connect(self.on_specimen_mode_changed)
@@ -1154,7 +1336,12 @@ class UTMApplication(QMainWindow):
         self.display_velocity_to_console = False
 
         # Stall detection (only for continuous movement, not incremental moves)
-        self.stall_detection_enabled = True
+        # DEFAULT OFF since 2026-08-28. This guard was written 2026-06-22 (a4573d8) while the
+        # rig was stalling near 2.6 kN. That was never a motor limit: the load holders had worked
+        # loose and the crossheads were binding (9061daf, 2026-08-12 - "a fastener, not a purchase
+        # and not a code change"). The mechanical fault is fixed; the guard outlived it and now
+        # fires on healthy motion. See docs/STALL_GUARD.md before switching it back on.
+        self.stall_detection_enabled = False
         self.stall_velocity_threshold = 0.5  # RPM below this is considered stalled
         self.stall_count = 0  # Counter for consecutive stall readings
         self.stall_count_threshold = 3  # Number of consecutive readings before triggering stall
@@ -1356,6 +1543,48 @@ class UTMApplication(QMainWindow):
             if self.autoScrollCheckBox.isChecked():
                 scrollbar = self.consoleTextEdit.verticalScrollBar()
                 scrollbar.setValue(scrollbar.maximum())
+
+    def eventFilter(self, obj, event):
+        """Keep the Emergency STOP in the same column as the control panel above it."""
+        from PyQt6.QtCore import QEvent
+        if (getattr(self, "_blob_select_mode", False)
+                and event.type() == QEvent.Type.MouseButtonPress
+                and obj in (getattr(self, "cameraFeedLabel", None),
+                            getattr(self, "cameraFeedLabelLP", None))):
+            if self._on_feed_click(obj, event):
+                return True
+        if obj in (getattr(self, "controlPanelFrame", None),
+                   getattr(self, "controlPanelScroll", None)) and event.type() == QEvent.Type.Resize:
+            self._align_estop_to_panel()
+        return super().eventFilter(obj, event)
+
+    def _align_estop_to_panel(self):
+        """Match the E-STOP's width AND its right edge to the control panel.
+
+        Width alone is not enough. The panel lives inside mainScrollArea, whose vertical
+        scrollbar insets it from the window's right edge; the bottom row has no such
+        scrollbar, so a button flush to the window edge lands ~25 px further right and the
+        two stop reading as one continuous column. Mirror the inset as a right margin.
+        """
+        panel = getattr(self, "controlPanelFrame", None)
+        if panel is None or not hasattr(self, "horizontalLayout_bottom"):
+            return
+        col = getattr(self, "controlPanelScroll", None) or panel
+        self.emergencyStopButton.setFixedWidth(col.width())
+        # Measure the inset from the scroll AREA'S VIEWPORT, not from the panel. The panel's
+        # position in centralwidget coordinates is a logical one: if the content is wider
+        # than the window it is scrolled, and mapTo() reports an off-screen x. The viewport's
+        # right edge is where the scrollbar starts either way, which is the inset we want.
+        sa = getattr(self, "controlPanelScroll", None)
+        if sa is not None:
+            vp = sa.viewport()
+            vp_right = vp.mapTo(self.centralwidget, vp.rect().topRight()).x()
+        else:
+            vp_right = self.centralwidget.width() - 1
+        inset = max(0, self.centralwidget.width() - vp_right - 1)
+        lay = self.horizontalLayout_bottom
+        left, top, _, bottom = lay.getContentsMargins()
+        lay.setContentsMargins(left, top, inset, bottom)
 
     def set_status(self, message, is_warning=False):
         """Set the status bar message
@@ -2355,7 +2584,7 @@ class UTMApplication(QMainWindow):
         self.setSpeedSpinBox.setValue(0.1)  # Default 0.1 mm/s (~24 RPM)
 
         # Initialize speed display to 0 (no measured speed yet)
-        self.speedDisplayLabel.setText("Now: 0.00 mm/s")
+        self.speedDisplayLabel.setText("Current Velocity: 0.00 mm/s")
 
     def on_speed_unit_changed(self, checked):
         """Handle speed unit radio button change"""
@@ -2438,7 +2667,7 @@ class UTMApplication(QMainWindow):
             value = self.motor_velocity_rpm
             unit = "RPM"
             max_value = self.MAX_RPM
-        self.speedDisplayLabel.setText(f"Now: {value:.2f} {unit}")
+        self.speedDisplayLabel.setText(f"Current Velocity: {value:.2f} {unit}")
 
         # Update the speed gauge
         self.speedGauge.setMaxValue(max_value)
@@ -2494,6 +2723,19 @@ class UTMApplication(QMainWindow):
 
         if not self.connected:
             return
+
+        # Refuse a direction that would drive further outside the force envelope. Checked
+        # BEFORE any command is sent, so a refused move never reaches the firmware.
+        if self.upRadioButton.isChecked() or self.downRadioButton.isChecked():
+            ok, why = self._load_envelope_allows(self.upRadioButton.isChecked())
+            if not ok:
+                self.append_to_console("Refused — %s" % why)
+                self.set_status("Move refused — %s" % why, is_warning=True)
+                self.stopRadioButton.blockSignals(True)
+                self.stopRadioButton.setChecked(True)
+                self.stopRadioButton.blockSignals(False)
+                self.serial_manager.send_command("Stop")
+                return
 
         # Get speed from the speed selector
         firmware_speed = self.get_firmware_speed()
@@ -2571,6 +2813,95 @@ class UTMApplication(QMainWindow):
 
     # ========== Auto-preload (move in tension until load reaches a target) ==========
 
+    def _add_new_specimen_button(self):
+        """One button to get back to a clean slate after a specimen swap."""
+        from PyQt6.QtWidgets import QPushButton
+        lay = getattr(self, "preloadGroup", None)
+        if lay is None:
+            return
+        self.newSpecimenButton = QPushButton("New specimen — clear all")
+        self.newSpecimenButton.setToolTip(
+            "After swapping a specimen: clears Px\u2080, the selected markers, the plots and the "
+            "stored data, and re-tares position and force.\n\n"
+            "Everything the previous specimen left behind is stale the moment it comes out of "
+            "the grips, and a stale Px\u2080 is the one that silently produces a wrong strain.")
+        self.newSpecimenButton.clicked.connect(self.on_new_specimen)
+        lay.layout().addWidget(self.newSpecimenButton)
+
+    def on_new_specimen(self):
+        """Clear everything tied to the specimen that just came out."""
+        from PyQt6.QtWidgets import QMessageBox
+        if QMessageBox.question(
+                self, "New specimen",
+                "Clear Px\u2080, the selected markers, the plots and the recorded data?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+
+        cm = getattr(self, "camera_manager", None)
+        if cm is not None:
+            cm.set_seeds(None)                       # markers belong to the old specimen
+            cm.initial_centroids = None
+            cm.initial_distance = None
+            try:
+                cm.dic_history.clear()
+            except Exception:
+                pass
+        self._pending_seeds = []
+        self._dic_blob_history.clear()
+
+        for fn in ("on_clear_plot", "clear_data", "on_clear_data"):
+            f = getattr(self, fn, None)
+            if callable(f):
+                try:
+                    f()
+                    break
+                except Exception:
+                    pass
+
+        for fn in ("on_tare_location", "tare_position"):
+            f = getattr(self, fn, None)
+            if callable(f):
+                try:
+                    f()
+                    break
+                except Exception:
+                    pass
+
+        self.append_to_console(
+            "New specimen — Px\u2080, markers, plots and data cleared. "
+            "Select blobs, then Calibrate Px\u2080 before the next run.")
+        self.set_status("New specimen — cleared")
+
+    def _setup_control_groups(self):
+        """Split the right column along what the operator is actually doing.
+
+        Motor Control had grown into four unrelated jobs: enabling the drive, jogging it,
+        preloading a specimen, and running tests. Preload and Testing are now their own panes,
+        so Motor Control means only "make the motors go".
+
+        Order: Connection - Data Streams - Motor Control - Speed - Preload - Testing - ...
+        """
+        from PyQt6.QtWidgets import QGroupBox, QVBoxLayout
+        panel = self.verticalLayout_controlPanel
+
+        def make(title, objname):
+            g = QGroupBox(title)
+            g.setObjectName(objname)
+            v = QVBoxLayout(g)
+            v.setSpacing(6)
+            g.setLayout(v)
+            return g
+
+        self.preloadGroup = make("Preload", "preloadGroup")
+        self.testingGroup = make("Testing", "testingGroup")
+
+        after = panel.indexOf(self.speedControlGroup)
+        if after < 0:
+            after = panel.indexOf(self.motorControlGroup)
+        panel.insertWidget(after + 1, self.preloadGroup)
+        panel.insertWidget(after + 2, self.testingGroup)
+
     def _setup_preload_controls(self):
         """Add a target-force input + Preload button to the Motor Control group (right panel)."""
         from PyQt6.QtWidgets import QHBoxLayout, QLabel, QDoubleSpinBox, QPushButton
@@ -2610,8 +2941,8 @@ class UTMApplication(QMainWindow):
         rel_row = QHBoxLayout()
         rel_row.addWidget(self.releaseToPreloadButton)
         rel_row.addWidget(self.releaseButton)
-        lay = self.motorControlGroup.layout()
-        lay.addLayout(row)          # E-STOP is pinned outside the scroll area, so append
+        lay = self.preloadGroup.layout()     # preload is specimen prep, not motor control
+        lay.addLayout(row)
         lay.addLayout(rel_row)
         self.preloadButton.clicked.connect(self.on_preload_start)
         self.preloadButton.setEnabled(False)
@@ -3079,8 +3410,8 @@ class UTMApplication(QMainWindow):
                                          "motor keeps its pulling force. Keep Emergency Stop in reach and use a fresh "
                                          "specimen; needs the DIC camera running (green 2/2).")
         row.addWidget(self.strainRateSpinBox); row.addWidget(self.strainRateButton)
-        lay = self.motorControlGroup.layout()
-        lay.addLayout(row)          # E-STOP is pinned outside the scroll area, so append
+        lay = self.testingGroup.layout()     # strain-rate pull is a test, not a jog
+        lay.addLayout(row)
         self.strainRateButton.clicked.connect(self.on_strain_rate_start)
         self.strainRateButton.setEnabled(False)
 
@@ -3240,8 +3571,8 @@ class UTMApplication(QMainWindow):
         self.advancedModesGroup.setToolTip("The six closed-loop protocols. Left disabled, the type and "
                                            "settings stay greyed so they cannot be changed by accident.")
 
-        lay = self.motorControlGroup.layout()
-        lay.addWidget(self.advancedModesGroup)   # E-STOP is pinned outside, so append
+        lay = self.testingGroup.layout()
+        lay.addWidget(self.advancedModesGroup)
         self._update_control_mode_enabled()                 # start greyed until the operator enables it
 
     def _update_control_mode_enabled(self):
@@ -3767,7 +4098,7 @@ class UTMApplication(QMainWindow):
         self.prepareTestButton.setMinimumHeight(28)
         self.fractureTestButton.setMinimumHeight(28)
 
-        lay = self.motorControlGroup.layout()
+        lay = self.testingGroup.layout()
         idx = lay.indexOf(self.advancedModesGroup)          # sit ABOVE the advanced modes
         if idx >= 0:
             lay.insertWidget(idx, self.specimenTestGroup)
@@ -4989,6 +5320,23 @@ class UTMApplication(QMainWindow):
 
     # ========== Serial Communication Signal Handlers ==========
 
+    def _sync_stream_flags(self):
+        """Assert a known firmware state on connect instead of assuming one.
+
+        Every Data Streams toggle is off in a freshly-started GUI, so tell the rig the same
+        thing rather than trusting that it agrees. Cheap, idempotent, and it removes a whole
+        class of "the UI says off but the data is arriving" confusion.
+        """
+        try:
+            for name, sw, on_cmd, off_cmd in (
+                    ("load cell", getattr(self, "loadCellSwitch", None), "LoadCellOn", "LoadCellOff"),
+                    ("sensors", getattr(self, "positionSwitch", None), "SensorsOn", "SensorsOff")):
+                want_on = bool(sw is not None and sw.isChecked())
+                self.serial_manager.send_command(on_cmd if want_on else off_cmd)
+            self.append_to_console("Data streams synced to the panel (both off unless ticked).")
+        except Exception as e:
+            self.append_to_console(f"Stream sync failed: {e}")
+
     def on_connection_state_changed(self, connected):
         """Handle connection state changes from SerialManager"""
         self.connected = connected
@@ -5002,6 +5350,14 @@ class UTMApplication(QMainWindow):
                 self.connectionSwitch.blockSignals(True)
                 self.connectionSwitch.setChecked(True)
                 self.connectionSwitch.blockSignals(False)
+            # Force the FIRMWARE's stream flags to match the GUI's, which always starts with
+            # every Data Streams toggle off. The ESP32 keeps LoadCellOn/SensorsOn across an app
+            # restart - it is only reset by a power cycle or a DTR reset, and a reconnect to an
+            # already-open port is neither. So closing the app mid-test and reopening it left
+            # the rig streaming load samples into a GUI whose toggle read OFF: the switch and
+            # the machine disagreed, and the switch was the one lying.
+            self._sync_stream_flags()
+
             # Start motor position polling
             self._start_motor_polling()
             # Auto-tare position and load cell after a short delay to allow data to arrive
@@ -5027,6 +5383,9 @@ class UTMApplication(QMainWindow):
         # Update all control enabled states
         self.update_controls_enabled_state()
 
+    # "<raw>" or "<raw>,<mcu_millis>", optionally signed
+    _LOADCELL_RE = re.compile(r"^\s*-?\d+\s*(,\s*-?\d+\s*)?$")
+
     def on_serial_data_received(self, data):
         """Handle raw serial data (display in console based on toggle states)"""
         # Filter out position/velocity data based on toggle states
@@ -5038,6 +5397,14 @@ class UTMApplication(QMainWindow):
         if data.startswith("Velocity:"):
             # Velocity data - only show if velocity toggle is on
             # (handled by on_motor_velocity_data)
+            return
+
+        # Load-cell samples are "<raw>" or "<raw>,<millis>" - bare digits with no keyword, so
+        # they fell straight through the filters above and were echoed RAW at ~11 Hz, for the
+        # whole length of a test. They are already parsed and handled by on_load_cell_data();
+        # the echo was pure duplication, and appending to a QTextEdit 11 times a second is not
+        # free on the GUI thread.
+        if self._LOADCELL_RE.match(data):
             return
 
         # Display other received data in console
@@ -5098,6 +5465,7 @@ class UTMApplication(QMainWindow):
         force = -(raw_value * self.force_scale) - self.force_offset
 
         self.current_load = force
+        self._enforce_load_envelope()          # before anything else uses the new force
         self.update_load_display()
         self._update_cross_readout()          # the numbers the OTHER plot tab cannot show
 
@@ -6472,6 +6840,18 @@ class UTMApplication(QMainWindow):
                                        reason="on exit")
             except Exception:
                 pass
+            # Stop the CAMERA before anything else tears down. Without this the capture
+            # thread keeps calling capture_frame() while Qt deletes the CameraManager under
+            # it, and every emit from that thread raises "wrapped C/C++ object ... has been
+            # deleted" - including the emits inside the error handlers.
+            try:
+                if getattr(self, "camera_active", False) or self.camera_manager.capture_thread:
+                    self.camera_manager.stop_acquisition()
+                    self.camera_manager.disconnect_camera()
+                    self.camera_active = False
+            except Exception as e:
+                print(f"[Camera] shutdown: {e}")
+
             # Disconnect serial port if connected
             if self.connected:
                 self.serial_manager.disconnect()
@@ -6527,12 +6907,17 @@ class UTMApplication(QMainWindow):
             "and the CSV header records which was used.\n\n"
             "The frozen marker pair stays on the live feed in cyan, so you can watch the green "
             "live pair pull away from it.")
+        self.selectBlobsButton = QPushButton("Select blobs")
+        self.selectBlobsButton.setCheckable(True)
+        self.selectBlobsButton.setEnabled(False)
+        self.selectBlobsButton.setToolTip(self.SELECT_BLOBS_TIP)
         self.stopCameraButton.setEnabled(False)
         self.tareDICButton.setEnabled(False)
         button_row.addWidget(QLabel("Specimen:"))
         button_row.addWidget(self.specimenModeCombo)
         button_row.addWidget(self.startCameraButton)
         button_row.addWidget(self.stopCameraButton)
+        button_row.addWidget(self.selectBlobsButton)
         button_row.addWidget(self.tareDICButton)
         button_row.addWidget(self.tareDICAliasButton)
         camera_layout.addLayout(button_row)
@@ -6745,6 +7130,10 @@ class UTMApplication(QMainWindow):
             "TPU (elastomer) = same optics as Black, but tolerates strain to +60 %")
         self.startCameraButtonLP = QPushButton("Start Camera")
         self.stopCameraButtonLP = QPushButton("Stop Camera")
+        self.selectBlobsButtonLP = QPushButton("Select blobs")
+        self.selectBlobsButtonLP.setCheckable(True)
+        self.selectBlobsButtonLP.setEnabled(False)
+        self.selectBlobsButtonLP.setToolTip(self.SELECT_BLOBS_TIP)
         self.tareDICButtonLP = QPushButton("Calibrate Px₀")
         # Same alias as the Stress/Strain tab — one handler, no second owner of Px₀. The Load Plot
         # tab has its own camera row precisely so a whole test can be run without leaving it, so it
@@ -6758,6 +7147,7 @@ class UTMApplication(QMainWindow):
         btn_row.addWidget(self.specimenModeComboLP)
         btn_row.addWidget(self.startCameraButtonLP)
         btn_row.addWidget(self.stopCameraButtonLP)
+        btn_row.addWidget(self.selectBlobsButtonLP)
         btn_row.addWidget(self.tareDICButtonLP)
         btn_row.addWidget(self.tareDICAliasButtonLP)
         lay.addLayout(btn_row)
@@ -6823,6 +7213,13 @@ class UTMApplication(QMainWindow):
     # specimen (where the travel arrows live) the casing is the whole reason the mark is legible.
     # Pairing cyan with the white casing that suited dark blue is what made the arrows wash out.
     PX0_RING_R   = 26
+    SELECT_BLOBS_TIP = (
+        "Click each marker on the live feed to select it.\n\n"
+        "Detection then only ever looks in their immediate vicinity, so the grips cannot be "
+        "mistaken for markers, and a dot the automatic filters reject - a whiteboard dot that "
+        "has bled along the layer lines, say - is used anyway because you pointed at it.\n\n"
+        "Press again to finish. Right-click a marker to clear the selection.")
+
     LIVE_RING_R  = 20
     #
     # CASE_EXTRA is total added width, i.e. HALF of it per side, and it has to stay small: the feed
@@ -6832,6 +7229,8 @@ class UTMApplication(QMainWindow):
     PX0_CASE_BGR = (16, 16, 16)       # near-black casing, so it reads on specimen AND on blob
     PX0_CASE_EXTRA = 2
     LIVE_BGR     = (0, 255, 0)        # green — live
+    VALID_BGR    = (255, 128, 0)      # BLUE  — candidate that PASSED every gate
+    REJECT_BGR   = (0, 0, 255)        # RED   — candidate seen but rejected
     DRIFT_MIN_PX = 8                  # below this a leader arrow is a stub, so don't draw one
 
     @staticmethod
@@ -6858,8 +7257,185 @@ class UTMApplication(QMainWindow):
         for a in (0, 90, 180, 270):
             cv2.ellipse(img, center, (r, r), 0, a + 10, a + 80, color, thickness, cv2.LINE_AA)
 
+    # ---------------------------------------------------------------- marker selection
+    def on_select_blobs(self, on):
+        """Enter/leave marker-selection mode."""
+        self._blob_select_mode = bool(on)
+        # Only pay for the reject bookkeeping while its overlay is visible.
+        self.camera_manager.collect_rejects = bool(on)
+        # The Stress/Strain and Load Plot camera groups are two views of ONE camera, so the
+        # two buttons are two ways into one mode - not two modes. Mirror without re-entering.
+        for b in (self.selectBlobsButton, getattr(self, "selectBlobsButtonLP", None)):
+            if b is not None and b.isChecked() != bool(on):
+                b.blockSignals(True); b.setChecked(bool(on)); b.blockSignals(False)
+        for lbl in (self.cameraFeedLabel, getattr(self, "cameraFeedLabelLP", None)):
+            if lbl is None:
+                continue
+            lbl.installEventFilter(self)
+            lbl.setCursor(Qt.CursorShape.CrossCursor if on else Qt.CursorShape.ArrowCursor)
+        if on:
+            self._pending_seeds = []
+            self._pending_areas = []
+            self.append_to_console(
+                "[DIC] Select blobs: click each marker on the feed. Right-click clears.")
+        else:
+            seeds = getattr(self, "_pending_seeds", [])
+            if len(seeds) >= 2:
+                self.camera_manager.set_seeds(seeds[:2],
+                                              getattr(self, '_pending_areas', None))
+                self.append_to_console(
+                    "[DIC] Tracking %d selected markers; detection is now local to them."
+                    % len(seeds[:2]))
+            elif seeds:
+                self.append_to_console(
+                    "[DIC] Only %d marker selected - need 2. Selection discarded." % len(seeds))
+            for b in (self.selectBlobsButton, getattr(self, "selectBlobsButtonLP", None)):
+                if b is not None:
+                    b.blockSignals(True); b.setChecked(False); b.blockSignals(False)
+
+    def _feed_click_to_frame(self, label, pos):
+        """Label click -> FRAME coordinates, undoing the scale and the display rotation.
+
+        The displayed image is the frame rotated 90 deg CLOCKWISE (the camera already rotated
+        once on capture, so the loading axis is the frame's Y and the display's X). For that
+        rotation dst(i, j) = src(H-1-j, i), so going back is
+            frame_x = display_y ,  frame_y = (H_frame - 1) - display_x
+        """
+        pm = label.pixmap()
+        if pm is None or pm.isNull():
+            return None
+        box = label.contentsRect()
+        pw, ph = pm.width(), pm.height()
+        ox = box.x() + (box.width() - pw) / 2.0       # pixmap is centred in the label
+        oy = box.y() + (box.height() - ph) / 2.0
+        dx, dy = pos.x() - ox, pos.y() - oy
+        if not (0 <= dx < pw and 0 <= dy < ph):
+            return None                                # clicked the letterbox, not the image
+
+        shape = getattr(self.camera_manager, "last_frame_shape", None)
+        if not shape:
+            return None
+        fh, fw = shape[0], shape[1]
+        # After rotate90CW the displayed image has fw ROWS and fh COLUMNS, so the horizontal
+        # display axis spans fh and the vertical spans fw. Using fw for both put every click in
+        # the wrong place on a non-square frame - and this frame is 419 x 2348.
+        disp_x = dx * (fh / float(pw))
+        disp_y = dy * (fw / float(ph))
+        return (disp_y, (fh - 1) - disp_x)
+
+    def _on_feed_click(self, label, event):
+        if event.button() == Qt.MouseButton.RightButton:
+            self._pending_seeds = []
+            self._pending_areas = []
+            self.camera_manager.set_seeds(None)
+            self.append_to_console("[DIC] Marker selection cleared - back to automatic detection.")
+            return True
+
+        pt = self._feed_click_to_frame(label, event.position())
+        if pt is None:
+            return True
+        fx, fy = pt
+
+        # Snap to the nearest CANDIDATE, valid or rejected. Clicking the exact centre by eye is
+        # guesswork and the centre is what sets L0, so a click near a marker must mean that
+        # marker's computed centroid. Rejected candidates are included on purpose: the whole
+        # point is to use a dot the global gates threw away.
+        # Search ONE window around the click. No global scan: the operator has said where
+        # the marker is, so the only question is where its centroid sits inside that box.
+        frame = getattr(self.camera_manager, "latest_frame", None)
+        hit = None
+        if frame is not None:
+            hit = self.camera_manager.detect_in_window(frame, fx, fy)
+        best = (hit[0], hit[1]) if hit else (fx, fy)
+        snapped = hit is not None
+        # Remember how big the marker was when it was picked. The area guard needs a reference
+        # from the first frame, or a bad first match becomes the reference.
+        self._pending_areas = getattr(self, "_pending_areas", [])
+        self._pending_areas.append(hit[2] if hit else None)
+
+        self._pending_seeds = getattr(self, "_pending_seeds", [])
+        self._pending_seeds.append(best if snapped else (fx, fy))
+        self.camera_manager.set_seeds(self._pending_seeds[:2],
+                                      getattr(self, '_pending_areas', None))
+        self.append_to_console(
+            "[DIC] marker %d at (%.0f, %.0f)%s"
+            % (len(self._pending_seeds), best[0] if snapped else fx,
+               best[1] if snapped else fy,
+               "  (snapped to a detected blob)" if snapped else "  (free-placed - no blob near)"))
+        if len(self._pending_seeds) >= 2:
+            self.on_select_blobs(False)
+        return True
+
+    REJECT_MAX_RING = 70      # px; a huge rejected region must not draw a huge circle
+    REJECT_MAX_SHOWN = 4      # the frame is a diagnostic, not a list of every contour
+
+    def _rejects_worth_showing(self):
+        """The few rejects an operator can act on.
+
+        Drawing every rejected contour buried the specimen in red. A reject is only useful if
+        it is plausibly a MARKER the operator meant to use, so drop the ones that are obviously
+        the specimen outline or the background, and cap the count.
+        """
+        out = []
+        for rj in getattr(self.camera_manager, "last_rejects", []) or []:
+            try:
+                x, y, r, why = rj
+            except (TypeError, ValueError):
+                continue
+            if r > self.REJECT_MAX_RING * 2:      # far bigger than any marker - not a candidate
+                continue
+            out.append((float(x), float(y), float(r), str(why)))
+        out.sort(key=lambda t: -t[2])             # biggest (most marker-like) first
+        return out[:self.REJECT_MAX_SHOWN]
+
+    def _draw_reject_labels(self, rgb, frame_shape):
+        """Why each red ring failed - drawn AFTER the rotation, so the text is upright.
+
+        rotate90CW maps a frame point (fx, fy) to display (fh-1-fy, fx), where fh is the
+        FRAME's row count.
+        """
+        if not getattr(self, "_blob_select_mode", False):
+            return                      # labels are part of the same diagnostic as the rings
+        fh = frame_shape[0]
+        for x, y, r, why in self._rejects_worth_showing():
+            dx = int((fh - 1) - y)
+            dy = int(x)
+            org = (dx + 10, dy + 5)
+            cv2.putText(rgb, why, org, cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        (0, 0, 0), 4, cv2.LINE_AA)
+            cv2.putText(rgb, why, org, cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        (255, 60, 60), 1, cv2.LINE_AA)
+
+    def _draw_candidate_rings(self, display, centroids):
+        """Ring every candidate: BLUE valid, RED rejected — ONLY while selecting markers.
+
+        "DIC BAD - 0/2" cannot distinguish "sees nothing" from "sees both dots and threw them
+        away", so the rings answer that. But they are a DIAGNOSTIC, not a running display:
+        painted on every frame they bury the specimen in red circles and compete with the
+        green live pair and the cyan frozen pair that actually carry the measurement.
+
+        So they appear only in Select-blobs mode, which is exactly when the operator is asking
+        "what does the detector see?".
+        """
+        if not getattr(self, "_blob_select_mode", False):
+            return
+        for c in (centroids or []):
+            cv2.circle(display, (int(c[0]), int(c[1])), self.LIVE_RING_R + 6,
+                       self.VALID_BGR, 2, cv2.LINE_AA)
+
+        # Rings only. The LABELS are drawn after the display rotation by
+        # _draw_reject_labels(), or the text comes out sideways.
+        for rj in self._rejects_worth_showing():
+            x, y, r, _why = rj
+            p = (int(x), int(y))
+            cv2.circle(display, p, min(int(r) + 6, self.REJECT_MAX_RING),
+                       self.REJECT_BGR, 2, cv2.LINE_AA)
+            cv2.line(display, (p[0] - 9, p[1]), (p[0] + 9, p[1]), self.REJECT_BGR, 2, cv2.LINE_AA)
+            cv2.line(display, (p[0], p[1] - 9), (p[0], p[1] + 9), self.REJECT_BGR, 2, cv2.LINE_AA)
+
     def _draw_dic_overlay(self, display, centroids):
         """Frozen Px₀ pair + live pair on the BGR frame, BEFORE the display rotation."""
+        self._draw_candidate_rings(display, centroids)
         ref = getattr(self.camera_manager, "initial_centroids", None)
         has_ref = bool(ref) and len(ref) == 2
 
@@ -6920,6 +7496,31 @@ class UTMApplication(QMainWindow):
     PX0_WARN_RGB  = (255, 190, 90)
     CAPTION_BG    = (14, 18, 26)
 
+    def _draw_select_prompt(self, rgb):
+        """Say, on the image, that clicking now selects a marker.
+
+        The cursor changing to a crosshair was the ONLY indication the mode was active - and
+        the red rings, which are a side effect rather than a message. Sits beside the Px0
+        plate, in the same visual language.
+        """
+        n = len(getattr(self, "_pending_seeds", []) or [])
+        msg = "SELECT BLOBS - click marker %d of 2   (right-click clears)" % (n + 1)
+        h = rgb.shape[0]
+        fs = max(0.45, min(1.4, h / 380.0))
+        th = max(2, int(round(1.8 * fs)))
+        (tw, tht), base = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, fs, th)
+        pad = 5
+        # Its OWN row, below the Px0 plate. Sitting them side by side meant guessing the Px0
+        # plate's width, and the guess was wrong - the two boxes overlapped.
+        x0 = max(6, (rgb.shape[1] - tw - 2 * pad) // 2)      # centred
+        y0 = 6 + tht + base + 2 * pad + 6
+        cv2.rectangle(rgb, (x0, y0), (x0 + tw + 2 * pad, y0 + tht + base + 2 * pad),
+                      self.CAPTION_BG, -1)
+        cv2.rectangle(rgb, (x0, y0), (x0 + tw + 2 * pad, y0 + tht + base + 2 * pad),
+                      (80, 200, 255), 2, cv2.LINE_AA)
+        cv2.putText(rgb, msg, (x0 + pad, y0 + pad + tht), cv2.FONT_HERSHEY_SIMPLEX, fs,
+                    (80, 200, 255), th, cv2.LINE_AA)
+
     def _draw_dic_caption(self, rgb, centroids):
         """Px₀ vs now, in pixels, on the ROTATED frame. RGB here — the BGR swap already happened."""
         px0 = self.camera_manager.initial_distance
@@ -6931,6 +7532,9 @@ class UTMApplication(QMainWindow):
             color = self.PX0_TEXT_RGB
         else:
             text, color = "Px0 not set - press Calibrate Px0", self.PX0_WARN_RGB
+
+        if getattr(self, "_blob_select_mode", False):
+            self._draw_select_prompt(rgb)
 
         h = rgb.shape[0]
         fs = max(0.45, min(1.4, h / 380.0))
@@ -6976,6 +7580,7 @@ class UTMApplication(QMainWindow):
             display_rgb = cv2.cvtColor(display, cv2.COLOR_BGR2RGB)
             display_rgb = cv2.rotate(display_rgb, cv2.ROTATE_90_CLOCKWISE)
             # Caption goes on AFTER the rotation — text drawn before it would come out sideways.
+            self._draw_reject_labels(display_rgb, frame.shape)
             self._draw_dic_caption(display_rgb, centroids)
             h, w, ch = display_rgb.shape
             bytes_per_line = ch * w
@@ -7084,6 +7689,17 @@ class UTMApplication(QMainWindow):
             from utm_dic import dic_health, health_text
         except Exception:
             return
+        # Nothing has been asked of the DIC yet, so it is not FAILING - it is waiting. "DIC BAD"
+        # on an idle camera reads as a fault and sent the operator looking for one.
+        if getattr(cm, "REQUIRE_SELECTION", False) and not getattr(cm, "seed_points", None):
+            for b_ in badges:
+                if b_ is not None:
+                    b_.setText("DIC — press 'Select blobs'")
+                    b_.setStyleSheet(idle)
+                    b_.setToolTip("No markers selected yet. Press 'Select blobs' and click "
+                                  "each marker on the feed.")
+            return
+
         h = dic_health(cm.dic_history, blob_history=self._dic_blob_history,
                        current_blobs=self._dic_blob_count,
                        expected_markers=getattr(self, "_expected_markers", 2))
@@ -7185,6 +7801,13 @@ class UTMApplication(QMainWindow):
         for combo in (self.specimenModeCombo, getattr(self, "specimenModeComboLP", None)):
             if combo is not None:
                 combo.setEnabled(not running)
+        # Selecting markers needs a live feed to click on.
+        for b in (self.selectBlobsButton, getattr(self, "selectBlobsButtonLP", None)):
+            if b is None:
+                continue
+            b.setEnabled(bool(running))
+            if not running:
+                b.blockSignals(True); b.setChecked(False); b.blockSignals(False)
 
     def _roi_override(self):
         """The live ROI, or None if it is just what the specimen preset asks for."""
@@ -7622,6 +8245,7 @@ def main():
         # Falls back silently to the manual controls if nothing is found.
         QTimer.singleShot(0, window.try_autoconnect)
     window.fit_to_screen()
+    QTimer.singleShot(0, window._align_estop_to_panel)   # after the first layout pass
     window.show()
 
     # Start the event loop

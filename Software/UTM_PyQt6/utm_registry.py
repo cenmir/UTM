@@ -94,7 +94,7 @@ def _record(csv_path, extra=None):
         # corrected by hand. Older CSVs carry no Material: line, and those really were PLA.
         "material": (extra.get("material") or meta.get("material") or "PLA"), "infill_pct": infill,
         "area_mm2": area, "gauge_mm": gauge, "comment": meta.get("comment"),
-        "UTS_MPa": round(r["uts"], 2), "sy_MPa": round(r["sy"], 2), "E_GPa": round(r["E"], 3),
+        "UTS_MPa": round(r["uts"], 2), "sy_MPa": (round(r["sy"], 2) if r.get("sy") is not None else None), "E_GPa": round(r["E"], 3),
         "ef": round(r["ef"], 4), "tough_kJm3": int(round(r["tough"])), "anchor_N": int(round(r["anchor"])),
     }
     rec.update({k: v for k, v in extra.items() if k not in ("area", "gauge")})

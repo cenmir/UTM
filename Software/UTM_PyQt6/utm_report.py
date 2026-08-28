@@ -55,7 +55,8 @@ def _plot_ss(ax, r, uts_d, sy_d, last_d):
     ax.plot([0.2, xo_end], [10 * r["E"] * (x - 0.2) + r["c1"] for x in (0.2, xo_end)],
             ":", color="#999", lw=1.1, label="0.2 % offset")
     ax.plot(r["uts_ec"], r["uts"], "o", color=RED, ms=8, mec="black", mew=0.5, zorder=5, label="UTS")
-    ax.plot(r["sy_ec"], r["sy"], "s", color=GREEN, ms=7, mec="black", mew=0.5, zorder=5, label="σ_y")
+    if r.get("sy") is not None and r.get("sy_ec") is not None:
+        ax.plot(r["sy_ec"], r["sy"], "s", color=GREEN, ms=7, mec="black", mew=0.5, zorder=5, label="σ_y")
     ax.plot(last_d["ecz"] * 100, last_d["sig"], "x", color="black", ms=9, mew=2, zorder=5, label="fracture")
     ax.set_xlim(-0.05, xmax); ax.set_ylim(0, ymax)
     ax.set_xlabel("Engineering strain, DIC  (%)"); ax.set_ylabel("Engineering stress  (MPa)")
@@ -183,7 +184,8 @@ def build_report(csv_path, settings=None, out_dir=None, individual_plots=True):
     val.text(0.55, 0.83, "Chacón", fontsize=8, color="#888", va="top")
     val.text(0.82, 0.83, "E-PLA k", fontsize=8, color="#888", va="top")
     rowspec = [("UTS", r["uts"], "MPa", CHACON["uts"], EPLA["uts"]),
-               ("σ_y", r["sy"], "MPa", CHACON["sy"], EPLA["sy"]),
+               ("σ_y", r["sy"], "MPa", CHACON["sy"], EPLA["sy"]) if r.get("sy") is not None
+               else ("σ_y", None, "not reached", None, None),
                ("E", r["E"], "GPa", CHACON["E"], EPLA["E"])]
     for j, (name, v, unit, rng, spec) in enumerate(rowspec):
         y = 0.71 - j * 0.13

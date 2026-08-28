@@ -152,6 +152,35 @@ QComboBox QAbstractItemView {{
 }}
 QComboBox::drop-down {{ border: none; width: 16px; }}
 
+/* Spin buttons MUST be given explicit geometry. Styling QSpinBox at all switches it to full
+   stylesheet rendering, and any subcontrol left unstyled gets degenerate geometry - the
+   up-button ended up with no hit area at all, so only the down arrow was clickable and the
+   cursor fell through to the line edit's I-beam. */
+QSpinBox, QDoubleSpinBox {{ padding-right: 18px; }}
+QSpinBox::up-button, QDoubleSpinBox::up-button {{
+    subcontrol-origin: border; subcontrol-position: top right;
+    width: 16px; height: 9px; margin: 1px 1px 0 0;
+    border: 1px solid {border}; border-radius: 2px; background: {window};
+}}
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    subcontrol-origin: border; subcontrol-position: bottom right;
+    width: 16px; height: 9px; margin: 0 1px 1px 0;
+    border: 1px solid {border}; border-radius: 2px; background: {window};
+}}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{ background: {accent}; }}
+/* Arrows drawn from borders - a stylesheet-rendered spinbox loses its native ones. */
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+    width: 0; height: 0;
+    border-left: 4px solid transparent; border-right: 4px solid transparent;
+    border-bottom: 5px solid {text};
+}}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+    width: 0; height: 0;
+    border-left: 4px solid transparent; border-right: 4px solid transparent;
+    border-top: 5px solid {text};
+}}
+
 QCheckBox, QRadioButton, QLabel {{ background: transparent; color: {text}; }}
 QCheckBox:disabled, QRadioButton:disabled {{ color: {text_dim}; }}
 

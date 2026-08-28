@@ -333,7 +333,12 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
     else:
         E, c1, r1, e_lo, e_hi = steep
         E_method = f"steepest straight run {e_lo*100:.2f}-{e_hi*100:.2f} %"
-    sy = next(d for d in test if E * (d["ecz"] - 0.002) + c1 >= d["sig"])
+    # 0.2 % offset yield. A run that was STOPPED before yielding - a non-destructive pull, a
+    # stiffness check, an aborted test - never has the offset line cross the curve, so this
+    # generator is legitimately empty. It used to be a bare next(), which raised StopIteration;
+    # and str(StopIteration()) is "", so the app reported "Failed to generate report:" with
+    # nothing after the colon and no way to tell what had happened.
+    sy = next((d for d in test if E * (d["ecz"] - 0.002) + c1 >= d["sig"]), None)
     gauge_stretch = last["ecz"] * gauge
     tough = 0.0; prev = None
     for d in test:
@@ -343,7 +348,11 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
     curve = [(d["ecz"] * 100, d["sig"]) for d in test if d["ecz"] > -0.002]   # (strain %, stress) for plots
 
     return {
-        "anchor": anchor, "anchor_src": anchor_src, "E": E / 1000, "E_R2": r1, "sy": sy["sig"],
+        "anchor": anchor, "anchor_src": anchor_src, "E": E / 1000, "E_R2": r1,
+        # None when the specimen never reached 0.2 % offset yield. Callers must handle it:
+        # "not reached" is a real, reportable outcome, not a failure to analyse.
+        "sy": (sy["sig"] if sy else None),
+        "sy_reached": sy is not None,
         # The fixed-window value is kept so every historical number stays recoverable from the
         # same call, and so a run can be re-stated on the old basis without re-deriving it.
         "E_fixed": E_fixed / 1000, "E_fixed_R2": r1_fixed,
@@ -354,7 +363,7 @@ def analyze(source, area=DEFAULT_AREA, gauge=DEFAULT_GAUGE):
         "gauge_share": gauge_stretch / last["travel"] * 100 if last["travel"] else 0.0,
         "dur": last["t"] - t0,
         "rate": (data[fr_i]["pos"] - data[mv_i]["pos"]) / (t_fr - t0) if (t_fr - t0) else 0.0,
-        "uts_ec": uts["ecz"] * 100, "sy_ec": sy["ecz"] * 100, "c1": c1,
+        "uts_ec": uts["ecz"] * 100, "sy_ec": (sy["ecz"] if sy else None), "c1": c1,
         "curve": curve, "fr_i": fr_i, "mv_i": mv_i, "ef_backstepped": dropped,
     }
 

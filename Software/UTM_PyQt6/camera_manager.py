@@ -26,12 +26,27 @@ class CaptureThread(QThread):
 
     def run(self):
         self.running = True
-        while self.running and self.cam.camera.IsGrabbing():
-            self.cam.capture_frame()
+        while self.running:
+            # Every access here can raise RuntimeError once Qt has deleted the underlying C++
+            # CameraManager - which is exactly what happens if the app exits with the camera
+            # running. Treat that as "stop", not as an error to report through a signal that
+            # is itself already dead.
+            try:
+                if not (self.cam and self.cam.camera and self.cam.camera.IsGrabbing()):
+                    break
+                self.cam.capture_frame()
+            except RuntimeError:
+                break
+            except Exception:
+                break
 
     def stop(self):
         self.running = False
-        self.wait()
+        # Bounded: a wait() with no timeout will hang the GUI thread on shutdown if the grab
+        # is blocked waiting for a frame that is never coming.
+        if not self.wait(2000):
+            self.terminate()
+            self.wait(500)
 
 
 class CameraManager(QObject):
@@ -42,6 +57,22 @@ class CameraManager(QObject):
     # doubling the console spam), and could pair markers with the wrong frame once the GUI fell
     # behind. Shipping them together makes the pairing exact and the second pass unnecessary.
     frame_ready = pyqtSignal(np.ndarray, list)
+    # candidates the filters threw out this frame: (x, y, radius, why). Drawn in red so
+    # "0/2" becomes "seen, and here is the gate it failed".
+    last_rejects = []
+
+    # Operator-selected marker seeds, in FRAME coordinates (post-capture-rotation), or None.
+    # When set, detection stops being a global search: a candidate only counts if it is near a
+    # seed, and the seed follows the marker frame to frame. This is what makes the grips
+    # unselectable by construction rather than by threshold luck - see cenmir/UTM#1.
+    seed_points = None
+    SEED_RADIUS = 90          # px; how far a marker may move between frames and still be "it"
+
+    # last frame's accepted centroids and its shape, so the UI can map a click back into frame
+    # coordinates and snap it to a real candidate rather than the pixel the cursor was over.
+    last_centroids = []
+    last_frame_shape = None
+    seed_areas = None
     blobs_detected = pyqtSignal(list)
     dic_strain_updated = pyqtSignal(float)
     error_occurred = pyqtSignal(str)
@@ -413,7 +444,7 @@ class CameraManager(QObject):
             msg = ("pypylon is not installed - this build has no camera support. "
                    "Recorded video still works in the DIC Post-Processing tab.")
             print(f"[Camera] {msg}")
-            self.error_occurred.emit(msg)
+            self._safe_emit("error_occurred", msg)
             return False
         try:
             self.camera = pylon.InstantCamera(
@@ -440,12 +471,12 @@ class CameraManager(QObject):
             self.camera.Gamma.Value = self.GAMMA
             self.camera.PixelFormat.Value = "Mono8"
 
-            self.connection_changed.emit(True)
+            self._safe_emit("connection_changed", True)
             print("Camera connected successfully")
             return True
 
         except Exception as e:
-            self.error_occurred.emit(str(e))
+            self._safe_emit("error_occurred", str(e))
             print(f"Camera connection failed: {e}")
             return False
 
@@ -455,10 +486,10 @@ class CameraManager(QObject):
                 self.capture_thread.stop()
             if self.camera and self.camera.IsOpen():
                 self.camera.Close()
-            self.connection_changed.emit(False)
+            self._safe_emit("connection_changed", False)
             print("Camera disconnected")
         except Exception as e:
-            self.error_occurred.emit(str(e))
+            self._safe_emit("error_occurred", str(e))
 
     def start_acquisition(self):
         try:
@@ -467,7 +498,7 @@ class CameraManager(QObject):
             self.capture_thread.start()
             print("Acquisition started")
         except Exception as e:
-            self.error_occurred.emit(str(e))
+            self._safe_emit("error_occurred", str(e))
 
     def stop_acquisition(self):
         try:
@@ -478,7 +509,7 @@ class CameraManager(QObject):
                 self.camera.StopGrabbing()
             print("Acquisition stopped")
         except Exception as e:
-            self.error_occurred.emit(str(e))
+            self._safe_emit("error_occurred", str(e))
 
     # Warn when the loop falls below this. The camera runs at ~20 fps and the load cell at ~11 Hz,
     # so anything under ~12 Hz means load samples start going out without a strain reading.
@@ -507,7 +538,7 @@ class CameraManager(QObject):
                         sink(img)          # ~47 us: a bounded-buffer append, never any encoding
                     except Exception as e:
                         self.frame_sink = None      # a broken sink must not kill the grab loop
-                        self.error_occurred.emit(f"Frame capture stopped: {e}")
+                        self._safe_emit("error_occurred", f"Frame capture stopped: {e}")
                 _t3 = t()
                 centroids = self.detect_blobs(img)
                 _t4 = t()
@@ -515,13 +546,13 @@ class CameraManager(QObject):
                     self.calculate_dic_strain(centroids)
                 _t5 = t()
                 self._trace_blobs(centroids)
-                self.frame_ready.emit(img, centroids)
+                self._safe_emit("frame_ready", img, centroids)
                 _t6 = t()
                 self._record_stages(_t0, _t1, _t2, _t3, _t4, _t5, _t6)
                 return img
             grab_result.Release()
         except Exception as e:
-            self.error_occurred.emit(str(e))
+            self._safe_emit("error_occurred", str(e))
         return None
 
     def _record_stages(self, t0, t1, t2, t3, t4, t5, t6):
@@ -549,7 +580,7 @@ class CameraManager(QObject):
         if hz >= self.SLOW_LOOP_HZ or now - self._slow_last_t < self.SLOW_WARN_EVERY_S:
             return
         self._slow_last_t = now
-        self.notice.emit(f"DIC loop is running at {hz:.1f} Hz — below the {self.SLOW_LOOP_HZ:.0f} Hz "
+        self._safe_emit("notice", f"DIC loop is running at {hz:.1f} Hz — below the {self.SLOW_LOOP_HZ:.0f} Hz "
                          f"needed to give every load sample a strain reading. {self.loop_breakdown()}")
 
     def loop_breakdown(self):
@@ -567,11 +598,56 @@ class CameraManager(QObject):
     # 2/2 says nothing new every 29 ms; a 2 → 1 transition is the thing worth seeing in the log.
     TRACE_MIN_INTERVAL_S = 1.0
 
+    # OFF by default (2026-08-28). The health badge already shows "0/2 - track % - jitter"
+    # continuously and without scrolling anything away, so this trace only ever duplicated it.
+    TRACE_BLOBS = False
+
+    # How often "Expected 2 blobs, found N" may reach the console. It describes a persistent
+    # condition, so once every few seconds is as informative as once per frame and leaves the
+    # console readable.
+    BLOB_ERR_INTERVAL_S = 5.0
+
+    # When True, the app measures nothing until the operator has selected markers, and stays
+    # quiet until then. The global search still runs so that a click has something to snap to,
+    # but it no longer reports its own failure to find markers nobody asked it to find.
+    REQUIRE_SELECTION = True
+
+    # Windowed-detection tuning. The area floor is far lower than the global MIN_AREA: inside a
+    # box the operator pointed at, a small dot is a dot, not noise.
+    SEED_MIN_AREA = 150
+    SEED_CLOSE_K = 9          # morphological close, to bridge print-layer grooves. 0 disables.
+    WEIGHT_DILATE = 4         # px of edge ramp to include in the intensity-weighted centre
+    SEED_FRAG_AREA = 40       # smallest fragment counted as part of the marker
+    # A marker cannot grow or teleport. Both guards exist because it did: merging every contour
+    # near the seed also merged the DARK BACKGROUND (huge under THRESH_BINARY_INV), the centre
+    # was dragged toward it, the seed followed, and it ratcheted off the specimen over ~5 frames.
+    SEED_AREA_RATIO = 2.5     # reject a match this many times bigger than the marker we selected
+    SEED_MAX_STEP_PX = 25     # and one that moved further than this in a single frame
+    _blob_err_t = 0.0
+
+    # Reject details cost a string format per rejected contour per frame - 30+ on a noisy
+    # frame, 20 times a second - and they are ONLY read by the Select-blobs overlay. Off
+    # unless the UI turns them on.
+    collect_rejects = False
+
     def _trace_blobs(self, centroids):
-        n = len(centroids)
-        now = time.monotonic()
-        if n == self._trace_last_n and (now - self._trace_last_t) < self.TRACE_MIN_INTERVAL_S:
+        """Per-frame marker-count trace. Silent unless TRACE_BLOBS is turned on.
+
+        The old throttle only applied when the count was UNCHANGED:
+
+            if n == last_n and (now - last_t) < INTERVAL: return
+
+        so a count flickering 0,1,0,1 - a marker sitting right on a filter gate - was a
+        "change" every single frame and printed at the full 20 fps. The coalescing failed
+        exactly when the rig was noisiest, which is when the console most needs to stay
+        readable. The time floor is now unconditional.
+        """
+        if not self.TRACE_BLOBS:
             return
+        now = time.monotonic()
+        if (now - self._trace_last_t) < self.TRACE_MIN_INTERVAL_S:
+            return                      # unconditional floor: a changing count cannot spam
+        n = len(centroids)
         self._trace_last_n, self._trace_last_t = n, now
         if n == 2:
             dy = abs(centroids[1][1] - centroids[0][1])
@@ -631,13 +707,295 @@ class CameraManager(QObject):
             where = ", ".join(
                 f"({b[0]:.0f},{b[1]:.0f}) {abs(b[0] - mid_x) / mid_x * 100:.0f}% off-centre"
                 for b in rejected)
-            self.notice.emit(
-                f"{len(valid)} blobs qualified — kept the pair {why}; ignored {where}. "
+            self._safe_emit("notice", f"{len(valid)} blobs qualified — kept the pair {why}; ignored {where}. "
                 "A blob that keeps appearing near the frame edge is usually a grip or fixture: "
                 "mask it (SPECIMEN_PRESETS mask_x) or move it out of the ROI.")
         return sorted(chosen, key=lambda b: b[1])
 
+    def _safe_emit(self, name, *args):
+        """Emit the named signal unless the C++ object is gone.
+
+        Takes the signal NAME, not the bound signal. Once Qt has deleted the underlying C++
+        object, merely LOOKING UP `self.error_occurred` raises RuntimeError - so a helper that
+        takes the signal as an argument is evaluated at the call site, outside its own guard,
+        and never catches anything. The getattr has to happen inside the try.
+
+        On shutdown the capture thread can still be mid-frame when Qt deletes this object. The
+        emit raises, and so does the emit in the except block reporting it, and the one in ITS
+        handler: one race, three stacked tracebacks. Swallow it at the source.
+        """
+        try:
+            getattr(self, name).emit(*args)
+            return True
+        except RuntimeError:
+            return False
+
+    def detect_in_window(self, frame, cx, cy, radius=None):
+        """Best marker centroid within `radius` of (cx, cy), or None.
+
+        Thresholds and contours ONLY that window. A 180 px box is ~32k pixels against 983k for
+        the full frame, so this is ~30x less work per marker than the global search it replaces
+        - and it cannot pick up a grip, because the grip is not in the box.
+
+        The area gate is scaled to the window and circularity is NOT applied: the operator has
+        already said "this is my marker", and a bled or hatched dot failing a roundness test is
+        exactly the case this whole path exists to serve.
+        """
+        import cv2 as _cv
+        r = int(radius or self.SEED_RADIUS)
+        h, w = frame.shape[:2]
+        x0, y0 = max(0, int(cx) - r), max(0, int(cy) - r)
+        x1, y1 = min(w, int(cx) + r), min(h, int(cy) + r)
+        if x1 - x0 < 4 or y1 - y0 < 4:
+            return None
+        patch = frame[y0:y1, x0:x1]
+
+        _, binary = _cv.threshold(patch, self.THRESHOLD, 255, self.THRESHOLD_TYPE)
+        # Close the grooves a wicked dot leaves along the print layer lines, so it reads as one
+        # blob instead of a comb of fragments. Only inside the window, so it costs almost nothing.
+        if self.SEED_CLOSE_K > 1:
+            k = _cv.getStructuringElement(_cv.MORPH_ELLIPSE,
+                                          (self.SEED_CLOSE_K, self.SEED_CLOSE_K))
+            binary = _cv.morphologyEx(binary, _cv.MORPH_CLOSE, k)
+
+        contours, _ = _cv.findContours(binary, _cv.RETR_EXTERNAL, _cv.CHAIN_APPROX_SIMPLE)
+
+        # MERGE every fragment near the seed instead of choosing one. A bled dot can still break
+        # into several contours after the close, and picking "the nearest" made the centre hop
+        # between fragments frame to frame - metres of apparent strain from a marker that never
+        # moved. The fragments are all the same marker, so weigh them together.
+        ph, pw = patch.shape[:2]
+        near = []
+        for cnt in contours:
+            if _cv.contourArea(cnt) < self.SEED_FRAG_AREA:
+                continue
+            # DROP anything touching the window border. Under THRESH_BINARY_INV the dark
+            # surround beyond the specimen edge is a blob like any other, and a window centred
+            # near the edge swallows a strip of it - which is how the merged centre ended up
+            # 40 px off the marker and how the seed then walked off the specimen entirely.
+            # The marker is central by construction: the window is centred on it.
+            bx_, by_, bw_, bh_ = _cv.boundingRect(cnt)
+            if bx_ <= 0 or by_ <= 0 or bx_ + bw_ >= pw or by_ + bh_ >= ph:
+                continue
+            M = _cv.moments(cnt)
+            if M["m00"] <= 0:
+                continue
+            bx = x0 + M["m10"] / M["m00"]
+            by = y0 + M["m01"] / M["m00"]
+            if ((bx - cx) ** 2 + (by - cy) ** 2) ** 0.5 <= r:
+                near.append(cnt)
+        if near:
+            merged = np.zeros(patch.shape, np.uint8)
+            _cv.drawContours(merged, near, -1, 255, -1)
+            area = float(_cv.countNonZero(merged))
+            if area >= self.SEED_MIN_AREA:
+                wx, wy = self._weighted_centre_mask(patch, merged, x0, y0)
+                if wx is not None:
+                    return (wx, wy, area)
+
+        best, best_score = None, None
+        for cnt in contours:
+            area = _cv.contourArea(cnt)
+            if area < self.SEED_MIN_AREA:
+                continue
+            bx_, by_, bw_, bh_ = _cv.boundingRect(cnt)
+            if bx_ <= 0 or by_ <= 0 or bx_ + bw_ >= pw or by_ + bh_ >= ph:
+                continue                      # window border: background, not a marker
+            M = _cv.moments(cnt)
+            if M["m00"] <= 0:
+                continue
+
+            # INTENSITY-WEIGHTED centre, not the binary one. A binary mask only changes when a
+            # pixel crosses the threshold, so as the marker slides sub-pixel the centroid sticks
+            # and then jumps: measured, 25 sub-pixel steps produced only 13 distinct centroids,
+            # ~0.1 px rms = ~70 ustrain at Px0 1416 - a visible staircase on the stress-strain
+            # curve. The grey levels at the marker's edge vary CONTINUOUSLY with sub-pixel
+            # position, and weighting by them recovers that. utm_postproc reached the same
+            # conclusion offline: intensity-weighted 15-17 ustrain vs binary ~25.
+            bx, by = self._weighted_centre(patch, cnt, x0, y0)
+            if bx is None:
+                bx = x0 + M["m10"] / M["m00"]
+                by = y0 + M["m01"] / M["m00"]
+            d = ((bx - cx) ** 2 + (by - cy) ** 2) ** 0.5
+            if d > r:
+                continue
+            # nearest to where we expected it, tie-broken by size
+            score = (d, -area)
+            if best_score is None or score < best_score:
+                best, best_score = (bx, by, area), score
+        return best
+
+    def _weighted_centre_mask(self, patch, mask, x0, y0):
+        """Intensity-weighted centre over an arbitrary mask (one marker, however fragmented)."""
+        import cv2 as _cv
+        try:
+            if self.WEIGHT_DILATE > 0:
+                k = _cv.getStructuringElement(
+                    _cv.MORPH_ELLIPSE, (self.WEIGHT_DILATE * 2 + 1,) * 2)
+                mask = _cv.dilate(mask, k)
+            sel = mask > 0
+            if not sel.any():
+                return None, None
+            vals = patch[sel].astype(np.float32)
+            if self.THRESHOLD_TYPE == _cv.THRESH_BINARY_INV:
+                w = np.clip(self.THRESHOLD - vals, 0, None)
+            else:
+                w = np.clip(vals - self.THRESHOLD, 0, None)
+            tot = float(w.sum())
+            if tot <= 0:
+                return None, None
+            ys, xs = np.nonzero(sel)
+            return (x0 + float((xs * w).sum() / tot),
+                    y0 + float((ys * w).sum() / tot))
+        except Exception:
+            return None, None
+
+    def _weighted_centre(self, patch, cnt, x0, y0):
+        """Centre of the marker weighted by how far each pixel is past the threshold.
+
+        Uses the anti-aliased edge the binary mask throws away, which is exactly the
+        information that carries sub-pixel position.
+        """
+        import cv2 as _cv
+        try:
+            mask = np.zeros(patch.shape, np.uint8)
+            _cv.drawContours(mask, [cnt], -1, 255, -1)
+            # DILATE before weighting. The binary contour stops at the last pixel that crossed
+            # the threshold, which throws away the anti-aliased ramp just outside it - and that
+            # ramp is precisely where sub-pixel position lives. Weighting only inside the
+            # contour recovered almost nothing (0.100 -> 0.088 px). Including the ramp is the
+            # whole point. Pixels beyond it weigh 0 anyway, so the dilation cannot pull the
+            # centre toward the background.
+            if self.WEIGHT_DILATE > 0:
+                k = _cv.getStructuringElement(
+                    _cv.MORPH_ELLIPSE, (self.WEIGHT_DILATE * 2 + 1,) * 2)
+                mask = _cv.dilate(mask, k)
+            sel = mask > 0
+            if not sel.any():
+                return None, None
+            vals = patch[sel].astype(np.float32)
+            # weight = distance past the cut, in the direction that makes the MARKER heavy
+            if self.THRESHOLD_TYPE == _cv.THRESH_BINARY_INV:
+                w = np.clip(self.THRESHOLD - vals, 0, None)      # dark dots
+            else:
+                w = np.clip(vals - self.THRESHOLD, 0, None)      # light dots
+            tot = float(w.sum())
+            if tot <= 0:
+                return None, None
+            ys, xs = np.nonzero(sel)
+            return (x0 + float((xs * w).sum() / tot),
+                    y0 + float((ys * w).sum() / tot))
+        except Exception:
+            return None, None
+
+    def track_seeds(self, frame):
+        """Follow the selected markers. Local windows only - no global search."""
+        out, moved, areas = [], [], []
+        refs = self.seed_areas or [None] * len(self.seed_points or [])
+        for i, (sx, sy) in enumerate(self.seed_points or []):
+            ref = refs[i] if i < len(refs) else None
+            hit = self.detect_in_window(frame, sx, sy)
+            if hit is None:
+                moved.append((sx, sy)); areas.append(ref)      # hold
+                continue
+            bx, by, a_ = hit
+
+            # Too big to be the marker: almost certainly the dark surround merged in.
+            if ref and a_ > ref * self.SEED_AREA_RATIO:
+                moved.append((sx, sy)); areas.append(ref)
+                continue
+            # Moved further than a marker physically can between frames.
+            if ((bx - sx) ** 2 + (by - sy) ** 2) ** 0.5 > self.SEED_MAX_STEP_PX:
+                moved.append((sx, sy)); areas.append(ref)
+                continue
+
+            out.append((bx, by))
+            moved.append((bx, by))
+            areas.append(ref if ref else a_)                   # learn it on first good frame
+        self.seed_areas = areas
+        self.seed_points = moved
+        out.sort(key=lambda p: p[1])
+        return out
+
+    def _apply_seeds(self, valid, rejects):
+        """Keep only what is near an operator-selected seed, and move the seeds to follow.
+
+        Two things happen here that a global search cannot do:
+
+        * Anything far from both seeds is discarded no matter how well it scores. The grips
+          cannot win, because they were never selected.
+        * A candidate the GLOBAL gates rejected is admitted if it sits on a seed. The operator
+          pointed at it; a circularity score is not entitled to overrule that. This is what
+          makes a whiteboard dot that has bled along the layer lines usable.
+
+        Seeds then step to wherever the marker was found, so they follow it through the pull.
+        """
+        pool = [(x, y, None) for (x, y) in valid]
+        pool += [(x, y, why) for (x, y, _r, why) in rejects]
+
+        chosen, used, new_seeds, still_rejected = [], set(), [], []
+        for sx, sy in self.seed_points:
+            best, best_d = None, None
+            for i, (x, y, _why) in enumerate(pool):
+                if i in used:
+                    continue
+                d = ((x - sx) ** 2 + (y - sy) ** 2) ** 0.5
+                if d <= self.SEED_RADIUS and (best_d is None or d < best_d):
+                    best, best_d = i, d
+            if best is None:
+                new_seeds.append((sx, sy))          # hold position; the marker may come back
+                continue
+            used.add(best)
+            bx, by, _ = pool[best]
+            chosen.append((bx, by))
+            new_seeds.append((bx, by))
+
+        for i, (x, y, why) in enumerate(pool):
+            if i not in used:
+                # Only put words on it when the overlay will show them. `why or "..."` looked
+                # harmless but re-introduced a string per rejected contour per frame - exactly
+                # the cost the collect_rejects flag exists to avoid.
+                label = (why or "not a selected marker") if self.collect_rejects else ""
+                still_rejected.append((x, y, 12, label))
+
+        self.seed_points = new_seeds
+        chosen.sort(key=lambda b: b[1])             # keep the top-first axial order
+        return chosen, still_rejected
+
+    def _record_pair(self, valid):
+        """Hand a tracked pair to the same strain path the global detector used."""
+        try:
+            self._safe_emit("blobs_detected", valid)
+        except Exception:
+            pass
+
+    def set_seeds(self, points, areas=None):
+        """Adopt operator-selected marker positions, or clear them with None/[].
+
+        `areas` is the size of each marker when it was selected. It becomes the reference the
+        area guard compares against, so the guard scales with whatever the operator picked
+        instead of assuming a marker size.
+        """
+        self.seed_points = [(float(x), float(y)) for (x, y) in points] if points else None
+        self.seed_areas = list(areas) if (points and areas) else None
+        return self.seed_points
+
     def detect_blobs(self, frame) -> list:
+        # Local-only path. With markers selected, look at their windows and nothing else. With
+        # none selected, do NOTHING - no threshold, no contours, no 983k-pixel search for
+        # markers nobody has asked to measure.
+        if self.REQUIRE_SELECTION:
+            self.last_frame_shape = frame.shape
+            if not self.seed_points:
+                self.last_centroids, self.last_rejects = [], []
+                return []
+            valid = self.track_seeds(frame)
+            self.last_centroids, self.last_rejects = list(valid), []
+            self._trace_blobs(valid)
+            if len(valid) == 2:
+                self._record_pair(valid)
+            return valid
+
         try:
             # Apply mask for black specimen to exclude background wall
             if self.mask_x is not None:
@@ -652,7 +1010,7 @@ class CameraManager(QObject):
                 binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
 
-            valid, near = [], []
+            valid, near, rejects = [], [], []
             for cnt in contours:
                 area = cv2.contourArea(cnt)
                 perimeter = cv2.arcLength(cnt, True)
@@ -662,14 +1020,31 @@ class CameraManager(QObject):
                 if self.MIN_AREA < area < self.MAX_AREA and circ > self.MIN_CIRCULARITY:
                     if M["m00"] > 0:
                         valid.append((M["m10"] / M["m00"], cy))
-                elif area > 200:
+                elif (self.collect_rejects or self.seed_points) and area > 100:
+                    # Needed in TWO cases, and conflating them was a bug:
+                    #   * collect_rejects - the operator is looking at the Select-blobs overlay
+                    #   * seed_points     - a SELECTED marker may well be one the global gates
+                    #                       reject (that is the whole point), so seed matching
+                    #                       has to search this list too. Gating it on the overlay
+                    #                       alone made tracking work while the rings were shown
+                    #                       and silently stop the moment they were hidden.
                     # A NEAR MISS: big enough to be a marker, rejected by a gate. Kept so the
                     # badge can say WHY instead of only "1/2". Losing a marker used to be
                     # silent, which is a bad way to spend a specimen.
-                    why = ("area %d < %d" % (area, self.MIN_AREA) if area <= self.MIN_AREA else
-                           "area %d > %d" % (area, self.MAX_AREA) if area >= self.MAX_AREA else
-                           "circularity %.2f < %.2f" % (circ, self.MIN_CIRCULARITY))
+                    # The formatted reason is only ever read by the overlay, and it costs a
+                    # string format per rejected contour per frame. Position is cheap; words
+                    # are not. Build words only when they will be shown.
+                    if self.collect_rejects:
+                        why = ("area %d < %d" % (area, self.MIN_AREA) if area <= self.MIN_AREA else
+                               "area %d > %d" % (area, self.MAX_AREA) if area >= self.MAX_AREA else
+                               "circularity %.2f < %.2f" % (circ, self.MIN_CIRCULARITY))
+                    else:
+                        why = ""
                     near.append((area, cy, why))
+                    # centroid + an equivalent-circle radius, so the UI can ring it in red
+                    if M["m00"] > 0:
+                        rej_r = max(6, int((area / np.pi) ** 0.5))
+                        rejects.append((M["m10"] / M["m00"], cy, rej_r, why))
 
             # Sort by Y so blob 1 is always top, blob 2 always bottom
             valid.sort(key=lambda b: b[1])
@@ -680,13 +1055,24 @@ class CameraManager(QObject):
                 if now - getattr(self, "_near_miss_t", 0.0) > 3.0:
                     self._near_miss_t = now
                     top = sorted(near, reverse=True)[:2]
-                    self.notice.emit(
-                        "Only %d marker%s passed the filters. Nearest miss%s: %s  "
+                    self._safe_emit("notice", "Only %d marker%s passed the filters. Nearest miss%s: %s  "
                         "(threshold %d — try Settings ▸ DIC camera setup ▸ Auto-calibrate DIC)"
                         % (len(valid), "" if len(valid) == 1 else "s",
                            "" if len(top) == 1 else "es",
                            "; ".join("at y=%.0f %s" % (c, w) for _, c, w in top),
                            self.THRESHOLD))
+
+            # Published for the live overlay. Set BEFORE the >2 pruning below so a marker
+            # discarded by pair-plausibility can also be drawn, and reset every frame so a
+            # stale reject can never outlive the frame it came from.
+            self.last_rejects = rejects
+
+            if self.seed_points:
+                valid, rejects = self._apply_seeds(valid, rejects)
+                self.last_rejects = rejects
+
+            self.last_centroids = list(valid)
+            self.last_frame_shape = frame.shape
 
             if len(valid) > 2:
                 # More than 2 does NOT mean the markers were missed — it means something else in
@@ -712,8 +1098,7 @@ class CameraManager(QObject):
                 if not (lo <= sep <= hi):
                     why = ("collapsed — a marker has been lost" if sep < lo else
                            "beyond any strain worth believing")
-                    self.error_occurred.emit(
-                        f"Pair rejected — {sep:.0f} px vs Px₀ {self.initial_distance:.0f} px "
+                    self._safe_emit("error_occurred", f"Pair rejected — {sep:.0f} px vs Px₀ {self.initial_distance:.0f} px "
                         f"(outside {self.PAIR_MIN_FRAC:.2f}–{self.PAIR_MAX_FRAC:.2f} × Px₀; {why})"
                     )
                     return []
@@ -726,8 +1111,7 @@ class CameraManager(QObject):
                     dt = max(1e-3, now - prev[0])
                     allowed = self.PAIR_STEP_FLOOR_PX + self.PAIR_MAX_STEP_PX_PER_S * dt
                     if abs(sep - prev[1]) > allowed:
-                        self.error_occurred.emit(
-                            f"Pair rejected — separation moved {abs(sep - prev[1]):.0f} px in "
+                        self._safe_emit("error_occurred", f"Pair rejected — separation moved {abs(sep - prev[1]):.0f} px in "
                             f"{dt*1000:.0f} ms (limit {allowed:.0f} px). A grip or mount edge has "
                             f"most likely been picked up instead of a marker."
                         )
@@ -736,16 +1120,29 @@ class CameraManager(QObject):
                 self._last_sep = (now, sep)
 
             if len(valid) == 2:
-                self.blobs_detected.emit(valid)
+                self._safe_emit("blobs_detected", valid)
             else:
-                self.error_occurred.emit(
-                    f"Expected 2 blobs, found {len(valid)}"
+                # Throttled: this is a STATE, not an event. It was firing every frame at
+                # 20 fps for as long as a marker was missing, which is exactly the situation
+                # in which the operator needs to read the console. The detailed near-miss
+                # notice above already reports the same condition every 3 s, with the reason.
+                # Before any marker is selected the app is not tracking anything, so a
+                # global search coming up short is not a fault to report - it is the normal
+                # state of an idle camera. Reporting it filled the console the moment the
+                # camera started, before the operator had done anything at all.
+                if not self.seed_points and self.REQUIRE_SELECTION:
+                    return valid
+                _now = time.monotonic()
+                if _now - getattr(self, "_blob_err_t", 0.0) < self.BLOB_ERR_INTERVAL_S:
+                    return valid
+                self._blob_err_t = _now
+                self._safe_emit("error_occurred", f"Expected 2 blobs, found {len(valid)}"
                 )
 
             return valid
 
         except Exception as e:
-            self.error_occurred.emit(str(e))
+            self._safe_emit("error_occurred", str(e))
             return []
 
     def set_exposure(self, microseconds):
@@ -763,7 +1160,7 @@ class CameraManager(QObject):
             self.EXPOSURE_TIME = float(node.Value)
             return self.EXPOSURE_TIME
         except Exception as e:
-            self.error_occurred.emit(f"Exposure change failed: {e}")
+            self._safe_emit("error_occurred", f"Exposure change failed: {e}")
             return None
 
     @staticmethod
@@ -804,7 +1201,7 @@ class CameraManager(QObject):
     def tare_dic(self):
         frame = self.latest_frame
         if frame is None:
-            self.error_occurred.emit("Tare failed - no frame captured")
+            self._safe_emit("error_occurred", "Tare failed - no frame captured")
             return
         # Clear the rate baseline BEFORE detecting: a tare is the one moment a large, instantaneous
         # change in separation is legitimate (new specimen, re-mount), and a stale baseline from the
@@ -822,7 +1219,7 @@ class CameraManager(QObject):
                 self.px_per_mm = self.initial_distance / self.gauge_length_mm
             print(f"DIC tared — L0 = {self.initial_distance:.1f} px | {self.gauge_length_mm:.1f} mm | {self.px_per_mm:.2f} px/mm")
         else:
-            self.error_occurred.emit("Tare failed - need exactly 2 blobs")
+            self._safe_emit("error_occurred", "Tare failed - need exactly 2 blobs")
 
     import math
 
@@ -851,5 +1248,5 @@ class CameraManager(QObject):
         # Tuple layout: (timestamp, cauchy, true_strain, L_px, dx_px)
         self.dic_history.append((now, cauchy, true_strain, current_distance, dx_px))
         self._rate_dic.append(time.monotonic())
-        self.dic_strain_updated.emit(cauchy, true_strain)
+        self._safe_emit("dic_strain_updated", cauchy, true_strain)
         return cauchy, true_strain
