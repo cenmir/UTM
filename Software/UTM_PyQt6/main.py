@@ -1249,6 +1249,8 @@ class UTMApplication(QMainWindow):
 
         # Auto-preload controls (target-force jog) in the Motor Control group
         self._setup_control_groups()      # Preload / Testing panes must exist first
+        self._colour_data_readouts()
+        self._merge_incremental_into_position()
         self._add_new_specimen_button()
         self._setup_preload_controls()
         self._setup_testmode_controls()
@@ -2872,6 +2874,37 @@ class UTMApplication(QMainWindow):
             "New specimen — Px\u2080, markers, plots and data cleared. "
             "Select blobs, then Calibrate Px\u2080 before the next run.")
         self.set_status("New specimen — cleared")
+
+    def _merge_incremental_into_position(self):
+        """Incremental Move belongs with Crosshead position - both are about WHERE it is.
+
+        They were two panes doing one job: one reports the crosshead position and tares it, the
+        other moves it a set distance. Separating them cost a group-box header, a margin and a
+        scroll, for controls the operator uses in the same breath.
+        """
+        pos = getattr(self, "positionGroup", None)
+        inc = getattr(self, "incrementalMoveGroup", None)
+        if pos is None or inc is None or inc.layout() is None:
+            return
+        src, dst = inc.layout(), pos.layout()
+        if dst is None:
+            return
+        from PyQt6.QtWidgets import QFrame
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        dst.addWidget(line)
+        while src.count():
+            it = src.takeAt(0)
+            if it.widget() is not None:
+                dst.addWidget(it.widget())
+            elif it.layout() is not None:
+                dst.addLayout(it.layout())
+        panel = self.verticalLayout_controlPanel
+        panel.removeWidget(inc)
+        inc.setParent(None)
+        inc.deleteLater()
+        pos.setTitle("Crosshead position")
 
     def _setup_control_groups(self):
         """Split the right column along what the operator is actually doing.
@@ -5998,12 +6031,19 @@ class UTMApplication(QMainWindow):
         into every PNG and PDF the report saves.
         """
         from PyQt6.QtWidgets import QFormLayout
+        # WHITE = the quantity this tab is about. YELLOW = the number borrowed from the other
+        # tab, so a glance can tell a subject from a reference without reading the caption.
+        # On each tab the STRESS/STRAIN family and the LOAD family take opposite colours, so the
+        # two are never confused at a glance when both are on screen.
+        WHITE, YELLOW = "#ffffff", "#ffd24a"
         if which == "ss":
-            group, fields = self.stressDataGroup, (("Force:", "xrForce", "#1f6fb4"),)
+            # Stress/Strain tab: stress and strain YELLOW, the borrowed force WHITE.
+            group, fields = self.stressDataGroup, (("Force:", "xrForce", WHITE),)
         else:
+            # Load Plot tab: load YELLOW, the borrowed stress and strain WHITE.
             group = self.loadDataGroup
-            fields = (("Stress:", "xrStress", "#7048e8"),
-                      ("Strain (DIC):", "xrStrain", "#0066cc"))
+            fields = (("Stress:", "xrStress", WHITE),
+                      ("Strain (DIC):", "xrStrain", WHITE))
 
         lay = group.layout()
         if lay is None:
@@ -6041,6 +6081,30 @@ class UTMApplication(QMainWindow):
             val.setStyleSheet(f"font-weight: bold; color: {colour};")
             setattr(self, attr, val)
             lay.addRow(cap, val)
+
+    def _colour_data_readouts(self):
+        """Colour the .ui's own value labels to match the cross-readout convention.
+
+        Stress/Strain tab owns stress and strain -> white there, and its borrowed Force is
+        yellow. Load Plot tab owns load -> white there, and its borrowed stress/strain yellow.
+        """
+        WHITE, YELLOW = "#ffffff", "#ffd24a"
+        css = "font-weight: bold; color: %s;"
+        # Stress/Strain tab owns stress and strain -> YELLOW there.
+        for name in ("maxStressValue", "maxStrainValue", "ssCurrentPointsValue"):
+            w = getattr(self, name, None)
+            if w is not None:
+                w.setStyleSheet(css % YELLOW)
+        # Load Plot tab owns the load numbers -> YELLOW there.
+        for name in ("currentLoadValue", "maxLoadValue", "currentPointsValue"):
+            w = getattr(self, name, None)
+            if w is not None:
+                w.setStyleSheet(css % YELLOW)
+        # The borrowed cross-readouts are WHITE on both tabs.
+        for name in ("xrForce", "xrStress", "xrStrain"):
+            w = getattr(self, name, None)
+            if w is not None:
+                w.setStyleSheet(css % WHITE)
 
     def _update_cross_readout(self):
         """Refresh the cross-tab numbers. Called from the live load hook, so it costs one
