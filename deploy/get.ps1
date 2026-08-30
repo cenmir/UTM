@@ -3,15 +3,19 @@
 
         irm https://raw.githubusercontent.com/cenmir/UTM/main/deploy/get.ps1 | iex
 
-    Downloads the app, installs uv and a private Python, and puts an icon on the Desktop.
-    Windows already has everything this needs: Invoke-WebRequest and Expand-Archive are
-    built in, so nothing has to be installed before running it.
+    Downloads the app, installs uv and a private Python, installs the camera driver, and
+    puts an icon on the Desktop. Windows already has everything this needs:
+    Invoke-WebRequest and Expand-Archive are built in, so nothing has to be installed
+    before running it.
 
-    One profile: every machine gets the same app. A laptop with no camera and no rig
-    runs it fine - it just cannot start a test. The rig PC additionally needs the
-    Basler Pylon Suite, installed once as administrator.
+    EVERYTHING, in one command. One profile: every machine gets the same app. The camera
+    driver is 1.8 MB and ships with the app, so it goes on too - that is the one and only
+    UAC prompt in the whole setup. Decline it, or set $env:UTM_NO_DRIVER=1, and the app
+    still installs and runs; it just will not see a camera. A laptop with no camera and no
+    rig is a perfectly good install - it simply cannot start a test.
 
-    Knobs:  $env:UTM_DEST (default $HOME\UTM), $env:UTM_REF (default main)
+    Knobs:  $env:UTM_DEST (default $HOME\UTM), $env:UTM_REF (default main),
+            $env:UTM_NO_DRIVER=1 to skip the camera driver
 #>
 $ErrorActionPreference = "Stop"
 
@@ -103,9 +107,11 @@ Say "installed to $Dest"
 $installer = Join-Path $Dest "deploy\install_uv.ps1"
 if (-not (Test-Path $installer)) { throw "installer missing at $installer" }
 
-Head "Setting up Python and dependencies"
-& powershell -ExecutionPolicy Bypass -File $installer
-if (-not $?) { throw "setup failed" }
+Head "Setting up Python, dependencies and the camera driver"
+$iargs = @("-ExecutionPolicy","Bypass","-File",$installer)
+if ($env:UTM_NO_DRIVER) { $iargs += "-NoDriver"; Say "UTM_NO_DRIVER set - skipping the camera driver" }
+& powershell @iargs
+if ($LASTEXITCODE -ne 0) { throw "setup failed (exit $LASTEXITCODE)" }
 
 Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 Head "Done"

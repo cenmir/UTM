@@ -40,8 +40,16 @@ if (-not $isAdmin) {
     $argl = @("-ExecutionPolicy","Bypass","-File","`"$PSCommandPath`"")
     if ($DriverDir) { $argl += @("-DriverDir","`"$DriverDir`"") }
     if ($Uninstall) { $argl += "-Uninstall" }
-    Start-Process powershell -Verb RunAs -ArgumentList $argl -Wait
-    return
+    try {
+        $p = Start-Process powershell -Verb RunAs -ArgumentList $argl -Wait -PassThru
+    } catch {
+        # Declining the UAC prompt throws here. That is a choice, not a crash: say so and
+        # hand back a distinct code so an unattended caller can tell it apart from a failure.
+        Write-Host "Administrator was declined - the driver was NOT installed." -ForegroundColor Yellow
+        exit 2
+    }
+    # Without this the caller cannot tell whether the elevated half worked.
+    exit $p.ExitCode
 }
 
 Head "Basler USB3 Vision driver"
@@ -77,6 +85,16 @@ if ($Uninstall) {
         pnputil /delete-driver $p /uninstall /force
     }
     return
+}
+
+# ---------------------------------------------------------------- already there?
+# get.ps1 runs this on every install, and re-running the one-liner to update the app must
+# not mean a second driver install. Staged already is success, not work to redo.
+if (pnputil /enum-drivers | Select-String -Pattern "plnu3v.inf" -Quiet) {
+    Head "Basler USB3 Vision driver"
+    Say "already staged in the driver store - nothing to do"
+    Write-Host ""
+    exit 0
 }
 
 # ---------------------------------------------------------------- verify then install

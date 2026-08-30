@@ -10,8 +10,12 @@
     and simply finds no camera when there is none, so the app starts and behaves identically.
     Nothing here needs administrator.
 
-    The RIG PC additionally needs the Basler Pylon Suite for its USB3 Vision kernel driver -
-    a separate ~2 GB install, once, as administrator. That is not a Python package.
+    The camera also needs the Basler USB3 Vision kernel driver, which is not a Python
+    package. deploy/driver/ carries it - 1.8 MB, WHQL-signed - and this script installs it
+    for you, so the whole setup is one command and one UAC prompt. Not the 2 GB pylon Suite.
+
+    -NoDriver skips that step, as does declining the UAC prompt; either way the app still
+    installs and runs. It just will not see a camera.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File deploy\install_uv.ps1
@@ -19,6 +23,7 @@
 [CmdletBinding()]
 param(
     [switch]$NoShortcut,
+    [switch]$NoDriver,
     [string]$PythonVersion = "3.13"
 )
 
@@ -95,14 +100,54 @@ if ($NoShortcut) {
     }
 }
 
+# ---------------------------------------------------------------- camera driver
+# The one remaining manual step used to live here as a printed instruction, and printed
+# instructions get skipped. Install it, and let declining be the deliberate act instead.
+$DriverScript = Join-Path $DeployDir "install_driver.ps1"
+$DriverInf    = Join-Path $DeployDir "driver\plnu3v.inf"
+$driverState  = "skipped"
+
+if ($NoDriver) {
+    $driverState = "skipped by request"
+} elseif (-not (Test-Path $DriverInf)) {
+    $driverState = "no payload"
+} elseif (pnputil /enum-drivers | Select-String -Pattern "plnu3v.inf" -Quiet) {
+    $driverState = "already installed"
+} else {
+    Head "Camera driver"
+    Say "The camera needs a kernel driver - 1.8 MB, WHQL-signed, shipped with this install."
+    Say "This is the ONLY step that needs administrator. Approve the UAC prompt, or decline"
+    Say "it if this machine will never have the camera plugged in."
+    & powershell -ExecutionPolicy Bypass -File $DriverScript
+    $rc = $LASTEXITCODE
+    # Never fail the whole install over this: a laptop with no camera is a valid outcome.
+    if     ($rc -eq 0) { $driverState = "installed" }
+    elseif ($rc -eq 2) { $driverState = "declined" }
+    else               { $driverState = "failed (exit $rc)" }
+}
+
 Head "Done"
 Write-Host ""
-Write-Host "  ON THE RIG PC ONLY, one more step:" -ForegroundColor Yellow
-Write-Host "  pypylon is installed, but the camera also needs the Basler Pylon Camera Software"
-Write-Host "  Suite for its USB3 Vision KERNEL DRIVER. Without it Windows will not enumerate"
-Write-Host "  the camera at all, whatever pip installed. Once, as administrator:"
-Write-Host "     https://www.baslerweb.com/en/downloads/software-downloads/"
-Write-Host "  On a laptop with no camera, ignore this - the app runs fine without it."
+switch -Wildcard ($driverState) {
+    "installed"         { Write-Host "  Camera driver: installed. Plug the camera in and start the app." -ForegroundColor Green }
+    "already installed" { Write-Host "  Camera driver: already present - left alone." -ForegroundColor Green }
+    "skipped by request" { Write-Host "  Camera driver: skipped (-NoDriver). The app runs; the camera will not be seen." }
+    "no payload"        {
+        Write-Host "  Camera driver: NOT installed - the driver files are missing from this copy." -ForegroundColor Yellow
+        Write-Host "  If this machine gets the camera, install the full pylon Suite instead:"
+        Write-Host "     https://www.baslerweb.com/en/downloads/software-downloads/"
+    }
+    default             {
+        Write-Host "  Camera driver: $driverState." -ForegroundColor Yellow
+        Write-Host "  The app is installed and runs fine. If you later plug the camera into this"
+        Write-Host "  machine, run this once:"
+        Write-Host "     powershell -ExecutionPolicy Bypass -File `"$DriverScript`""
+    }
+}
 
 Say "Launch from the icon, or:  uv run python `"$MainPy`""
 Write-Host ""
+
+# pnputil and the nested powershell calls above leave $LASTEXITCODE set; be explicit so
+# get.ps1's success check reflects the app install, not the last native command to run.
+exit 0
