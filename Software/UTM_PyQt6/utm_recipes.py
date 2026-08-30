@@ -20,7 +20,9 @@ class TestRecipe:
     infill_pct: float = 100.0
     specimen_mode: str = "White"          # DIC preset: White (dark dots) / Black (light dots)
     area_mm2: float = 80.0
-    gauge_mm: float = 80.0
+    # 60 mm: at 80 mm the markers sit on the fillets of this dogbone rather than in
+    # the parallel section. See docs/GAUGE_AND_MODULUS.md.
+    gauge_mm: float = 60.0
     preload_N: float = 300.0               # matches the GUI default and recipes/Default.json
     test_speed_mm_s: float = 0.1
     # How far the DIC will believe the markers travelled before it calls the separation a LOST
@@ -157,7 +159,7 @@ def _starter_recipes():
     specimen (~1.4 kN tared) they are conservative: the fracture protocols simply take more levels
     to get there, which costs time, not a specimen.
     """
-    common = dict(material="PLA", specimen_mode="White", area_mm2=80.0, gauge_mm=80.0,
+    common = dict(material="PLA", specimen_mode="White", area_mm2=80.0, gauge_mm=60.0,
                   test_speed_mm_s=0.1, mode="manual", strain_rate=0.0005, auto_stop_fracture=True)
     return [
         TestRecipe(

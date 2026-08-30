@@ -1206,7 +1206,12 @@ class UTMApplication(QMainWindow):
         self.current_load = 0.0
         self.max_load = 0.0  # Maximum load recorded during test
         self.cross_sectional_area = 80.0  # mm²
-        self.gauge_length = 80.0  # mm
+        # 60 mm, decided 2026-08-30. At 80 mm the markers land on the FILLETS of this
+        # dogbone, not inside the parallel section: strain then averages over a region of
+        # changing cross-section with a stress concentration at each end. 60 mm keeps both
+        # markers well inside the uniform gauge, and drops L0 to ~1270 px, which also clears
+        # the framing check for a 30 mm pull without moving the camera.
+        self.gauge_length = 60.0  # mm
 
         # Load plot data - store ALL points for complete test visualization
         self.load_plot_times = []  # All timestamps
@@ -7912,7 +7917,13 @@ class UTMApplication(QMainWindow):
         # a second timer for two labels would be waste on a thread this feature must not disturb.
         try:
             self._update_capture_badges()
-            self._update_camera_params()
+            # Reading live camera nodes goes over USB. On a healthy link that is microseconds;
+            # on a failing one it can block for SECONDS - on the GUI thread, at 2 Hz, which is
+            # the freeze the operator sees when the camera link is sick. Skip it while grabs
+            # are failing: the values are stale anyway.
+            _cm = getattr(self, "camera_manager", None)
+            if _cm is None or not hasattr(_cm, "link_is_healthy") or _cm.link_is_healthy():
+                self._update_camera_params()
         except Exception:
             pass
         cm = getattr(self, "camera_manager", None)

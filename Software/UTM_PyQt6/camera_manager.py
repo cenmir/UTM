@@ -521,7 +521,7 @@ class CameraManager(QObject):
         try:
             _t0 = t()
             grab_result = self.camera.RetrieveResult(
-                5000, pylon.TimeoutHandling_ThrowException
+                self.GRAB_TIMEOUT_MS, pylon.TimeoutHandling_ThrowException
             )
             _t1 = t()                                   # wait: idle if the loop is ahead of the camera
             if grab_result.GrabSucceeded():
@@ -529,6 +529,7 @@ class CameraManager(QObject):
                 img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
                 grab_result.Release()
                 self.latest_frame = img  # add this
+                self._grab_fail_streak = 0       # a good frame clears the give-up counter
                 self._rate_grab.append(time.monotonic())
                 _t2 = t()
                 # Run blob detection on every frame
@@ -552,8 +553,41 @@ class CameraManager(QObject):
                 return img
             grab_result.Release()
         except Exception as e:
-            self._safe_emit("error_occurred", str(e))
+            self._on_grab_failure(e)
         return None
+
+    def _on_grab_failure(self, exc):
+        """One place to handle a failed grab: coalesce the message, and stop if it persists.
+
+        A timeout message from pylon is ~500 characters, and a sick link produces one per
+        timeout indefinitely. Appending that to a QTextEdit on the GUI thread, forever, is what
+        turned a camera problem into an unresponsive application.
+        """
+        now = time.monotonic()
+        msg = str(exc).split("\n")[0][:160]
+
+        self._grab_fail_streak += 1
+        if self._grab_fail_streak >= self.MAX_CONSECUTIVE_GRAB_FAILURES:
+            self._safe_emit(
+                "error_occurred",
+                "Camera stopped after %d consecutive failed grabs. The link is not delivering "
+                "frames - check the USB cable and, if the camera is on a hub, try it directly "
+                "on the PC. Last error: %s" % (self._grab_fail_streak, msg))
+            try:
+                self.stop_acquisition()
+            except Exception:
+                pass
+            self._grab_fail_streak = 0
+            return
+
+        if msg == self._err_last_msg and (now - self._err_last_t) < 5.0:
+            self._err_repeat += 1                 # same fault, still going: stay quiet
+            return
+        if self._err_repeat:
+            msg = "%s   (repeated %d times)" % (msg, self._err_repeat + 1)
+        self._err_last_msg, self._err_last_t, self._err_repeat = \
+            str(exc).split("\n")[0][:160], now, 0
+        self._safe_emit("error_occurred", msg)
 
     def _record_stages(self, t0, t1, t2, t3, t4, t5, t6):
         """Bank the per-stage cost, and say something if the loop has gone slow.
@@ -611,6 +645,21 @@ class CameraManager(QObject):
     # quiet until then. The global search still runs so that a click has something to snap to,
     # but it no longer reports its own failure to find markers nobody asked it to find.
     REQUIRE_SELECTION = True
+
+    # A frame that has not arrived in this long is not coming. It was 5000 ms, which is five
+    # seconds of a blocked capture thread per failed grab - long enough that the operator sees
+    # the app stall, and long enough to hide a dying link behind what looks like a hang.
+    # At 20 fps a healthy frame arrives in 50 ms; 1000 ms is 20x that.
+    GRAB_TIMEOUT_MS = 1000
+
+    # Consecutive failures before acquisition gives up. Spinning on timeouts forever is worse
+    # than stopping and saying so: the feed is frozen either way, but only one of them tells
+    # the operator what happened.
+    MAX_CONSECUTIVE_GRAB_FAILURES = 8
+    _grab_fail_streak = 0
+    _err_last_msg = ""
+    _err_last_t = 0.0
+    _err_repeat = 0
 
     # Windowed-detection tuning. The area floor is far lower than the global MIN_AREA: inside a
     # box the operator pointed at, a small dot is a dot, not noise.
@@ -1144,6 +1193,12 @@ class CameraManager(QObject):
         except Exception as e:
             self._safe_emit("error_occurred", str(e))
             return []
+
+    def link_is_healthy(self):
+        """False while grabs are failing. Callers on the GUI THREAD must check this before
+        touching camera nodes: a node read over a sick USB link can block for seconds, and the
+        2 Hz health badge does exactly that read."""
+        return self._grab_fail_streak == 0
 
     def set_exposure(self, microseconds):
         """Change exposure on a live camera. Returns the value the camera actually accepted.
