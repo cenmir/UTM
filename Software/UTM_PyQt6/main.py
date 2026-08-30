@@ -118,7 +118,7 @@ class UTMApplication(QMainWindow):
         self._build_view_menu()
         self._build_settings_menu()
         import theme as _theme
-        self.apply_theme(self._recall("ui/theme", _theme.DEFAULT), announce=False)
+        self.apply_theme(_theme.DEFAULT, announce=False)
 
         print("UTM Application initialized")
 
@@ -167,11 +167,9 @@ class UTMApplication(QMainWindow):
         # ~15 px from the panel whenever it appears, and the mismatch is visible.
         self.controlPanelFrame.installEventFilter(self)
 
-        # Replace Data Stream checkboxes with FluentSwitch toggles
-        # These control whether data is displayed to console (polling is automatic)
+        # The Load data toggle: whether samples are COLLECTED, not whether they arrive.
+        # Force streams from the moment we connect (see _sync_stream_flags).
         self._replace_checkbox_with_switch_horizontal('loadCellCheckBox', 'loadCellSwitch', 'horizontalLayout_dataStreams')
-        self._replace_checkbox_with_switch_horizontal('positionCheckBox', 'positionSwitch', 'horizontalLayout_dataStreams')
-        self._replace_checkbox_with_switch_horizontal('velocityCheckBox', 'velocitySwitch', 'horizontalLayout_dataStreams')
         self._space_data_stream_pairs()
 
         # Replace speed unit checkbox with radio buttons
@@ -197,13 +195,13 @@ class UTMApplication(QMainWindow):
         if lay is None:
             return
         self.stallGuardCheckBox = QCheckBox("Stall guard (velocity)")
-        # apply_styles() runs BEFORE init_state(), so the flag may not exist yet. Default
-        # False here and init_state() sets the same value a moment later - they agree.
-        self.stallGuardCheckBox.setChecked(getattr(self, "stall_detection_enabled", False))
+        # apply_styles() runs BEFORE init_state(), so the flag may not exist yet. This default
+        # must match init_state()'s, which sets the same value a moment later.
+        self.stallGuardCheckBox.setChecked(getattr(self, "stall_detection_enabled", True))
         self.stallGuardCheckBox.setToolTip(
             "E-Stop if the motor reports under 0.5 RPM for three readings while a direction is "
-            "commanded.\nOFF by default: it was added for a binding fault that was fixed "
-            "mechanically on 2026-08-12, and it misfires on the acceleration ramp."
+            "commanded.\nON by default. It can misfire on the acceleration ramp; switch it off "
+            "if a healthy move keeps being stopped."
         )
         self.stallGuardCheckBox.toggled.connect(self._on_stall_guard_toggled)
         lay.addWidget(self.stallGuardCheckBox)
@@ -220,8 +218,8 @@ class UTMApplication(QMainWindow):
             "Refuse any motor motion that would push the force further outside F_min..F_max.\n\n"
             "Inside the band, both directions work normally. Outside it, only the direction that "
             "brings the force back is allowed, and a move already running is stopped.\n\n"
-            "Requires the Load Cell stream: without force readings this cannot be enforced, so "
-            "motion is refused outright rather than run blind.")
+            "Requires live force data: without readings this cannot be enforced, so motion "
+            "is refused outright rather than run blind.")
         self.loadLimitCheckBox.toggled.connect(self._on_load_limit_toggled)
 
         self.loadMinSpin = QDoubleSpinBox()
@@ -251,11 +249,29 @@ class UTMApplication(QMainWindow):
         lay.addLayout(row)
         self._envelope_tripped = False
 
+    # How long without a force sample before we call the stream dead. They arrive at ~11 Hz
+    # (the HX711's own 10 SPS rate), so this is ~17 missed samples - long enough not to trip
+    # on the jitter a 9600-baud bus produces (measured: 94 ms median, 185 ms worst), short
+    # enough that a real stall is caught before the crosshead has moved 0.5 mm at 20 mm/min.
+    FORCE_STALE_AFTER_S = 1.5
+
+    def force_is_live(self):
+        """Is force actually arriving right now?
+
+        Used to be spelled `loadCellSwitch.isChecked()`. That stopped being true when the
+        stream became unconditional on connect: the switch now means "record", and asking it
+        about the stream would answer about storage instead. A safety interlock must test the
+        thing itself, so this tests the arrival of data.
+        """
+        if not (self.connected or DEMO_MODE):
+            return False
+        return (time.monotonic() - getattr(self, "_last_load_rx", 0.0)) < self.FORCE_STALE_AFTER_S
+
     def _on_load_limit_toggled(self, on):
-        if on and not self.loadCellSwitch.isChecked():
+        if on and not self.force_is_live():
             self.append_to_console(
-                "Load limits ARMED but the Load Cell stream is off — motion is refused until "
-                "it is on, because the limit cannot be enforced without force readings.")
+                "Load limits ARMED but no force data is arriving — motion is refused until it "
+                "is, because the limit cannot be enforced without force readings.")
         else:
             self.append_to_console(
                 "Load limits %s (%.0f..%.0f N)" % ("ARMED" if on else "off",
@@ -273,9 +289,9 @@ class UTMApplication(QMainWindow):
         if not getattr(self, "loadLimitCheckBox", None) or not self.loadLimitCheckBox.isChecked():
             return True, ""
 
-        if not self.loadCellSwitch.isChecked():
-            return False, ("load limits are armed but the Load Cell stream is off — "
-                           "turn it on, or clear Load limits")
+        if not self.force_is_live():
+            return False, ("load limits are armed but no force data is arriving — "
+                           "check the connection, or clear Load limits")
 
         f = float(getattr(self, "current_load", 0.0))
         lo, hi = self.loadMinSpin.value(), self.loadMaxSpin.value()
@@ -287,6 +303,77 @@ class UTMApplication(QMainWindow):
         if (not tension) and f <= lo:
             return False, "%.0f N is at or below the %.0f N limit — only tension is allowed" % (f, lo)
         return True, ""
+
+    def _motion_in_progress(self):
+        """Is anything currently driving the crosshead? Names the mode, or None."""
+        if getattr(self, "active_policy", None) is not None:
+            return getattr(self.active_policy, "name", "test mode")
+        if getattr(self, "preload_active", False):
+            return "preload"
+        if getattr(self, "_release_active", False):
+            return "release"
+        if getattr(self, "_return_active", False):
+            return "return to zero"
+        if getattr(self, "incremental_move_active", False):
+            return "incremental move"
+        if self.upRadioButton.isChecked() or self.downRadioButton.isChecked():
+            return "manual move"
+        return None
+
+    def _halt_motion(self, why):
+        """Stop whatever is moving, and cancel the mode that was driving it.
+
+        Not an E-Stop: the motors stay enabled and the rig stays connected. This is the
+        controlled stop used when a precondition for moving stops being true mid-move.
+        """
+        mode = self._motion_in_progress()
+        if getattr(self, "preload_active", False):
+            self._stop_preload(why, warn=True)
+        if getattr(self, "_release_active", False):
+            self._stop_release(why, warn=True)
+        if getattr(self, "_return_active", False):
+            self._stop_return(why, warn=True)
+        if getattr(self, "active_policy", None) is not None:
+            self._stop_policy(why, warn=True)
+        self.incremental_move_active = False
+        if self.connected:
+            self.serial_manager.send_command("Stop")
+        self.stopRadioButton.blockSignals(True)
+        self.stopRadioButton.setChecked(True)
+        self.stopRadioButton.blockSignals(False)
+        self.append_to_console("STOPPED (%s) — %s" % (mode or "motion", why))
+        self.set_status("Motors stopped — %s" % why, is_warning=True)
+
+    def _refuse_motion(self, tension, what):
+        """Pre-flight check for anything that starts the motors. True == refused.
+
+        Two gates, in order.
+
+        1. LOAD DATA MUST BE ON. The rig can pull 15 kN through a PLA specimen and the only thing
+           telling anyone how hard it is pulling is the force trace. Moving with collection off
+           means nobody - not the operator, not the file - has a record of what the specimen saw,
+           and the load limits become a backstop the operator cannot see approaching. So it is a
+           precondition for motion, not a preference.
+
+        2. The force envelope, if armed. This was only ever consulted by the Direction radios, so
+           every OTHER way of starting a move - incremental Move Up/Down, preload, release, the
+           fracture test, the test modes - drove straight past an armed limit. Once running, the
+           per-sample `_enforce_load_envelope` would stop it, but only AFTER the force had gone
+           further outside the band. A limit enforced a moment late is not a limit.
+        """
+        sw = getattr(self, "loadCellSwitch", None)
+        if sw is not None and not sw.isChecked():
+            why = "switch on Load data first — the rig will not move without the force trace"
+            self.append_to_console("Refused — %s: %s" % (what, why))
+            self.set_status("%s refused — %s" % (what, why), is_warning=True)
+            return True
+
+        ok, why = self._load_envelope_allows(tension)
+        if ok:
+            return False
+        self.append_to_console("Refused — %s: %s" % (what, why))
+        self.set_status("%s refused — %s" % (what, why), is_warning=True)
+        return True
 
     def _enforce_load_envelope(self):
         """Called on every force sample. Stops a move that has left the band."""
@@ -320,28 +407,16 @@ class UTMApplication(QMainWindow):
             "Velocity stall guard %s" % ("ENABLED" if on else "disabled"))
 
     def _space_data_stream_pairs(self):
-        """Bind each Data Streams label to its own switch.
+        """Keep the Load data label against its own switch, and the row left-aligned.
 
-        The row is a flat QHBoxLayout - label, switch, label, switch, label, switch - and a
-        QHBoxLayout spaces every item IDENTICALLY. So the gap between "Load Cell" and its
-        switch was the same as the gap between that switch and "Position", and the reader
-        cannot tell which switch belongs to which label. Tighten inside each pair, and open
-        up a real gap between pairs, so the grouping is visible rather than guessed.
+        Was three label/switch pairs needing gaps between them so the reader could tell which
+        switch went with which label. Only Load data is left, so all that survives is the
+        tight label-to-switch spacing and the stretch.
         """
         lay = getattr(self, "horizontalLayout_dataStreams", None)
         if lay is None:
             return
         lay.setSpacing(6)                       # label sits against its own switch
-
-        # insert back-to-front so earlier indices stay valid
-        for lbl in (getattr(self, "velocityLabel", None),
-                    getattr(self, "positionLabel", None)):
-            if lbl is None:
-                continue
-            idx = lay.indexOf(lbl)
-            if idx > 0:
-                lay.insertSpacing(idx, 22)      # gap BETWEEN pairs
-
         lay.addStretch(1)                       # keep the row left-aligned
 
     def _replace_checkbox_with_switch_horizontal(self, checkbox_name, switch_name, layout_name):
@@ -1105,11 +1180,8 @@ class UTMApplication(QMainWindow):
         self.comPortComboBox.currentIndexChanged.connect(
             lambda _: self._update_connect_enabled())
 
-        # Right panel - Data stream toggles (control console display, not polling)
-        # Polling is automatic - these control whether data is printed to console
+        # Right panel - Load data collection toggle
         self.loadCellSwitch.clicked.connect(lambda: self.on_load_cell_toggle(self.loadCellSwitch.isChecked()))
-        self.positionSwitch.clicked.connect(lambda: self.on_position_toggle(self.positionSwitch.isChecked()))
-        self.velocitySwitch.clicked.connect(lambda: self.on_velocity_toggle(self.velocitySwitch.isChecked()))
 
         # Right panel - Speed unit radio buttons
         self.speedUnitMmRadio.toggled.connect(self.on_speed_unit_changed)
@@ -1219,6 +1291,7 @@ class UTMApplication(QMainWindow):
 
         # Data storage
         self.current_load = 0.0
+        self._last_load_rx = 0.0   # monotonic stamp of the last force sample; see force_is_live()
         self.max_load = 0.0  # Maximum load recorded during test
         self.cross_sectional_area = 80.0  # mm²
         # 60 mm, decided 2026-08-30. At 80 mm the markers land on the FILLETS of this
@@ -1369,17 +1442,15 @@ class UTMApplication(QMainWindow):
         self.motor_velocity_rpm = 0.0  # Current motor velocity
         self.motor_velocity_avg_rpm = 0.0  # Averaged motor velocity
 
-        # Console display toggles (data is always polled, these control console output)
-        self.display_position_to_console = False
-        self.display_velocity_to_console = False
-
         # Stall detection (only for continuous movement, not incremental moves)
-        # DEFAULT OFF since 2026-08-28. This guard was written 2026-06-22 (a4573d8) while the
-        # rig was stalling near 2.6 kN. That was never a motor limit: the load holders had worked
-        # loose and the crossheads were binding (9061daf, 2026-08-12 - "a fastener, not a purchase
-        # and not a code change"). The mechanical fault is fixed; the guard outlived it and now
-        # fires on healthy motion. See docs/STALL_GUARD.md before switching it back on.
-        self.stall_detection_enabled = False
+        # DEFAULT ON since 2026-08-30, at the operator's decision, for the student campaign.
+        # It was switched OFF on 2026-08-28 because it misfired: written 2026-06-22 (a4573d8)
+        # for a rig stalling near 2.6 kN, which turned out to be loose load holders and binding
+        # crossheads (9061daf, 2026-08-12 - "a fastener, not a purchase and not a code change"),
+        # not a motor limit. With ~40 groups running unattended pulls, a guard that occasionally
+        # stops a healthy move is the cheaper failure. If it cries wolf, the grace period is the
+        # knob to turn, not the default. See docs/STALL_GUARD.md.
+        self.stall_detection_enabled = True
         self.stall_velocity_threshold = 0.5  # RPM below this is considered stalled
         self.stall_count = 0  # Counter for consecutive stall readings
         self.stall_count_threshold = 3  # Number of consecutive readings before triggering stall
@@ -2133,9 +2204,10 @@ class UTMApplication(QMainWindow):
                 "Please connect to the UTM before calibrating.")
             return
 
-        if not self.loadCellSwitch.isChecked():
-            QMessageBox.warning(self, "Load Cell Off",
-                "Please turn on the Load Cell data stream before calibrating.")
+        if not self.force_is_live():
+            QMessageBox.warning(self, "No force data",
+                "No load-cell samples are arriving, so there is nothing to calibrate "
+                "against.\n\nCheck that the rig is connected.")
             return
 
         # Get the weight value
@@ -2207,7 +2279,7 @@ class UTMApplication(QMainWindow):
 
         if not self.calibration_raw_buffer:
             QMessageBox.warning(self, "Calibration Error",
-                "No data collected. Make sure Load Cell is streaming data.")
+                "No data collected - no load-cell samples arrived. Check the connection.")
             self._cancel_calibration()
             return
 
@@ -2504,10 +2576,8 @@ class UTMApplication(QMainWindow):
         connected = self.connected or DEMO_MODE
         motors_enabled = self.motorsSwitch.isChecked()
 
-        # Data Streams group - toggles enabled when connected
+        # Data collection group
         self.loadCellSwitch.setEnabled(connected)
-        self.positionSwitch.setEnabled(connected)
-        self.velocitySwitch.setEnabled(connected)
 
         # Speed Control group - enabled only when connected
         self.speedGauge.setEnabled(connected)
@@ -2557,31 +2627,29 @@ class UTMApplication(QMainWindow):
     # ========== Data Stream Functions ==========
 
     def on_load_cell_toggle(self, state):
-        """Toggle load cell data streaming to firmware"""
+        """Start or stop STORING samples. The stream itself is left alone.
+
+        This used to send LoadCellOn/LoadCellOff, which meant switching collection off also
+        blinded the force readout, the load-limit interlock and the preload controller. The
+        stream is unconditional now (see _sync_stream_flags) and costs 18 % of an uplink
+        running at half capacity, so there is nothing to save by stopping it.
+        """
         if state:
-            self.append_to_console("Load cell data ON")
+            self.append_to_console("Collecting load data — samples are being stored.")
+            # Belt and braces: a firmware that missed the connect-time LoadCellOn would
+            # otherwise record nothing at all, and the operator would not find out until
+            # the plot stayed empty.
             if self.connected:
                 self.serial_manager.send_command("LoadCellOn")
         else:
-            self.append_to_console("Load cell data OFF")
-            if self.connected:
-                self.serial_manager.send_command("LoadCellOff")
-
-    def on_position_toggle(self, state):
-        """Toggle position data display in console"""
-        self.display_position_to_console = state
-        if state:
-            self.append_to_console("Position display ON")
-        else:
-            self.append_to_console("Position display OFF")
-
-    def on_velocity_toggle(self, state):
-        """Toggle velocity data display in console"""
-        self.display_velocity_to_console = state
-        if state:
-            self.append_to_console("Velocity display ON")
-        else:
-            self.append_to_console("Velocity display OFF")
+            # A pre-flight gate only ever refuses a move that has not started. Switching
+            # collection off DURING one used to leave the crosshead travelling with nothing
+            # recording it - the exact situation the gate exists to prevent, reached from the
+            # other direction. So the switch stops the rig as well as the recording.
+            if self._motion_in_progress():
+                self._halt_motion("Load data was switched off")
+            else:
+                self.append_to_console("Stopped collecting. Force readout stays live.")
 
     # ========== Motor Data Polling ==========
 
@@ -2833,10 +2901,7 @@ class UTMApplication(QMainWindow):
         # Refuse a direction that would drive further outside the force envelope. Checked
         # BEFORE any command is sent, so a refused move never reaches the firmware.
         if self.upRadioButton.isChecked() or self.downRadioButton.isChecked():
-            ok, why = self._load_envelope_allows(self.upRadioButton.isChecked())
-            if not ok:
-                self.append_to_console("Refused — %s" % why)
-                self.set_status("Move refused — %s" % why, is_warning=True)
+            if self._refuse_motion(self.upRadioButton.isChecked(), "Move"):
                 self.stopRadioButton.blockSignals(True)
                 self.stopRadioButton.setChecked(True)
                 self.stopRadioButton.blockSignals(False)
@@ -3024,7 +3089,7 @@ class UTMApplication(QMainWindow):
         preloading a specimen, and running tests. Preload and Testing are now their own panes,
         so Motor Control means only "make the motors go".
 
-        Order: Connection - Data Streams - Motor Control - Speed - Preload - Testing - ...
+        Order: Connection - Data collection - Motor Control - Speed - Preload - Testing - ...
         """
         from PyQt6.QtWidgets import QGroupBox, QVBoxLayout
         panel = self.verticalLayout_controlPanel
@@ -3104,6 +3169,8 @@ class UTMApplication(QMainWindow):
         target = self.preloadTargetSpinBox.value()
         if not self.connected:
             self.append_to_console("[Preload] Not connected — cannot move."); return
+        if self._refuse_motion(True, "Preload"):
+            return
         if not self.motorsSwitch.isChecked():
             self.append_to_console("[Preload] Enable motors first."); return
         if target <= 0:
@@ -3289,6 +3356,12 @@ class UTMApplication(QMainWindow):
                 or getattr(self, "active_policy", None) is not None:
             self.append_to_console("[Return] Finish the preload / release / test mode first."); return
 
+        # Direction depends on the sign of the travel, and the load check below already refuses
+        # to drive back against a gripped specimen, so ask the envelope about the release
+        # direction - the only one this button ever needs when the specimen is unloaded.
+        if self._refuse_motion(False, "Return to zero"):
+            return
+
         d = self.motor_displacement_mm
         if abs(d) <= self.RETURN_TOL_MM:
             self.append_to_console(f"[Return] Already at δ = {d:+.3f} mm — nothing to do."); return
@@ -3434,6 +3507,8 @@ class UTMApplication(QMainWindow):
             self.append_to_console("[Release] Enable motors first."); return
         if self.preload_active or getattr(self, 'active_policy', None) is not None:
             self.append_to_console("[Release] Cancel the preload / test mode first."); return
+        if self._refuse_motion(False, "Release"):
+            return
         tared_away = getattr(self, '_tare_load_N', 0.0)
         if tared_away <= 0.0:
             tared_away = max(0.0, self.preloadTargetSpinBox.value())
@@ -3978,6 +4053,9 @@ class UTMApplication(QMainWindow):
         from control_policies import Signals
         from control_policies import StrainRatePolicy, RelaxationPolicy, CyclicPolicy, StaircasePolicy
         self.active_policy = policy
+        if self._refuse_motion(True, getattr(policy, "name", "Test mode")):
+            self.active_policy = None
+            return
         # Waveform modes sweep the speed continuously, so the 0.01 mm/s SetSpeed deadband would
         # quantise a 0.01-0.10 mm/s sine into only ~10 velocity steps (visible as straight, stepped
         # flanks in T6). Use a finer deadband for those; the 0.15 s throttle still caps the command
@@ -4597,6 +4675,8 @@ class UTMApplication(QMainWindow):
             self.append_to_console("[Fracture test] Enable motors first."); return
         if self.preload_active or getattr(self, '_release_active', False) or getattr(self, 'active_policy', None) is not None:
             self.append_to_console("[Fracture test] Finish the preload / release / test mode first."); return
+        if self._refuse_motion(True, "Fracture test"):
+            return
         msg = QMessageBox(self)
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setWindowTitle("Fracture test — checklist")
@@ -4789,6 +4869,8 @@ class UTMApplication(QMainWindow):
 
     def on_move_up(self):
         """Move up by specified distance"""
+        if self._refuse_motion(True, "Move up"):
+            return
         distance = self.moveDistanceSpinBox.value()
         firmware_speed = self.get_firmware_speed()
         speed_rpm = self.get_speed_rpm()
@@ -4814,6 +4896,8 @@ class UTMApplication(QMainWindow):
 
     def on_move_down(self):
         """Move down by specified distance"""
+        if self._refuse_motion(False, "Move down"):
+            return
         distance = self.moveDistanceSpinBox.value()
         firmware_speed = self.get_firmware_speed()
         speed_rpm = self.get_speed_rpm()
@@ -4909,7 +4993,8 @@ class UTMApplication(QMainWindow):
         """Save data to CSV file with metadata header"""
         # Check if there's data to save
         if len(self.load_plot_times) == 0:
-            QMessageBox.warning(self, "No Data", "No data to save. Record some data first.")
+            QMessageBox.warning(self, "No Data",
+                "No data to save. Switch on Load data collection and run a test first.")
             return
 
         # Generate default filename with timestamp and optional File ID prefix
@@ -5343,17 +5428,24 @@ class UTMApplication(QMainWindow):
     def _sync_stream_flags(self):
         """Assert a known firmware state on connect instead of assuming one.
 
-        Every Data Streams toggle is off in a freshly-started GUI, so tell the rig the same
-        thing rather than trusting that it agrees. Cheap, idempotent, and it removes a whole
-        class of "the UI says off but the data is arriving" confusion.
+        LoadCellOn unconditionally: force is a READOUT, not a recording. You need it live to
+        preload a specimen, and having to remember a toggle first was one step that bought
+        nothing - the stream is 15 bytes at ~11 Hz, 18 % of a 9600-baud uplink running at
+        half capacity. The Load data switch decides what gets STORED, downstream of this.
+
+        SensorsOff unconditionally: position and velocity come from GetTotalAngle/GetVelocity
+        polls, and nothing parses the tab-separated SensorsOn stream. Worse, it is 20 Hz x 22
+        bytes = 440 B/s on top of the 505 B/s already flowing, which would put the uplink at
+        98 % and start delaying load samples. So we make sure it is off rather than assume it.
+
+        Needed because the ESP32 keeps these flags across an app restart - only a power cycle
+        or a DTR reset clears them, and reconnecting to an already-open port is neither.
         """
         try:
-            for name, sw, on_cmd, off_cmd in (
-                    ("load cell", getattr(self, "loadCellSwitch", None), "LoadCellOn", "LoadCellOff"),
-                    ("sensors", getattr(self, "positionSwitch", None), "SensorsOn", "SensorsOff")):
-                want_on = bool(sw is not None and sw.isChecked())
-                self.serial_manager.send_command(on_cmd if want_on else off_cmd)
-            self.append_to_console("Data streams synced to the panel (both off unless ticked).")
+            self.serial_manager.send_command("LoadCellOn")
+            self.serial_manager.send_command("SensorsOff")
+            self.append_to_console(
+                "Force stream on. Switch on Load data to start collecting samples.")
         except Exception as e:
             self.append_to_console(f"Stream sync failed: {e}")
 
@@ -5370,12 +5462,10 @@ class UTMApplication(QMainWindow):
                 self.connectionSwitch.blockSignals(True)
                 self.connectionSwitch.setChecked(True)
                 self.connectionSwitch.blockSignals(False)
-            # Force the FIRMWARE's stream flags to match the GUI's, which always starts with
-            # every Data Streams toggle off. The ESP32 keeps LoadCellOn/SensorsOn across an app
-            # restart - it is only reset by a power cycle or a DTR reset, and a reconnect to an
-            # already-open port is neither. So closing the app mid-test and reopening it left
-            # the rig streaming load samples into a GUI whose toggle read OFF: the switch and
-            # the machine disagreed, and the switch was the one lying.
+            # Put the FIRMWARE's stream flags into the state this app assumes: force on,
+            # sensors off. The ESP32 keeps them across an app restart - only a power cycle or a
+            # DTR reset clears them, and reconnecting to an already-open port is neither - so
+            # a previous session could otherwise leave SensorsOn flooding the uplink.
             self._sync_stream_flags()
 
             # Start motor position polling
@@ -5485,6 +5575,7 @@ class UTMApplication(QMainWindow):
         force = -(raw_value * self.force_scale) - self.force_offset
 
         self.current_load = force
+        self._last_load_rx = time.monotonic()   # for force_is_live()
         self._enforce_load_envelope()          # before anything else uses the new force
         self.update_load_display()
         self._update_cross_readout()          # the numbers the OTHER plot tab cannot show
@@ -5507,9 +5598,9 @@ class UTMApplication(QMainWindow):
             # itself is still gated, inside _autostop_check.
             self._autostop_check()
 
-        # Add to plot data if:
-        # 1. Load cell data stream is enabled (loadCellSwitch)
-        # 2. Plot checkbox is checked (loadTogglePlotCheckBox)
+        # Store the sample only while Load data is on and the plot is enabled. Everything above
+        # this point - readout, interlock, preload, auto-stop - runs on every sample regardless,
+        # because those need the force whether or not this pull is being kept.
         load_cell_on = hasattr(self, 'loadCellSwitch') and self.loadCellSwitch.isChecked()
         plot_enabled = hasattr(self, 'loadTogglePlotCheckBox') and self.loadTogglePlotCheckBox.isChecked()
 
@@ -5593,20 +5684,12 @@ class UTMApplication(QMainWindow):
         # Update displacement label
         self.displacementLabel.setText(f"δ = {self.motor_displacement_mm:.4f} mm")
 
-        # Display to console if toggle is on
-        if self.display_position_to_console:
-            self.append_to_console(f"Position: {self.motor_displacement_mm:.4f} mm (raw: {raw_angle})")
-
         # TODO: Update linear gauge visual
 
     def on_motor_velocity_data(self, vel1, vel2):
         """Handle parsed motor velocity data with stall detection"""
         self.motor_velocity_rpm = vel1
         self.motor_velocity_avg_rpm = vel2
-
-        # Display to console if toggle is on
-        if self.display_velocity_to_console:
-            self.append_to_console(f"Velocity: {vel1:.2f} RPM (avg: {vel2:.2f} RPM)")
 
         # Update speed display label to show MEASURED velocity when motors are running
         if self.motorsSwitch.isChecked():
@@ -5693,23 +5776,9 @@ class UTMApplication(QMainWindow):
 
     # ---- appearance -------------------------------------------------------------------------
     def _build_view_menu(self):
-        """View ▸ Appearance ▸ Dark / Light, in the menu bar the .ui already carries."""
-        from PyQt6.QtGui import QAction, QActionGroup
+        """The View menu. No Appearance submenu: there is one theme, so there is no choice."""
         bar = self.menuBar()
         menu = bar.addMenu("&View")
-        appearance = menu.addMenu("&Appearance")
-        self._themeActions = {}
-        group = QActionGroup(self)
-        group.setExclusive(True)
-        for key, label, keyseq in (("dark", "&Dark", "Ctrl+Shift+D"),
-                                   ("light", "&Light", "Ctrl+Shift+L")):
-            act = QAction(label, self, checkable=True)
-            act.setShortcut(keyseq)
-            act.triggered.connect(lambda _checked, k=key: self.apply_theme(k))
-            group.addAction(act)
-            appearance.addAction(act)
-            self._themeActions[key] = act
-        menu.addSeparator()
         self._build_wizard(menu)
 
     # ---- SF13: the guided checklist ---------------------------------------------------------
@@ -6658,7 +6727,12 @@ class UTMApplication(QMainWindow):
         self._capture_sync_menu()
 
     def _capture_autostart(self, what):
-        """Called when a test starts. Only ARMED features begin."""
+        """Called when a test starts. Only ARMED features begin.
+
+        This used to switch Load data on for you. It no longer needs to: _refuse_motion makes
+        Load data a precondition for ANY movement, so a test cannot reach this point with
+        collection off - it is refused before a single command goes to the firmware.
+        """
         png = self.actCaptureArm.isChecked() if getattr(self, "actCaptureArm", None) else False
         vid = self.actRecordArm.isChecked() if getattr(self, "actRecordArm", None) else False
         if png or vid:
@@ -6789,6 +6863,49 @@ class UTMApplication(QMainWindow):
             if b.isChecked() != rec:
                 b.blockSignals(True); b.setChecked(rec); b.blockSignals(False)
 
+    def _style_spinboxes(self, t):
+        """Colour the spin boxes with a PALETTE, and let the platform style draw them.
+
+        Not a stylesheet. Putting a border on a QSpinBox in QSS switches the widget to box-model
+        rendering, and Qt then draws no arrows at all - QSS cannot draw a triangle, so the
+        buttons come out as empty rectangles. That is what removed the arrows. The palette
+        leaves the style's own arrows and hit areas alone; windows11, windowsvista and Fusion
+        were all checked to honour it.
+
+        Every role is set for ALL THREE colour groups. A default-constructed QPalette starts from
+        the SYSTEM palette, so setting only Active leaves Inactive (an unfocused window) and
+        Disabled at the OS's values - which on a light-mode Windows means white boxes.
+        """
+        from PyQt6.QtWidgets import QSpinBox, QDoubleSpinBox
+        from PyQt6.QtGui import QPalette, QColor
+        G = QPalette.ColorGroup
+        R = QPalette.ColorRole
+
+        pal = QPalette()
+        for grp in (G.Active, G.Inactive, G.Disabled):
+            dim = grp is G.Disabled
+            pal.setColor(grp, R.Base,            QColor(t["window"] if dim else t["base"]))
+            pal.setColor(grp, R.Text,            QColor(t["text_dim"] if dim else t["text"]))
+            pal.setColor(grp, R.Button,          QColor(t["window"] if dim else t["raised"]))
+            pal.setColor(grp, R.ButtonText,      QColor(t["text_dim"] if dim else t["text"]))
+            pal.setColor(grp, R.Window,          QColor(t["panel"]))
+            pal.setColor(grp, R.WindowText,      QColor(t["text_dim"] if dim else t["text"]))
+            pal.setColor(grp, R.Highlight,       QColor(t["accent"]))
+            pal.setColor(grp, R.HighlightedText, QColor(t["accent_text"]))
+            # The style draws the frame and the button separators from these. Left at their
+            # system values they outline every box in near-white on the dark panel.
+            pal.setColor(grp, R.Light,           QColor(t["raised_hi"]))
+            pal.setColor(grp, R.Midlight,        QColor(t["raised"]))
+            pal.setColor(grp, R.Mid,             QColor(t["border"]))
+            pal.setColor(grp, R.Dark,            QColor(t["window"]))
+            pal.setColor(grp, R.Shadow,          QColor(t["window"]))
+
+        for sb in self.findChildren((QSpinBox, QDoubleSpinBox)):
+            sb.setPalette(pal)
+            hint = sb.sizeHint().width()          # Qt's own "wide enough for the widest value"
+            if sb.minimumWidth() < hint:
+                sb.setMinimumWidth(hint)
+
     def apply_theme(self, name, *, announce=True):
         """Switch the whole GUI between dark and light, and remember the choice.
 
@@ -6804,6 +6921,7 @@ class UTMApplication(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.setStyleSheet(_theme.stylesheet(name))
+        self._style_spinboxes(t)       # palette, not QSS - see the docstring
 
         # --- matplotlib: restyle in place, then force a redraw -------------------------------
         for fig, ax, note, guides, traces, canvas in (
@@ -6842,12 +6960,12 @@ class UTMApplication(QMainWindow):
 
         sep = getattr(self, "_modeSeparatorLine", None)
         if sep is not None:
-            sep.setStyleSheet("color:%s;" % (t["border"] if name == "dark" else "#bbbbbb"))
+            sep.setStyleSheet("color:%s;" % t["border"])
 
         # The crop sliders are custom-painted, so QSS cannot reach them — a 200-grey groove reads as
         # a glaring white bar across a dark GUI.
         from PyQt6.QtGui import QColor
-        groove = QColor(t["raised_hi"]) if name == "dark" else QColor(200, 200, 200)
+        groove = QColor(t["raised_hi"])
         for attr in ("cropRangeSlider", "ssCropRangeSlider"):
             sl = getattr(self, attr, None)
             if sl is not None and hasattr(sl, "set_groove_color"):
@@ -6855,12 +6973,6 @@ class UTMApplication(QMainWindow):
 
         self._refresh_dic_badges()
 
-        if getattr(self, "_themeActions", None):
-            act = self._themeActions.get(name)
-            if act is not None and not act.isChecked():
-                act.setChecked(True)
-
-        self._remember("ui/theme", name)
         if announce:
             self.append_to_console("[View] %s mode." % name.capitalize())
 

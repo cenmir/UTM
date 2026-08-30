@@ -958,46 +958,21 @@
              <item>
               <widget class="QGroupBox" name="dataStreamsGroup">
                <property name="title">
-                <string>Data Streams</string>
+                <string>Data collection</string>
                </property>
                <layout class="QHBoxLayout" name="horizontalLayout_dataStreams">
                 <item>
                  <widget class="QLabel" name="loadCellLabel">
                   <property name="text">
-                   <string>Load Cell</string>
+                   <string>Load data</string>
+                  </property>
+                  <property name="toolTip">
+                   <string>Collect load samples into the plots and the saved CSV. Force is read and displayed from the moment you connect, whether this is on or not - so you can preload against a live readout and only start collecting for the pull itself.</string>
                   </property>
                  </widget>
                 </item>
                 <item>
                  <widget class="QCheckBox" name="loadCellCheckBox">
-                  <property name="text">
-                   <string />
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QLabel" name="positionLabel">
-                  <property name="text">
-                   <string>Position</string>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QCheckBox" name="positionCheckBox">
-                  <property name="text">
-                   <string />
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QLabel" name="velocityLabel">
-                  <property name="text">
-                   <string>Velocity</string>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QCheckBox" name="velocityCheckBox">
                   <property name="text">
                    <string />
                   </property>
