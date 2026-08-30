@@ -28,6 +28,7 @@ INCLUDE_FILES = [
     "pyproject.toml",
     "requirements.txt",
     "README.md",
+    "INSTALL.md",     # the student-facing setup notes, incl. what the UAC prompt is for
     "LICENSE",
 ]
 
