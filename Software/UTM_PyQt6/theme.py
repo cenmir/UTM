@@ -1,4 +1,4 @@
-"""Dark / light theming for the UTM application.
+"""Dark theming for the UTM application.
 
     from theme import THEMES, stylesheet, style_axes
 
@@ -15,8 +15,11 @@ is a dark shell wrapped around white rectangles:
 The custom-painted widgets (`SpeedGauge`, `ToggleSwitch`, `RangeSlider` in widgets.py) are already
 drawn in dark greys and read correctly on both themes, so they are deliberately left alone.
 
-LIGHT is deliberately a near-empty stylesheet: it is the app's original appearance, so switching to
-light is a true revert rather than a second, subtly different look to maintain.
+There is ONE theme. A light theme used to exist as a near-empty stylesheet - "the app's original
+appearance" - but that is not a theme, it is the absence of one: on a machine with Windows in dark
+mode it rendered dark chrome around a forced-light plot, so which of the two looks a student got
+depended on their OS setting. get() falls back to the default for any unknown name, so a remembered
+"light" preference resolves to dark on its own.
 """
 
 # --------------------------------------------------------------------------- palettes
@@ -55,38 +58,7 @@ DARK = {
     "trace_2":     "#ff7b72",
 }
 
-LIGHT = {
-    "name":        "light",
-    "window":      "#f0f0f0",
-    "base":        "#ffffff",
-    "panel":       "#f0f0f0",
-    "raised":      "#e6e6e6",
-    "raised_hi":   "#dcdcdc",
-    "panel_alt":   "#e8e8e8",
-    "text":        "#1a1a1a",
-    "text_dim":    "#333333",
-    "border":      "#bbbbbb",
-    "border_strong": "#999999",
-    "border_bright": "#777777",
-    "accent":      "#0066cc",
-    "accent_text": "#ffffff",
-    "ok":          "#00aa66",
-    "warn":        "#cc8800",
-    "bad":         "#aa3333",
-    "info":        "#0066cc",
-    "amber_text":  "#cc6600",
-    "plot_bg":     "#f0f0f0",
-    "plot_axes":   "#ffffff",
-    "plot_fg":     "#000000",
-    "plot_grid":   "#b0b0b0",
-    "plot_note_bg": "white",
-    "plot_note_ec": "gray",
-    "plot_guide":  "gray",
-    "trace_1":     "blue",
-    "trace_2":     "red",
-}
-
-THEMES = {"dark": DARK, "light": LIGHT}
+THEMES = {"dark": DARK}
 DEFAULT = "dark"
 
 
@@ -137,12 +109,12 @@ QPushButton:hover  {{ background-color: {raised_hi}; }}
 QPushButton:pressed{{ background-color: {accent}; color: {accent_text}; }}
 QPushButton:disabled {{ background-color: {window}; color: {text_dim}; border-color: {window}; }}
 
-QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit, QTextEdit, QListView, QTreeView {{
+QLineEdit, QComboBox, QPlainTextEdit, QTextEdit, QListView, QTreeView {{
     background-color: {base}; color: {text};
     border: 1px solid {border}; border-radius: 4px; padding: 2px 4px;
     selection-background-color: {accent}; selection-color: {accent_text};
 }}
-QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled {{
+QLineEdit:disabled, QComboBox:disabled {{
     color: {text_dim}; background-color: {window};
 }}
 QComboBox QAbstractItemView {{
@@ -152,34 +124,11 @@ QComboBox QAbstractItemView {{
 }}
 QComboBox::drop-down {{ border: none; width: 16px; }}
 
-/* Spin buttons MUST be given explicit geometry. Styling QSpinBox at all switches it to full
-   stylesheet rendering, and any subcontrol left unstyled gets degenerate geometry - the
-   up-button ended up with no hit area at all, so only the down arrow was clickable and the
-   cursor fell through to the line edit's I-beam. */
-QSpinBox, QDoubleSpinBox {{ padding-right: 18px; }}
-QSpinBox::up-button, QDoubleSpinBox::up-button {{
-    subcontrol-origin: border; subcontrol-position: top right;
-    width: 16px; height: 9px; margin: 1px 1px 0 0;
-    border: 1px solid {border}; border-radius: 2px; background: {window};
-}}
-QSpinBox::down-button, QDoubleSpinBox::down-button {{
-    subcontrol-origin: border; subcontrol-position: bottom right;
-    width: 16px; height: 9px; margin: 0 1px 1px 0;
-    border: 1px solid {border}; border-radius: 2px; background: {window};
-}}
-QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
-QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{ background: {accent}; }}
-/* Arrows drawn from borders - a stylesheet-rendered spinbox loses its native ones. */
-QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
-    width: 0; height: 0;
-    border-left: 4px solid transparent; border-right: 4px solid transparent;
-    border-bottom: 5px solid {text};
-}}
-QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-    width: 0; height: 0;
-    border-left: 4px solid transparent; border-right: 4px solid transparent;
-    border-top: 5px solid {text};
-}}
+/* Spin boxes are deliberately NOT styled here; they are coloured with a QPalette instead
+   (see main._spinbox_palette). A stylesheet that puts a border on a QSpinBox makes Qt render
+   the whole widget through the box model, and it then draws NO arrows - QSS has no way to
+   draw a triangle, so the buttons come out as empty rectangles. Fusion honours the palette
+   and keeps its own arrows, which is both less code and the look everyone already knows. */
 
 QCheckBox, QRadioButton, QLabel {{ background: transparent; color: {text}; }}
 QCheckBox:disabled, QRadioButton:disabled {{ color: {text_dim}; }}
@@ -275,15 +224,9 @@ QCheckBox#autoStopFractureCheck:disabled {{
 
 
 def stylesheet(name):
-    """QSS for the whole application.
-
-    Light stays the app's ORIGINAL Qt-default look — switching back is a genuine revert, not a
-    second theme to maintain — with one deliberate exception: the emphasis on the three test
-    controls applies to both themes, because "which button do I press" should not depend on the
-    colour scheme."""
+    """QSS for the whole application. Dark is the only theme."""
     t = get(name)
-    emphasis = _EMPHASIS_QSS.format(**t)
-    return emphasis if t["name"] == "light" else _DARK_QSS.format(**t) + emphasis
+    return _DARK_QSS.format(**t) + _EMPHASIS_QSS.format(**t)
 
 
 # --------------------------------------------------------------------------- matplotlib
