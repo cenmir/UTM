@@ -76,7 +76,10 @@ def main():
     ]
 
     if ICON.exists():
-        cmd[-2:-2] = ["--icon", str(ICON)]
+        # --icon only stamps the .exe. The running window asks app_icon() for the file at
+        # runtime, so it has to be inside the bundle too - main.py looks for it at the root
+        # of sys._MEIPASS, which is what "." means here.
+        cmd[-2:-2] = ["--icon", str(ICON), "--add-data", f"{ICON};."]
     else:
         print(f"[warn] no icon at {ICON} - run: python deploy/make_icon.py")
 

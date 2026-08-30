@@ -65,13 +65,30 @@ GAUGE_SHARE_OF_TRAVEL = 0.65
 PINNED_PROFILES = ("Default", "TPU")
 import numpy as np
 import cv2
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QImage, QPixmap, QIcon
 from PyQt6.QtWidgets import (QGroupBox, QHBoxLayout, QVBoxLayout,
                               QPushButton, QLabel, QSizePolicy,
                               QScrollArea, QWidget)
 
 # Path to the UI file
 UI_FILE = Path(__file__).parent / "ui" / "utm_mainwindow.ui"
+
+
+def app_icon():
+    """The stress-strain-curve mark, for the title bar, the taskbar and Alt-Tab.
+
+    Built by deploy/make_icon.py and shipped in deploy/ - the same file the desktop shortcut
+    and the PyInstaller build use, so the window matches the icon the operator double-clicked.
+    Under PyInstaller the tree is flattened into sys._MEIPASS, hence the second candidate.
+    Returns a null QIcon if the file is missing, which Qt treats as "no icon set" rather than
+    an error - a missing decoration must never stop the rig from starting.
+    """
+    here = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+    for cand in (here.parent.parent / "deploy" / "utm.ico",   # repo layout and the release zip
+                 here / "utm.ico"):                           # frozen: bundled beside the exe
+        if cand.is_file():
+            return QIcon(str(cand))
+    return QIcon()
 
 
 class UTMApplication(QMainWindow):
@@ -85,6 +102,7 @@ class UTMApplication(QMainWindow):
 
         # Set window title with version
         self.setWindowTitle(f"UTM Control v{__version__}")
+        self.setWindowIcon(app_icon())
 
         # Apply custom styles
         self.apply_styles()
@@ -8375,7 +8393,18 @@ class UTMApplication(QMainWindow):
 
 def main():
     """Main entry point for the application"""
+    # Windows groups taskbar buttons by AppUserModelID and inherits the icon from whatever
+    # owns that ID. Without our own, the app is filed under the host python.exe and shows
+    # the generic Python icon in the taskbar no matter what setWindowIcon says. Must be set
+    # before the first window exists. Harmless nowhere else, so it is just guarded by import.
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("ju.utm.control")
+    except Exception:
+        pass
+
     app = QApplication(sys.argv)
+    app.setWindowIcon(app_icon())    # dialogs and message boxes inherit this
 
     # Create and show the main window. fit_to_screen() runs AFTER construction so it sees the
     # finished layout's minimums, and BEFORE show() so the window never flashes at the wrong size.
