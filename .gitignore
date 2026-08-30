@@ -99,3 +99,6 @@ documentation/decks/*_updated.pptx
 # Throwaway copies made to export slide PNGs — PowerPoint keeps a handle on them, so the
 # rm after an export often loses the race and they turn up staged.
 documentation/decks/_*.pptx
+
+# built release archives
+deploy/dist/
