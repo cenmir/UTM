@@ -6,14 +6,23 @@ requires-python = ">=3.11"
 license = { text = "GPL-3.0" }
 
 # ---------------------------------------------------------------------------------------
-# BASE = everything the app needs WITHOUT the rig hardware.
+# ONE dependency set. Every machine gets the same app.
 #
-# This set runs the whole offline path: open a CSV, plot it, crop it, compute properties,
-# and measure strain from a recorded video in the DIC Post-Processing tab. It is what a
-# student laptop needs, and it needs no drivers and no admin rights.
+# There is no "analysis build". Splitting it produced two things to install, two things to
+# support, and a student asking which one they had. pypylon is a pip wheel that bundles its
+# own runtime, so it installs anywhere; on a machine with no camera it simply finds no
+# device. camera_manager imports it softly and connect_camera() refuses with a clear message,
+# so the app starts and behaves identically whether or not hardware is attached.
+#
+# What a student CANNOT do on their own laptop is run a test - that needs the rig, and no
+# installer changes it. Everything else, including the full UI, works.
 #
 # pyserial is here even though a laptop never opens a port: serial_manager is imported at
 # module load, so the app will not start without it. It is ~100 kB.
+#
+# The Basler Pylon Camera Software Suite (~2 GB, administrator) is still needed on the RIG
+# PC only. It supplies the USB3 Vision kernel driver; without it Windows will not enumerate
+# the camera whatever pip has installed. It is not a Python dependency and cannot live here.
 # ---------------------------------------------------------------------------------------
 dependencies = [
     "PyQt6>=6.6.0",
@@ -21,13 +30,10 @@ dependencies = [
     "matplotlib>=3.7.0",
     "opencv-python>=4.8.0",
     "pyserial>=3.5",
+    "pypylon>=3.0.0",
 ]
 
 [project.optional-dependencies]
-# The rig PC, and ONLY the rig PC. pypylon also needs the Basler Pylon Camera Software
-# Suite installed separately (~2 GB, admin) for the USB3 Vision kernel driver - without
-# that driver Windows will not enumerate the camera at all, whatever pip has installed.
-rig = ["pypylon>=3.0.0"]
 
 # Rebuilding the slide decks and posters in documentation/.
 docs = [

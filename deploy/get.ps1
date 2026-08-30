@@ -7,11 +7,11 @@
     Windows already has everything this needs: Invoke-WebRequest and Expand-Archive are
     built in, so nothing has to be installed before running it.
 
-    Defaults to the ANALYSIS profile - no camera, no drivers. For the rig PC:
+    One profile: every machine gets the same app. A laptop with no camera and no rig
+    runs it fine - it just cannot start a test. The rig PC additionally needs the
+    Basler Pylon Suite, installed once as administrator.
 
-        $env:UTM_PROFILE='rig'; irm <url> | iex
-
-    Other knobs:  $env:UTM_DEST (default $HOME\UTM), $env:UTM_REF (default main)
+    Knobs:  $env:UTM_DEST (default $HOME\UTM), $env:UTM_REF (default main)
 #>
 $ErrorActionPreference = "Stop"
 
@@ -19,14 +19,12 @@ $Owner = "cenmir"
 $Repo  = "UTM"
 $Ref     = if ($env:UTM_REF)     { $env:UTM_REF }     else { "main" }
 $Dest    = if ($env:UTM_DEST)    { $env:UTM_DEST }    else { Join-Path $HOME "UTM" }
-$Profile = if ($env:UTM_PROFILE) { $env:UTM_PROFILE } else { "analysis" }
 
 function Head($m) { Write-Host ""; Write-Host "== $m" -ForegroundColor Cyan }
 function Say($m)  { Write-Host "   $m" }
 
 Head "UTM installer"
 Say "target : $Dest"
-Say "profile: $Profile"
 
 # TLS 1.2 for older Windows PowerShell hosts
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
@@ -106,11 +104,7 @@ $installer = Join-Path $Dest "deploy\install_uv.ps1"
 if (-not (Test-Path $installer)) { throw "installer missing at $installer" }
 
 Head "Setting up Python and dependencies"
-if ($Profile -eq "rig") {
-    & powershell -ExecutionPolicy Bypass -File $installer -Rig
-} else {
-    & powershell -ExecutionPolicy Bypass -File $installer
-}
+& powershell -ExecutionPolicy Bypass -File $installer
 if (-not $?) { throw "setup failed" }
 
 Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
