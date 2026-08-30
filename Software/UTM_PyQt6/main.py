@@ -627,9 +627,16 @@ class UTMApplication(QMainWindow):
         self.cropRangeSlider.setParent(parent)
         self.cropRangeSlider.setGeometry(geometry)
         self.cropRangeSlider.show()
+        # dataCroppingGroup has NO layout - it is absolutely positioned from Designer - so the
+        # slider kept the placeholder's design-time width and stopped short of the right edge
+        # on any wider window. The Stress/Strain one is in a layout and behaves. Follow the
+        # group's width by hand rather than restructuring the .ui group.
+        self._crop_slider_margin = max(0, parent.width() - geometry.width())
+        parent.installEventFilter(self)
 
         # Connect the range changed signal
         self.cropRangeSlider.rangeChanged.connect(self._on_crop_range_changed)
+        self.cropRangeSlider.rangeChanged.connect(self._mirror_crop_range)
 
     def _setup_stress_strain_plot(self):
         """Setup the matplotlib canvas for the stress-strain plot"""
@@ -759,6 +766,8 @@ class UTMApplication(QMainWindow):
             self.ssCropRangeSlider.show()
 
         # Connect the range changed signal
+        # _on_ss_crop_range_changed already mirrors to the load slider and redraws its markers,
+        # so a second mirror hook here would just fire the same work twice.
         self.ssCropRangeSlider.rangeChanged.connect(self._on_ss_crop_range_changed)
 
     def _setup_postproc_tab(self):
@@ -1250,7 +1259,14 @@ class UTMApplication(QMainWindow):
         # Auto-preload controls (target-force jog) in the Motor Control group
         self._setup_control_groups()      # Preload / Testing panes must exist first
         self._colour_data_readouts()
+        self._add_scale_setting()
         self._merge_incremental_into_position()
+        for _lbl in (getattr(self, "cameraFeedLabel", None),
+                     getattr(self, "cameraFeedLabelLP", None)):
+            if _lbl is not None:
+                _lbl.installEventFilter(self)
+        self.tabWidget.currentChanged.connect(
+            lambda _i: QTimer.singleShot(0, self._rescale_feed_labels))
         self._add_new_specimen_button()
         self._setup_preload_controls()
         self._setup_testmode_controls()
@@ -1549,6 +1565,17 @@ class UTMApplication(QMainWindow):
     def eventFilter(self, obj, event):
         """Keep the Emergency STOP in the same column as the control panel above it."""
         from PyQt6.QtCore import QEvent
+        from PyQt6.QtCore import QEvent as _QE
+        if (event.type() == _QE.Type.Resize
+                and obj in (getattr(self, "cameraFeedLabel", None),
+                            getattr(self, "cameraFeedLabelLP", None))):
+            self._rescale_feed_labels()
+        sl = getattr(self, "cropRangeSlider", None)
+        if (sl is not None and event.type() == QEvent.Type.Resize
+                and obj is sl.parentWidget()):
+            g = sl.geometry()
+            m_ = getattr(self, "_crop_slider_margin", 20)
+            sl.setGeometry(g.x(), g.y(), max(40, obj.width() - m_), g.height())
         if (getattr(self, "_blob_select_mode", False)
                 and event.type() == QEvent.Type.MouseButtonPress
                 and obj in (getattr(self, "cameraFeedLabel", None),
@@ -1868,8 +1895,17 @@ class UTMApplication(QMainWindow):
         arr, _ = self._ss_source_array(src)
         low_idx = min(low_idx, len(arr) - 1)
         high_idx = min(high_idx, len(arr) - 1)
-        low_strain = arr[low_idx] * self.STRAIN_TO_PCT
-        high_strain = arr[high_idx] * self.STRAIN_TO_PCT
+
+        # The slider selects a range of SAMPLES (time). Time is monotonic, so on the Load plot
+        # the two endpoints bound the selection correctly. Strain is NOT monotonic: a load-unload
+        # cycle passes every strain twice, so arr[low_idx] and arr[high_idx] can both land near
+        # the same x even when the selection spans the whole curve - which is why the band drew
+        # itself as a sliver at the start of the axis while the Load plot showed it correctly.
+        #
+        # Bound the band by the strain range the selection actually COVERS instead.
+        seg = arr[low_idx:high_idx + 1] or arr[low_idx:low_idx + 1]
+        low_strain = min(seg) * self.STRAIN_TO_PCT
+        high_strain = max(seg) * self.STRAIN_TO_PCT
 
         # Update vertical line positions
         self.ss_crop_line_low.set_xdata([low_strain, low_strain])
@@ -1905,6 +1941,34 @@ class UTMApplication(QMainWindow):
             self.loadTogglePlotCheckBox.setChecked(self.ssTogglePlotCheckBox.isChecked())
             self.loadTogglePlotCheckBox.blockSignals(False)
 
+    def _mirror_crop_range(self, *_):
+        """Keep the two Crop sliders showing the same selection.
+
+        They crop ONE dataset, so two independent selections would be two answers to one
+        question - and the operator cannot see the other tab's slider while dragging this one.
+        """
+        src = self.sender()
+        for name in ("cropRangeSlider", "ssCropRangeSlider"):
+            other = getattr(self, name, None)
+            if other is None or other is src:
+                continue
+            if other.low() == src.low() and other.high() == src.high():
+                continue
+            other.blockSignals(True)
+            try:
+                other.setLow(src.low()); other.setHigh(src.high())
+            except Exception:
+                pass
+            other.blockSignals(False)
+            other.update()
+            # and redraw that tab's crop preview, or its shaded band disagrees with its slider
+            fn = (self._on_ss_crop_range_changed if name == "ssCropRangeSlider"
+                  else self._on_crop_range_changed)
+            try:
+                fn(src.low(), src.high())
+            except Exception:
+                pass
+
     def on_crop_data(self):
         """Crop the data to the selected range (affects both plots since data is synced)"""
         n_points = len(self.load_plot_times)
@@ -1912,9 +1976,29 @@ class UTMApplication(QMainWindow):
             self.append_to_console("No data to crop")
             return
 
-        # Use whichever range slider has been adjusted (both should be in sync)
-        low = self.cropRangeSlider.low()
-        high = self.cropRangeSlider.high()
+        # Read the slider that belongs to the TAB the button was pressed on. Both Crop Data
+        # buttons were wired to this one handler and it always read the Load Plot slider, so
+        # dragging the Stress/Strain slider and pressing its own button consulted the OTHER
+        # tab's slider - still at full range - and returned "no cropping needed".
+        # Pick whichever slider actually HAS a selection, rather than trusting sender(). Both
+        # Crop Data buttons were wired to this one handler and it always read the Load Plot
+        # slider, so the Stress/Strain button consulted the OTHER tab's slider - still at full
+        # range - and returned "no cropping needed". Keying off sender() fixed the click path
+        # but not a call from anywhere else; keying off the SELECTION cannot be wrong.
+        ss = getattr(self, "ssCropRangeSlider", None)
+        lp = getattr(self, "cropRangeSlider", None)
+        slider = None
+        for cand in (ss, lp):
+            if cand is not None and (cand.low() != 0 or cand.high() != 100):
+                slider = cand
+                break
+        if slider is None:
+            slider = lp if lp is not None else ss
+        if slider is None:
+            self.append_to_console("No crop slider available")
+            return
+        low = slider.low()
+        high = slider.high()
 
         # If at full range, nothing to crop
         if low == 0 and high == 100:
@@ -2852,27 +2936,34 @@ class UTMApplication(QMainWindow):
         self._pending_seeds = []
         self._dic_blob_history.clear()
 
-        for fn in ("on_clear_plot", "clear_data", "on_clear_data"):
+        # These are the REAL method names. The first version of this guessed at
+        # "on_clear_plot" / "clear_data" / "on_clear_data", none of which exist, so the loop
+        # fell through every candidate and cleared nothing - silently, because a guessed name
+        # that is missing looks exactly like a name that declined to run.
+        cleared = []
+        for fn in ("on_clear_stress_strain_plot", "on_clear_load_plot"):
             f = getattr(self, fn, None)
-            if callable(f):
-                try:
-                    f()
-                    break
-                except Exception:
-                    pass
+            if not callable(f):
+                self.append_to_console(f"[New specimen] WARNING: {fn} is missing — plots NOT cleared")
+                continue
+            try:
+                f()
+                cleared.append(fn)
+            except Exception as e:
+                self.append_to_console(f"[New specimen] {fn} failed: {e}")
 
-        for fn in ("on_tare_location", "tare_position"):
-            f = getattr(self, fn, None)
-            if callable(f):
-                try:
-                    f()
-                    break
-                except Exception:
-                    pass
+        f = getattr(self, "on_tare_location", None)
+        if callable(f):
+            try:
+                f()
+                cleared.append("on_tare_location")
+            except Exception as e:
+                self.append_to_console(f"[New specimen] tare failed: {e}")
 
         self.append_to_console(
-            "New specimen — Px\u2080, markers, plots and data cleared. "
-            "Select blobs, then Calibrate Px\u2080 before the next run.")
+            "New specimen — cleared: markers, L\u2080(px), DIC history, %s. "
+            "Select blobs, then Calibrate L\u2080(px) before the next run."
+            % (", ".join(cleared) if cleared else "NOTHING ELSE — see warnings above"))
         self.set_status("New specimen — cleared")
 
     def _merge_incremental_into_position(self):
@@ -4094,10 +4185,10 @@ class UTMApplication(QMainWindow):
         self.prepareTestButton.setToolTip(
             "One click: clear the consoles and plots, then tare the DIC READOUTS, POSITION and "
             "FORCE so the test starts from zero.\n\n"
-            "It does NOT move Px₀ — that reference belongs to Calibrate Px₀ alone. Prepare "
-            "reports the Px₀ in force, and warns if none has been set.\n\n"
-            "Press it AFTER preloading and AFTER Calibrate Px₀: it tares the FORCE, so the load "
-            "Px₀ was captured at has to be recorded already.")
+            "It does NOT move L₀(px) — that reference belongs to Calibrate L₀(px) alone. Prepare "
+            "reports the L₀(px) in force, and warns if none has been set.\n\n"
+            "Press it AFTER preloading and AFTER Calibrate L₀(px): it tares the FORCE, so the load "
+            "L₀(px) was captured at has to be recorded already.")
         self.autoStopFractureCheck = QCheckBox("Auto-stop at fracture")
         self.autoStopFractureCheck.setObjectName("autoStopFractureCheck")   # emphasised by theme
         self.autoStopFractureCheck.setToolTip(
@@ -4317,7 +4408,7 @@ class UTMApplication(QMainWindow):
             self.append_to_console(
                 f"[Settings] ROI for {r.name} is {_now} — the camera is RUNNING, and Basler "
                 "applies a crop only on connect. Stop Camera and Start Camera again, then "
-                "Calibrate Px₀, before this run.")
+                "Calibrate L₀(px), before this run.")
         else:
             self.append_to_console(f"[Settings] ROI {_now} (OffsetX, OffsetY, Width, Height).")
         # Blob roundness, same shape as the ROI: None = follow the specimen preset, and that
@@ -4406,18 +4497,18 @@ class UTMApplication(QMainWindow):
         self.set_status(f"Settings '{r.name}' saved")
 
     def on_prepare_test(self):
-        """One click: clear the consoles and plots, then tare Px₀, POSITION and FORCE.
+        """One click: clear the consoles and plots, then tare L₀(px), POSITION and FORCE.
 
-        Px₀ is tared FIRST, before the force tare, and that order is the whole reason this is safe.
-        It does NOT re-freeze Px₀. That reference is the denominator of every strain in the test and
-        has exactly one owner, Calibrate Px₀, which asks before it moves. A button pressed at the
+        L₀(px) is tared FIRST, before the force tare, and that order is the whole reason this is safe.
+        It does NOT re-freeze L₀(px). That reference is the denominator of every strain in the test and
+        has exactly one owner, Calibrate L₀(px), which asks before it moves. A button pressed at the
         start of every specimen is the wrong place to redefine it silently — an earlier version did
         so conditionally, on a hidden 5 N comparison, and moved the strain zero on some runs and not
         others depending on a number nobody could see.
 
         What Prepare DOES do to the DIC is tare the READOUTS: clear the console, the blob history
         behind the health badge, the measured rates and the strain queue, so the new specimen starts
-        on clean diagnostics. It reports the Px₀ in force, and warns if none has been set — the pull
+        on clean diagnostics. It reports the L₀(px) in force, and warns if none has been set — the pull
         would record no usable strain.
         """
         # Fresh start — clear both consoles + BOTH plots, so the new specimen starts on empty axes
@@ -4433,8 +4524,8 @@ class UTMApplication(QMainWindow):
                     self.append_to_console(f"[Prepare] could not clear {label} plot: {e}")
         done, skipped = [], []
         # Tare DIC — clears the console, the health history, the measured rates and the strain
-        # queue, and REPORTS the reference without touching it. Px₀ is not re-frozen here: it is
-        # the denominator of every strain in the test and belongs to Calibrate Px₀ alone, which
+        # queue, and REPORTS the reference without touching it. L₀(px) is not re-frozen here: it is
+        # the denominator of every strain in the test and belongs to Calibrate L₀(px) alone, which
         # asks first. A button pressed at the start of every specimen is the wrong place to
         # silently redefine it.
         before_px0 = getattr(self.camera_manager, "initial_distance", None)
@@ -4445,10 +4536,10 @@ class UTMApplication(QMainWindow):
             self.append_to_console(f"[Prepare] DIC tare failed: {e}")
         px0 = getattr(self.camera_manager, "initial_distance", None)
         if not px0:
-            skipped.append("Px₀ never calibrated")
+            skipped.append("L₀(px) never calibrated")
         elif before_px0 is not None and abs(px0 - before_px0) > 1e-9:
             # Cannot happen by this path; if it ever does, something else moved the reference.
-            self.append_to_console(f"[Prepare] ⚠ Px₀ changed {before_px0:.1f} → {px0:.1f} px "
+            self.append_to_console(f"[Prepare] ⚠ L₀(px) changed {before_px0:.1f} → {px0:.1f} px "
                                    "during Prepare — it should not have.")
 
         # Then position and force, in that order
@@ -4463,18 +4554,18 @@ class UTMApplication(QMainWindow):
         self.append_to_console(f"[Prepare] tared: {', '.join(done) if done else 'nothing'}")
         if skipped:
             # The status line said this already, but the status line is transient and the console is
-            # the record the operator scrolls back through. A pull started without Px₀ records no
+            # the record the operator scrolls back through. A pull started without L₀(px) records no
             # usable strain at all, which is worth more than a message that disappears.
             self.append_to_console(f"[Prepare] ⚠ {', '.join(skipped)} — strain has no reference "
-                                   "until Calibrate Px₀ is pressed; this run would record none.")
+                                   "until Calibrate L₀(px) is pressed; this run would record none.")
         # Stamped so the guided checklist can tell "prepared" from "not yet" — every other step it
         # shows reads a flag that already existed; this was the one with no durable trace.
         self._prepared_t = time.monotonic()
         if skipped:
-            self.set_status("Prepared — DIC readouts + position + force tared; ⚠ Px₀ NOT calibrated yet",
+            self.set_status("Prepared — DIC readouts + position + force tared; ⚠ L₀(px) NOT calibrated yet",
                             is_warning=True)
         else:
-            self.set_status("Prepared — DIC readouts + position + force tared; Px₀ unchanged")
+            self.set_status("Prepared — DIC readouts + position + force tared; L₀(px) unchanged")
 
     def on_fracture_test(self):
         """One-click run to fracture: checklist confirm -> arm auto-stop -> pull in tension.
@@ -6082,6 +6173,54 @@ class UTMApplication(QMainWindow):
             setattr(self, attr, val)
             lay.addRow(cap, val)
 
+    def _add_scale_setting(self):
+        """Optical scale in px/mm, and the choice of which way the gauge is established.
+
+        Two ways to relate pixels to millimetres, and only one can be independent:
+
+          * MEASURE the gauge with calipers, type it in, and px/mm is DERIVED
+            (px_per_mm = L0_px / gauge_mm). This is what the app has always done.
+          * Know px/mm for this camera-to-specimen distance, and DERIVE the gauge optically
+            (gauge_mm = L0_px / px_per_mm). Useful when the markers are not exactly on the
+            gauge marks, or when the caliper reading is the least trustworthy number.
+
+        No homography needed: the specimen is flat, roughly normal to the lens, and the
+        measurement is a length along one axis, so a single scalar is the correct model. It
+        would only break down if the specimen tilted or moved toward the camera, and 30 mm of
+        travel over that stand-off does neither.
+        """
+        from PyQt6.QtWidgets import QCheckBox, QDoubleSpinBox, QLabel, QFormLayout
+        grp = getattr(self, "specimenDimensionsGroup", None)
+        if grp is None or grp.layout() is None:
+            return
+        lay = grp.layout()
+
+        self.pxPerMmSpin = QDoubleSpinBox()
+        self.pxPerMmSpin.setRange(0.1, 2000.0)
+        self.pxPerMmSpin.setDecimals(4)
+        self.pxPerMmSpin.setValue(15.5856)          # measured on this rig, 2026-08-28
+        self.pxPerMmSpin.setSuffix(" px/mm")
+        self.pxPerMmSpin.setToolTip(
+            "Optical scale for THIS camera-to-specimen distance.\n\n"
+            "Normally DERIVED from L0(px) and the gauge length you typed. Tick 'gauge from "
+            "optics' to invert that and have the gauge measured from the image instead.\n\n"
+            "Only valid while the camera stays where it is: move it and this changes.")
+
+        self.gaugeFromOpticsCheck = QCheckBox("gauge from optics (L\u2080 mm = L\u2080 px / scale)")
+        self.gaugeFromOpticsCheck.setToolTip(
+            "OFF: you measure the gauge with calipers and px/mm is derived from it.\n"
+            "ON : px/mm above is taken as known and the gauge is computed from L0(px).\n\n"
+            "Crosshead strain divides by the gauge, so whichever way round you work, the gauge "
+            "has to be right or every crosshead-derived number is wrong by the same factor.")
+
+        if isinstance(lay, QFormLayout):
+            lay.addRow(QLabel("Optical scale:"), self.pxPerMmSpin)
+            lay.addRow("", self.gaugeFromOpticsCheck)
+        else:
+            lay.addWidget(QLabel("Optical scale:"))
+            lay.addWidget(self.pxPerMmSpin)
+            lay.addWidget(self.gaugeFromOpticsCheck)
+
     def _colour_data_readouts(self):
         """Colour the .ui's own value labels to match the cross-readout convention.
 
@@ -6152,7 +6291,10 @@ class UTMApplication(QMainWindow):
             grab, dic = p.get("fps_grab", 0.0), p.get("hz_dic", 0.0)
             if grab:
                 bits.append(f"{grab:.0f} fps")
-            warn = bool(grab) and dic < self.DIC_RATE_WARN_HZ
+            # Not a fault before markers are chosen: with no selection the app deliberately
+            # measures nothing, so 0 strain readings is the CORRECT state, not a degraded one.
+            seeded = bool(getattr(self.camera_manager, "seed_points", None))
+            warn = bool(grab) and dic < self.DIC_RATE_WARN_HZ and seeded
             if grab or dic:
                 bits.append(f"DIC {dic:.1f} Hz" + (" ⚠" if warn else ""))
             txt = "  ·  ".join(bits)
@@ -6165,8 +6307,11 @@ class UTMApplication(QMainWindow):
                    + ("⚠ Far fewer strain readings than frames: most load samples will carry no "
                       "strain, which degrades the fracture detector and every integrated quantity."
                       if warn else
-                      "These should be close. A large gap means frames are arriving but not "
-                      "producing strain."))
+                      ("No markers selected yet — the app is not measuring, so 0 strain "
+                       "readings is expected. Press 'Select blobs'."
+                       if not bool(getattr(self.camera_manager, "seed_points", None)) else
+                       "These should be close. A large gap means frames are arriving but not "
+                       "producing strain.")))
         for lbl, w in (("dicParamsLabel", None), ("dicParamsLabelLP", None)):
             g = getattr(self, lbl, None)
             if g is not None:
@@ -6274,9 +6419,9 @@ class UTMApplication(QMainWindow):
         act_px0 = QAction("Zero strain AFTER preload", self, checkable=True)
         act_px0.setChecked(self.px0_after_preload())
         act_px0.setToolTip(
-            "OFF — Px₀ is frozen before preload, so strain covers every bit of deformation the "
+            "OFF — L₀(px) is frozen before preload, so strain covers every bit of deformation the "
             "specimen saw.\n"
-            "ON  — Px₀ is frozen after preload, so strain starts from the seated state and the "
+            "ON  — L₀(px) is frozen after preload, so strain starts from the seated state and the "
             "preload stretch is excluded.\n\n"
             "At 300 N on 80 mm² the two differ by roughly 0.13 % of strain, which lands directly "
             "on ε_f and toughness. Do not mix conventions within a series.")
@@ -6953,7 +7098,7 @@ class UTMApplication(QMainWindow):
         self.stopCameraButton = QPushButton("Stop Camera")
         # Both names for the same operation, side by side. "Tare DIC" is what this was called
         # before it was renamed, and it is still the name that comes to mind at the rig — but a
-        # second button that also SET Px₀ would give the reference two owners, which is the bug
+        # second button that also SET L₀(px) would give the reference two owners, which is the bug
         # class already fixed once when Prepare test was re-taring it. So this is an alias: same
         # handler, same confirmation, no second path to the same state.
         self.tareDICAliasButton = QPushButton("Tare DIC")
@@ -6961,11 +7106,11 @@ class UTMApplication(QMainWindow):
         # inline duplicate here meant editing the text updated one button and not the other.
         self.tareDICAliasButton.setToolTip(self.TARE_ALIAS_TIP)
         self.tareDICAliasButton.setEnabled(False)
-        self.tareDICButton = QPushButton("Calibrate Px₀")
+        self.tareDICButton = QPushButton("Calibrate L₀ (px)")
         self.tareDICButton.setToolTip(
-            "Freeze Px₀  —  this IS the DIC tare, renamed.\n"
-            "Px₀ is the marker separation in pixels that every strain is measured against: strain "
-            "is (Px − Px₀)/Px₀, so whatever is already stretched into the specimen when you press "
+            "Freeze L₀(px)  —  this IS the DIC tare, renamed.\n"
+            "L₀(px) is the marker separation in pixels that every strain is measured against: strain "
+            "is (Px − L₀(px))/L₀(px), so whatever is already stretched into the specimen when you press "
             "this is invisible for the rest of the test.\n\n"
             "WHEN to press it is set by Settings ▸ DIC camera setup ▸ 'Zero strain AFTER preload', "
             "and the CSV header records which was used.\n\n"
@@ -6999,8 +7144,8 @@ class UTMApplication(QMainWindow):
         info_row.addWidget(self.dicHealthLabel)
         self.capBadge, self.recBadge = self._make_capture_badges(info_row)
         info_row.addSpacing(16)
-        info_row.addWidget(QLabel("Px₀:"))
-        self.dicL0Label = QLabel("— px")   # Px₀ readout
+        info_row.addWidget(QLabel("L₀ (px):"))
+        self.dicL0Label = QLabel("— px")   # L₀(px) readout
         self.dicL0Label.setStyleSheet("font-weight: bold;")
         info_row.addWidget(self.dicL0Label)
         info_row.addSpacing(20)
@@ -7198,8 +7343,8 @@ class UTMApplication(QMainWindow):
         self.selectBlobsButtonLP.setCheckable(True)
         self.selectBlobsButtonLP.setEnabled(False)
         self.selectBlobsButtonLP.setToolTip(self.SELECT_BLOBS_TIP)
-        self.tareDICButtonLP = QPushButton("Calibrate Px₀")
-        # Same alias as the Stress/Strain tab — one handler, no second owner of Px₀. The Load Plot
+        self.tareDICButtonLP = QPushButton("Calibrate L₀ (px)")
+        # Same alias as the Stress/Strain tab — one handler, no second owner of L₀(px). The Load Plot
         # tab has its own camera row precisely so a whole test can be run without leaving it, so it
         # needs the same pair of names.
         self.tareDICAliasButtonLP = QPushButton("Tare DIC")
@@ -7225,7 +7370,7 @@ class UTMApplication(QMainWindow):
         info_row.addWidget(self.dicHealthLabelLP)
         self.capBadgeLP, self.recBadgeLP = self._make_capture_badges(info_row)
         info_row.addSpacing(16)
-        info_row.addWidget(QLabel("Px₀:"))
+        info_row.addWidget(QLabel("L₀ (px):"))
         self.dicL0LabelLP = QLabel("— px")
         self.dicL0LabelLP.setStyleSheet("font-weight: bold;")
         info_row.addWidget(self.dicL0LabelLP)
@@ -7259,8 +7404,8 @@ class UTMApplication(QMainWindow):
         return box
 
     # ---- live-feed overlay -------------------------------------------------------------------
-    # Two marker pairs are drawn on the feed: where the speckles WERE when Px₀ was frozen, and
-    # where they are NOW. Strain is (Px − Px₀)/Px₀, so the gap between the two pairs *is* the
+    # Two marker pairs are drawn on the feed: where the speckles WERE when L₀(px) was frozen, and
+    # where they are NOW. Strain is (Px − L₀(px))/L₀(px), so the gap between the two pairs *is* the
     # measurement — showing it makes a bad tare (slack specimen, tare taken under preload, a marker
     # that jumped to a different blob) visible at a glance instead of only in the strain number.
     #
@@ -7344,6 +7489,15 @@ class UTMApplication(QMainWindow):
                 "[DIC] Select blobs: click each marker on the feed. Right-click clears.")
         else:
             seeds = getattr(self, "_pending_seeds", [])
+            if len(seeds) >= 2 and getattr(self, "_calibrate_after_select", False):
+                self._calibrate_after_select = False
+                self.camera_manager.set_seeds(seeds[:2],
+                                              getattr(self, '_pending_areas', None))
+                self.append_to_console("[DIC] markers chosen — freezing L₀ (px)...")
+                from PyQt6.QtCore import QTimer as _QT
+                _QT.singleShot(250, self.on_calibrate_px0)     # let a frame arrive first
+                self.selectBlobsButton.setChecked(False)
+                return
             if len(seeds) >= 2:
                 self.camera_manager.set_seeds(seeds[:2],
                                               getattr(self, '_pending_areas', None))
@@ -7498,7 +7652,7 @@ class UTMApplication(QMainWindow):
             cv2.line(display, (p[0], p[1] - 9), (p[0], p[1] + 9), self.REJECT_BGR, 2, cv2.LINE_AA)
 
     def _draw_dic_overlay(self, display, centroids):
-        """Frozen Px₀ pair + live pair on the BGR frame, BEFORE the display rotation."""
+        """Frozen L₀(px) pair + live pair on the BGR frame, BEFORE the display rotation."""
         self._draw_candidate_rings(display, centroids)
         ref = getattr(self.camera_manager, "initial_centroids", None)
         has_ref = bool(ref) and len(ref) == 2
@@ -7586,16 +7740,16 @@ class UTMApplication(QMainWindow):
                     (80, 200, 255), th, cv2.LINE_AA)
 
     def _draw_dic_caption(self, rgb, centroids):
-        """Px₀ vs now, in pixels, on the ROTATED frame. RGB here — the BGR swap already happened."""
+        """L₀(px) vs now, in pixels, on the ROTATED frame. RGB here — the BGR swap already happened."""
         px0 = self.camera_manager.initial_distance
         if px0:
-            text = f"Px0 {px0:.0f} px"
+            text = f"L0 {px0:.0f} px"
             if len(centroids) == 2:
                 now = abs(centroids[1][1] - centroids[0][1])
                 text += f"   ->   now {now:.0f} px    ({now - px0:+.0f})"
             color = self.PX0_TEXT_RGB
         else:
-            text, color = "Px0 not set - press Calibrate Px0", self.PX0_WARN_RGB
+            text, color = "L0(px) not set - press Calibrate L0 (px)", self.PX0_WARN_RGB
 
         if getattr(self, "_blob_select_mode", False):
             self._draw_select_prompt(rgb)
@@ -7623,6 +7777,24 @@ class UTMApplication(QMainWindow):
     # 12 fps and 35 fps on that; everybody can see a laggy button.
     FEED_MAX_FPS = 12
 
+    def _rescale_feed_labels(self):
+        """Re-fit the cached frame into whatever space each feed label now has."""
+        pm = getattr(self, "_feed_pixmap", None)
+        if pm is None or pm.isNull():
+            return
+        for lbl in (getattr(self, "cameraFeedLabel", None),
+                    getattr(self, "cameraFeedLabelLP", None)):
+            if lbl is None or not lbl.isVisible():
+                continue
+            box = lbl.contentsRect()
+            tw, th = max(1, box.width() - 2), max(1, box.height() - 2)
+            cur = lbl.pixmap()
+            if cur is not None and not cur.isNull() and abs(cur.width() - tw) < 3:
+                continue                      # already the right size
+            lbl.setPixmap(pm.scaled(tw, th,
+                                    Qt.AspectRatioMode.KeepAspectRatio,
+                                    Qt.TransformationMode.SmoothTransformation))
+
     def update_camera_feed(self, frame, centroids=None):
         try:
             now = time.monotonic()
@@ -7633,7 +7805,7 @@ class UTMApplication(QMainWindow):
             # Make a copy to draw on
             display = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
 
-            # Blob overlay — frozen Px₀ reference (cyan, dashed) + live markers (green, solid).
+            # Blob overlay — frozen L₀(px) reference (cyan, dashed) + live markers (green, solid).
             # The centroids arrive WITH the frame; re-detecting them here would be a second pass
             # over the same pixels and a second round of blobs_detected / error_occurred signals.
             if centroids is None:
@@ -7653,6 +7825,11 @@ class UTMApplication(QMainWindow):
                               bytes_per_line, QImage.Format.Format_RGB888)
 
             pixmap = QPixmap.fromImage(qt_image)
+            # Keep the FULL-SIZE frame. Each label is scaled from this, so a label that was the
+            # wrong size when the frame arrived - hidden tab, window not yet laid out - can be
+            # re-scaled later without waiting for a new frame. With the camera stopped no new
+            # frame ever comes, so the feed was stuck at whatever size it was last painted at.
+            self._feed_pixmap = pixmap
             if not pixmap.isNull():
                 # render to the Stress/Strain feed and the Load Plot mirror (each to its own size)
                 for lbl in (self.cameraFeedLabel, getattr(self, "cameraFeedLabelLP", None)):
@@ -7722,10 +7899,10 @@ class UTMApplication(QMainWindow):
     # camera group, so the LP button cannot read this off the other button.
     TARE_ALIAS_TIP = ("Clear the DIC console and the live diagnostics — the health badge's "
                       "history, the measured rate, and the strain queue.\n\n"
-                      "It does NOT move Px₀. Use it while setting up: after nudging the lighting "
+                      "It does NOT move L₀(px). Use it while setting up: after nudging the lighting "
                       "or the ROI, clear the noise and watch the badge rebuild from scratch.\n\n"
-                      "Px₀ — the reference every strain in the test is measured against — is moved "
-                      "only by Calibrate Px₀ and by Prepare test.")
+                      "L₀(px) — the reference every strain in the test is measured against — is moved "
+                      "only by Calibrate L₀(px) and by Prepare test.")
 
     MARGIN_EVERY_S = 2.0        # contrast-margin recompute interval — see _update_dic_health
 
@@ -7989,25 +8166,44 @@ class UTMApplication(QMainWindow):
             self.dicL0LabelLP.setText("— px")
         self.append_to_console("[Camera] Stopped")
 
-    # Load above which Px₀ is almost certainly being captured on an already-stretched specimen.
+    # Load above which L₀(px) is almost certainly being captured on an already-stretched specimen.
     # 300 N on an 80 mm² 50 %-infill dogbone is 3.75 MPa; at E ~1.5 GPa that is ~2500 µε already in
     # the specimen — 96x the 26 µε DIC noise floor, and strain referenced to it silently EXCLUDES
     # that. This is the same effect that makes T9's creep/instantaneous ratio an upper bound.
     PX0_LOAD_WARN_N = 25.0
 
     def on_calibrate_px0(self):
-        """The Calibrate Px₀ BUTTON. Confirms the specimen state first, then captures.
+        """The Calibrate L₀ (px) BUTTON: choose the markers, then freeze the reference.
 
-        This is now the ONLY path that moves Px₀ — Prepare test no longer tares DIC. Kept as a
+        Pressing it now CLEARS the current selection and puts the operator straight into
+        marker selection. L₀(px) is the denominator of every strain in the test, so the two
+        halves - which markers, and how far apart they are - belong to one action. Freezing a
+        reference against markers chosen for a previous specimen is the silent way to a wrong
+        strain, and there was nothing stopping it.
+
+        Once the second marker is clicked, selection ends and the capture runs automatically.
+
+        This is now the ONLY path that moves L₀(px) — Prepare test no longer tares DIC. Kept as a
         wrapper rather than connecting on_tare_dic directly because `clicked` passes a bool as the
         first positional argument: as a slot it would arrive in `confirm` as False and silently
         skip the dialog."""
+        if not getattr(self.camera_manager, "seed_points", None):
+            self.append_to_console(
+                "[DIC] Calibrate L₀ (px): select the two markers first.")
+            self._calibrate_after_select = True
+            self.selectBlobsButton.setChecked(True)
+            return
         self.on_tare_dic(confirm=True)
 
     def on_tare_dic_now(self):
-        """The Tare DIC BUTTON — clears the DIC console and the live diagnostics. NOT Px₀.
+        """The Tare DIC BUTTON — resets DIC tracking: markers, console and live diagnostics.
 
-        Px₀ has ONE owner: Calibrate Px₀ (and Prepare test, which is the formal pre-test step).
+        It now CLEARS THE SELECTED MARKERS too. Before, it cleared the console and the health
+        history but left the tracking seeds in place, so "tare" reset the things you could read
+        and none of the things that were actually measuring - which is the opposite of what the
+        word promises.
+
+        L₀(px) has ONE owner: Calibrate L₀(px) (and Prepare test, which is the formal pre-test step).
         This button used to move it too, which made three controls able to redefine the denominator
         of every strain in the test — and the one you would press casually, while nudging the
         lighting, was among them. "Tare the readouts" and "redefine the strain zero" are different
@@ -8018,6 +8214,10 @@ class UTMApplication(QMainWindow):
         while setting up — clear the noise from a fiddle and watch the badge rebuild — and none of
         it touches the reference.
         """
+        # Selected markers belong to the setup being torn down.
+        self.camera_manager.set_seeds(None)
+        self._pending_seeds = []
+        self._pending_areas = []
         cm = self.camera_manager
         px0 = getattr(cm, "initial_distance", None)
         if hasattr(self, "cameraConsoleTextEdit"):
@@ -8038,46 +8238,46 @@ class UTMApplication(QMainWindow):
                                "rebuild over the next second.")
         if px0:
             self.append_to_console(
-                f"[DIC] Px₀ UNCHANGED at {px0:.1f} px"
+                f"[DIC] L₀(px) UNCHANGED at {px0:.1f} px"
                 + (f" (captured at {self._px0_load_N:.0f} N)"
                    if getattr(self, "_px0_load_N", None) is not None else "")
-                + " — only Calibrate Px₀ and Prepare test move it.")
+                + " — only Calibrate L₀(px) and Prepare test move it.")
         else:
-            self.append_to_console("[DIC] ⚠ Px₀ has never been set — press Calibrate Px₀ before "
+            self.append_to_console("[DIC] ⚠ L₀(px) has never been set — press Calibrate L₀(px) before "
                                    "the pull or the run records no usable strain.")
 
     def _prep_checklist(self):
         """The pre-test steps, in the order the CURRENT strain-zero convention requires.
 
         Not just a relabelling: the convention changes the SEQUENCE. Under the after-preload rule
-        the preload comes first and Px₀ is frozen on the seated specimen, so a checklist that still
-        read "Calibrate Px₀ (BEFORE preload) · applied preload" would be walking the operator
+        the preload comes first and L₀(px) is frozen on the seated specimen, so a checklist that still
+        read "Calibrate L₀(px) (BEFORE preload) · applied preload" would be walking the operator
         through the opposite procedure to the one the app is set up for.
 
-        Calibrate Px₀ stays ahead of Prepare test in both, because Prepare test tares the FORCE —
-        after it the load reads ~0 N, and the Px₀ dialog would then object that the preload it
+        Calibrate L₀(px) stays ahead of Prepare test in both, because Prepare test tares the FORCE —
+        after it the load reads ~0 N, and the L₀(px) dialog would then object that the preload it
         expects is not there.
         """
         if self.px0_after_preload():
             return ("   •  mounted the specimen\n"
                     "   •  applied preload\n"
-                    "   •  pressed Calibrate Px₀ (AFTER preload)\n"
+                    "   •  pressed Calibrate L₀(px) (AFTER preload)\n"
                     "   •  pressed Prepare test (tared)\n")
         return ("   •  mounted the specimen\n"
-                "   •  pressed Calibrate Px₀ (BEFORE preload)\n"
+                "   •  pressed Calibrate L₀(px) (BEFORE preload)\n"
                 "   •  applied preload\n"
                 "   •  pressed Prepare test (tared)\n")
 
     def on_px0_convention_changed(self, on):
-        """Switching the strain-zero convention invalidates the Px₀ currently held, because that
+        """Switching the strain-zero convention invalidates the L₀(px) currently held, because that
         one was frozen under the OTHER rule. Say so rather than letting the next test inherit it."""
         self._remember("dic/px0_after_preload", bool(on))
         where = "AFTER preload (seated state)" if on else "BEFORE preload (unloaded state)"
         self.append_to_console(f"[DIC] Strain zero convention: {where}. Recorded in every CSV header.")
         if self.camera_manager.initial_distance is not None:
             self.append_to_console(
-                "[DIC] ⚠ The Px₀ currently held was frozen under the previous convention — "
-                "re-run Calibrate Px₀ before the next test, or its strain will not mean what the "
+                "[DIC] ⚠ The L₀(px) currently held was frozen under the previous convention — "
+                "re-run Calibrate L₀(px) before the next test, or its strain will not mean what the "
                 "header says.")
 
     def px0_after_preload(self):
@@ -8112,9 +8312,9 @@ class UTMApplication(QMainWindow):
         hot = (load <= self.PX0_LOAD_WARN_N) if after else (load > self.PX0_LOAD_WARN_N)
         msg = QMessageBox(self)
         msg.setIcon(QMessageBox.Icon.Warning if hot else QMessageBox.Icon.Question)
-        msg.setWindowTitle("Calibrate Px₀")
+        msg.setWindowTitle("Calibrate L₀ (px)")
         msg.setText("Freeze the pixel reference now?")
-        body = ("Px₀ is the marker separation that every strain is measured against, so this sets "
+        body = ("L₀(px) is the marker separation that every strain is measured against, so this sets "
                 "the ZERO of strain.\n\nConfirm that:\n"
                 "   •  the specimen is mounted in BOTH grips\n"
                 "   •  it is straight — not slack, not bowed\n"
@@ -8213,7 +8413,7 @@ class UTMApplication(QMainWindow):
                     f"only {room:.0f} px ahead of it against {h['need']:.0f} px needed. The spare "
                     f"room is at the FIXED end, where it is useless. Shift the CAMERA about "
                     f"{(h['need'] - room) / pxmm:.1f} mm so the moving marker gains that room, "
-                    f"then press Calibrate Px₀ again. Tracking will otherwise stop at about "
+                    f"then press Calibrate L₀(px) again. Tracking will otherwise stop at about "
                     f"{(room / max(1e-6, h['px0'])) * 100 * 0.8:.0f} % strain, as it did on S35.")
             return
         # No preload motion yet, so which end moves is still unknown - fall back to the
@@ -8226,20 +8426,20 @@ class UTMApplication(QMainWindow):
             self.append_to_console(
                 head + f" ⚠ CONDITIONAL — only the {h['wide']:.0f} px side can absorb it, and "
                 f"nothing has moved yet, so I cannot tell whether that is the crosshead end. "
-                f"Apply the preload first, then press Calibrate Px₀ again and this will be "
+                f"Apply the preload first, then press Calibrate L₀(px) again and this will be "
                 f"a straight yes or no.")
         else:
             self.append_to_console(
                 head + f" ❌ NOT ENOUGH — short by {h['short_by']:.0f} px "
                 f"({h['short_by'] / pxmm:.1f} mm) even on the roomier side. Shift the camera "
-                f"along the specimen, and/or move it back until Px₀ reads about "
+                f"along the specimen, and/or move it back until L₀(px) reads about "
                 f"{h['px0_for_safe']:.0f} px (now {h['px0']:.0f}). This is what killed S35 at "
                 f"13-14 mm.")
     def on_tare_dic(self, confirm=False):
-        """Freeze Px₀ — the marker separation in pixels that every strain is measured against.
+        """Freeze L₀(px) — the marker separation in pixels that every strain is measured against.
 
         WHEN this is captured defines the zero of strain, so it is a measurement decision, not
-        bookkeeping: strain is (Px − Px₀)/Px₀, so anything already stretched into the specimen at
+        bookkeeping: strain is (Px − L₀(px))/L₀(px), so anything already stretched into the specimen at
         capture time is invisible for the rest of the test.
 
         Which state to capture from is the convention in px0_after_preload() — before preload on a
@@ -8248,7 +8448,7 @@ class UTMApplication(QMainWindow):
         """
         load = abs(getattr(self, "current_load", 0.0) or 0.0)
         if confirm and not self._confirm_px0(load):
-            self.append_to_console("[DIC] Px₀ calibration cancelled — reference unchanged.")
+            self.append_to_console("[DIC] L₀(px) calibration cancelled — reference unchanged.")
             return
         self.camera_manager.gauge_length_mm = self.gauge_length
         self.camera_manager.tare_dic()
@@ -8261,7 +8461,7 @@ class UTMApplication(QMainWindow):
             if lbl is not None:
                 lbl.setText(txt)
         self.append_to_console(
-            f"[DIC] Px₀ = {px0:.1f} px  (gauge {self.gauge_length:.1f} mm → "
+            f"[DIC] L₀(px) = {px0:.1f} px  (gauge {self.gauge_length:.1f} mm → "
             f"{self.camera_manager.px_per_mm:.2f} px/mm), captured at {load:.1f} N")
         # Sanity-check the SCALE before anything else. Px0 over the gauge gives px/mm, and that
         # is a property of the OPTICS, not the specimen - it barely moves between runs on the
@@ -8278,7 +8478,7 @@ class UTMApplication(QMainWindow):
                 f"[DIC] ⚠ SCALE CHANGED — {_now_pxmm:.2f} px/mm now against {_last:.2f} last "
                 f"time ({(_now_pxmm / _last - 1) * 100:+.0f} %). If the camera has not been moved "
                 "or re-zoomed, this is NOT your markers — check the overlay actually joins the "
-                "two dots, and that a grip edge has not been picked up. Px₀ is wrong if it has.")
+                "two dots, and that a grip edge has not been picked up. L₀(px) is wrong if it has.")
         elif _now_pxmm:
             self._remember("dic/px_per_mm", round(float(_now_pxmm), 3))
 
@@ -8291,9 +8491,9 @@ class UTMApplication(QMainWindow):
                 "specimen is excluded by design; the CSV header records this.")
         elif load > self.PX0_LOAD_WARN_N:
             self.append_to_console(
-                f"[DIC] ⚠ Px₀ was captured under {load:.0f} N. Strain is measured from HERE, so the "
+                f"[DIC] ⚠ L₀(px) was captured under {load:.0f} N. Strain is measured from HERE, so the "
                 "stretch already in the specimen is excluded from every reading. Release the load, "
-                "press Calibrate Px₀ again, THEN preload.")
+                "press Calibrate L₀(px) again, THEN preload.")
 
 def main():
     """Main entry point for the application"""
