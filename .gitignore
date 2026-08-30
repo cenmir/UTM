@@ -1,7 +1,11 @@
 .vscode/c_cpp_properties.json
 CAD/old
 CAD
-docs/
+# Top-level docs/ only. Software/UTM_PyQt6/docs/ is the app's own reference material and IS
+# tracked - a bare "docs/" matched it too, so every new file there was silently untracked
+# (STALL_GUARD.md sat unpublished while commits pointed readers at it).
+/docs/
+!Software/UTM_PyQt6/docs/
 
 Software/data
 Software/dataCiP
