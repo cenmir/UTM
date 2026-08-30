@@ -102,3 +102,6 @@ documentation/decks/_*.pptx
 
 # built release archives
 deploy/dist/
+
+# Basler driver binaries - collected locally, redistribution is a licensing question
+deploy/driver/
