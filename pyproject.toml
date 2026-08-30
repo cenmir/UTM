@@ -1,0 +1,52 @@
+[project]
+name = "utm-control"
+version = "0.5.4"
+description = "Universal Testing Machine control and DIC strain measurement"
+requires-python = ">=3.11"
+license = { text = "GPL-3.0" }
+
+# ---------------------------------------------------------------------------------------
+# BASE = everything the app needs WITHOUT the rig hardware.
+#
+# This set runs the whole offline path: open a CSV, plot it, crop it, compute properties,
+# and measure strain from a recorded video in the DIC Post-Processing tab. It is what a
+# student laptop needs, and it needs no drivers and no admin rights.
+#
+# pyserial is here even though a laptop never opens a port: serial_manager is imported at
+# module load, so the app will not start without it. It is ~100 kB.
+# ---------------------------------------------------------------------------------------
+dependencies = [
+    "PyQt6>=6.6.0",
+    "numpy>=1.24.0",
+    "matplotlib>=3.7.0",
+    "opencv-python>=4.8.0",
+    "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+# The rig PC, and ONLY the rig PC. pypylon also needs the Basler Pylon Camera Software
+# Suite installed separately (~2 GB, admin) for the USB3 Vision kernel driver - without
+# that driver Windows will not enumerate the camera at all, whatever pip has installed.
+rig = ["pypylon>=3.0.0"]
+
+# Rebuilding the slide decks and posters in documentation/.
+docs = [
+    "python-pptx>=0.6.21",
+    "pillow>=10.0.0",
+    "lxml>=4.9.0",
+    "pandas>=2.0.0",
+]
+
+# Packaging a Windows executable.
+build = ["pyinstaller>=6.0.0"]
+
+[tool.uv]
+# Keep the resolver from pulling pypylon unless the rig extra is asked for.
+default-groups = []
+
+[tool.setuptools]
+# The app modules sit flat in Software/UTM_PyQt6 and import each other by bare name, so
+# this is deliberately NOT an installable package - the project exists to pin dependencies
+# and give uv something to resolve. Run the app with its own path:
+#     uv run --project . python "Software/UTM_PyQt6/main.py"
+py-modules = []
