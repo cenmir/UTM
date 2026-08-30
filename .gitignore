@@ -103,5 +103,6 @@ documentation/decks/_*.pptx
 # built release archives
 deploy/dist/
 
-# Basler driver binaries - collected locally, redistribution is a licensing question
-deploy/driver/
+# Basler USB3 Vision driver: PUBLISHED 2026-08-30 by decision of the project owner, who reads
+# Basler's EULA as covering this academic use - the students use Basler cameras and therefore
+# need the Basler driver. deploy/driver/ is deliberately NOT ignored.

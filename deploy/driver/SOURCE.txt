@@ -1,0 +1,7 @@
+﻿Basler USB3 Vision kernel driver, collected from:
+  C:\Program Files\Basler\pylon 8\Applications\x64\share\Tools\x64
+  DriverVer=07/19/2019,11.3.0
+  collected 2026-08-30 on DOLORES
+
+These are Basler's files. See deploy\make_driver_package.ps1 for the licensing note before
+redistributing. Install on a target machine with deploy\install_driver.ps1 (needs admin).
