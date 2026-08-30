@@ -209,8 +209,12 @@ def steps(app):
     add("save", "Save data", bool(saved), f"{saved.split(chr(92))[-1]}" if saved else
         "save into the specimen folder — the report follows it there")
 
-    out.append(["report", "Generate report", INFO,
-                "builds from the saved CSV, into the same folder"])
+    # The report has no GUI button any more (2026-08-30): computing E, sigma_y and UTS from
+    # the curve is the exercise, so the app stops at the saved CSV. Kept as a wizard row so the
+    # operator knows where the run ENDS, and where the analysis picks it up.
+    out.append(["report", "Analyse the CSV", INFO,
+                "the app stops here — properties are computed from the saved file "
+                "(python utm_report.py <csv> --area 80 --gauge 60)"])
 
     # Exactly one NEXT, always. The Px₀ row can already have claimed it by flagging a wrong-state
     # calibration, and a checklist showing two "do this next" arrows tells the operator nothing —

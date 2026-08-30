@@ -1125,14 +1125,12 @@ class UTMApplication(QMainWindow):
         # the button spells the whole workflow out — matching modeHelpButton, which is how every
         # other explain-this affordance in this app already looks.
         from PyQt6.QtWidgets import QHBoxLayout, QPushButton, QToolButton
-        self.generateReportButton = QPushButton("Generate report")
-        self.generateReportButton.setToolTip(
-            "SAVE THE TEST DATA FIRST — the report is built from the saved CSV, not from\n"
-            "what is on screen. If the run is unsaved you will be offered the save dialog.\n\n"
-            "Builds a one-page PDF (+ the individual graphs) using the UI settings (specimen\n"
-            "mode, preload, speed, area, gauge), asks where to put it — defaulting to the\n"
-            "specimen folder beside the CSV — and opens the PDF.")
-        self.generateReportButton.clicked.connect(self.on_generate_report)
+        # Generate report is CLI-ONLY (2026-08-30). Computing E, sigma_y and UTS from a
+        # stress-strain curve IS the students' exercise, and a one-click PDF does it for them.
+        # It also printed an E we do not stand behind: the same X-PLA over four specimens gave
+        # 2.756-4.705 GPa, and one run a 1.28 MPa yield, uncaveated beside a datasheet range.
+        # See docs/GAUGE_AND_MODULUS.md.
+        #     python utm_report.py <test.csv> [--area 80] [--gauge 60] [--out DIR]
         self.reportHelpButton = QToolButton()
         self.reportHelpButton.setText("?")
         self.reportHelpButton.setFixedSize(24, 24)
@@ -1140,7 +1138,6 @@ class UTMApplication(QMainWindow):
         self.reportHelpButton.clicked.connect(self.on_report_help)
         if hasattr(self, "dataButtonsLayout"):
             row = QHBoxLayout()
-            row.addWidget(self.generateReportButton, 1)
             row.addWidget(self.reportHelpButton, 0)
             # Its OWN row, not a third seat in dataButtonsLayout. That row is a QHBoxLayout holding
             # Open Data and Save Data inside a ~308 px panel; a third button already squeezed
@@ -4881,16 +4878,9 @@ class UTMApplication(QMainWindow):
                 self.append_to_console(f"[SF11] registry skipped — {type(e).__name__}: {e}. "
                                        "(Normal for a non-destructive run: no fracture to analyse.)")
 
-        # 3. the report
-        if self.autoReportAct.isChecked():
-            try:
-                # Automatic path, straight after a successful save: the data is saved by
-                # definition, and a modal folder picker here would stall an unattended run. It
-                # goes beside the CSV, which is what "On save: generate the report" promises.
-                self.on_generate_report(ask_location=False)
-                done.append("report")
-            except Exception as e:
-                self.append_to_console(f"[SF11] report failed: {e}")
+        # 3. the report - removed from every GUI path (2026-08-30). Saving must not hand the
+        #    operator the derived properties; that is the exercise. Use the CLI:
+        #        python utm_report.py <test.csv> --area 80 --gauge 60
 
         if done:
             self.append_to_console("[SF11] " + " · ".join(done))
@@ -4935,126 +4925,9 @@ class UTMApplication(QMainWindow):
             QMessageBox.critical(self, "Export Error", f"Failed to save data:\n{str(e)}")
             self.append_to_console(f"Export error: {str(e)}")
 
-    def on_generate_report(self, _checked=False, *, ask_location=True):
-        """Build a one-page PDF report (+ individual vector graphs) from a test CSV, using the
-        current UI settings, save it where the operator chooses, and open it.
-
-        Reports on the last saved or opened CSV. It does NOT stop to ask whether that file is the
-        one you want — an earlier version did, gated on `data_unsaved`, and that flag was the wrong
-        signal: EVERY incoming load sample sets it (on_load_cell_data), and the rig streams at
-        ~11 Hz, so it flipped back to True within about 90 ms of saving. The prompt therefore fired
-        on essentially every report, including immediately after a save, which is exactly the
-        behaviour that trains an operator to click through warnings without reading them.
-
-        The wrong-specimen risk it was guarding is now handled by VISIBILITY instead: the file being
-        reported on is named in the console and in the confirmation, and if the buffer has been
-        cleared since that file was written — the one real sign a newer, unsaved test exists — that
-        is called out too. Loud, but never blocking.
-
-        The output folder is asked for (`ask_location`), defaulting to the CSV's own folder so the
-        ordinary case is one Enter and the report lands with the test data, the plots and the
-        capture it describes. build_report() otherwise defaults to a central
-        Software/UTM_PyQt6/reports/ — right for the CLI, wrong from the app.
-
-        `_checked` swallows the bool that QPushButton.clicked passes positionally. `ask_location` is
-        turned off by the SF11 auto-report, where a modal folder picker would block an unattended
-        run.
-        """
-        import os
-        from PyQt6.QtWidgets import QFileDialog, QMessageBox
-
-        # Whatever the operator actually saved or opened — including a name they typed over the
-        # suggested one, and including a different folder. Only a file that has since MOVED or been
-        # renamed outside the app falls through to the picker, and then the picker starts in the
-        # folder it was last seen in, which is where the renamed copy almost always still is.
-        csv_path = getattr(self, "_last_saved_csv", None)
-        if not csv_path or not os.path.exists(csv_path):
-            start = os.path.dirname(csv_path) if csv_path else ""
-            if csv_path:
-                self.append_to_console(f"[Report] {os.path.basename(csv_path)} is no longer at that "
-                                       "path — renamed or moved? Pick the CSV to report on.")
-            csv_path, _ = QFileDialog.getOpenFileName(
-                self, "Select test CSV for the report", start, "CSV Files (*.csv);;All Files (*)")
-            if not csv_path:
-                return
-        self.append_to_console(f"[Report] building from {os.path.basename(csv_path)}")
-
-        # The one signal that genuinely means "this file is not what you are looking at": the plot
-        # buffer holds FEWER samples than when that file was written, so it was cleared and a newer
-        # run has started. Growth is not evidence — the rig keeps streaming after a save, so the
-        # buffer always grows.
-        stale = (self._saved_sample_n is not None
-                 and len(self.load_plot_times) < self._saved_sample_n)
-        if stale:
-            self.append_to_console(
-                "   NOTE: the plot buffer was cleared after that file was saved, so a NEWER run is "
-                "on screen. This report describes the SAVED file, not what you are looking at — "
-                "save the current run first if that is the one you want.")
-        try:
-            speed_mm_s = self.get_speed_rpm() * self.MM_PER_S_PER_RPM
-        except Exception:
-            speed_mm_s = None
-        comment = self.commentLineEdit.text().strip() if hasattr(self, "commentLineEdit") else None
-        file_id = self.fileIdLineEdit.text().strip() if hasattr(self, "fileIdLineEdit") else None
-        settings = {
-            "id": file_id or None,
-            "specimen_mode": self.specimenModeCombo.currentText(),
-            "preload": f"{self.preloadTargetSpinBox.value():.0f}",
-            "speed": (f"{speed_mm_s:.3f}" if speed_mm_s is not None else None),
-            "area": self.cross_sectional_area,
-            "gauge": self.gauge_length,
-            "scale": self.force_scale,
-            "offset": self.force_offset,
-            "comment": comment or None,
-        }
-        # Default to the CSV's own folder — the specimen folder — so Enter is the right answer and
-        # the report keeps company with the data it describes. Anywhere else stays one click away.
-        spec_dir = os.path.dirname(os.path.abspath(csv_path))
-        out_dir = spec_dir
-        if ask_location:
-            chosen = QFileDialog.getExistingDirectory(
-                self, "Save the report in ...  (default: the specimen folder)", spec_dir,
-                QFileDialog.Option.ShowDirsOnly)
-            if not chosen:
-                self.append_to_console("[Report] cancelled — no folder chosen."); return
-            out_dir = chosen
-        try:
-            from utm_report import build_report
-            paths = build_report(csv_path, settings=settings, out_dir=out_dir)
-        except Exception as e:
-            QMessageBox.critical(self, "Report error", f"Failed to generate report:\n{e}")
-            self.append_to_console(f"Report error: {e}")
-            return
-        pdf = paths[0]
-        where = ("beside the test data" if os.path.abspath(out_dir) == spec_dir
-                 else "OUTSIDE the specimen folder")
-        self.append_to_console(f"Report saved {where}: {pdf}")
-        self.append_to_console(f"   {len(paths)} files written into {out_dir}")
-        self.set_status(f"Report saved: {os.path.basename(pdf)}")
-
-        # Then open it. Failing to open is NOT failing to generate, so say which one happened —
-        # swallowing the error silently left the operator staring at a viewer that never appeared,
-        # with no hint that the file was on disk all along.
-        opened = self._open_externally(pdf)
-        if not opened:
-            self.append_to_console("   (could not launch a PDF viewer — the file is still saved)")
-
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Information)
-        box.setWindowTitle("Report generated")
-        box.setText(("Report saved and opened." if opened else "Report saved."))
-        box.setInformativeText(
-            f"{len(paths)} files (one-pager + individual graphs, each as PDF and PNG) written into "
-            + ("the specimen folder:" if os.path.abspath(out_dir) == spec_dir else ":")
-            + f"\n\n{out_dir}\n\n{os.path.basename(pdf)}"
-            + ("" if opened else "\n\nNo PDF viewer could be launched — open it from the folder."))
-        folder_btn = box.addButton("Open folder", QMessageBox.ButtonRole.ActionRole)
-        box.addButton(QMessageBox.StandardButton.Ok)
-        box.setDefaultButton(QMessageBox.StandardButton.Ok)
-        box.exec()
-        if box.clickedButton() is folder_btn:
-            self._open_externally(out_dir)
-
+    # on_generate_report() removed 2026-08-30 - report generation is CLI-only.
+    # utm_report.build_report() is untouched and still serves the CLI and the deck
+    # builders; only the GUI entry points are gone.
     def _open_externally(self, path):
         """Hand a file or folder to the OS. True if something was launched.
 
@@ -6452,12 +6325,6 @@ class UTMApplication(QMainWindow):
             lambda on: self._remember("sf11/registry", bool(on)))
         menu.addAction(self.autoRegistryAct)
 
-        self.autoReportAct = QAction("On save: generate the report", self, checkable=True)
-        self.autoReportAct.setToolTip("Build the one-page PDF + graphs next to the CSV, "
-                                      "without the extra click. Takes a few seconds.")
-        self.autoReportAct.toggled.connect(lambda on: self._remember("sf11/report", bool(on)))
-        menu.addAction(self.autoReportAct)
-
         menu.addSeparator()
         folder = menu.addMenu("Where to save")
         act_set = QAction("Set capture folder…", self)
@@ -6505,7 +6372,7 @@ class UTMApplication(QMainWindow):
         # missing from the registry is the bug this feature exists to stop. Report OFF — it costs
         # seconds and the operator often wants to crop the data first.
         for act, key, dflt in ((self.autoRegistryAct, "sf11/registry", True),
-                               (self.autoReportAct, "sf11/report", False)):
+):
             act.blockSignals(True)
             act.setChecked(self._recall_bool(key, dflt))
             act.blockSignals(False)
